@@ -1,0 +1,5 @@
+{
+  "name": "2D Co-op Roguelite: Minimalist Zombie Survival",
+  "description": "A 2D local co-op zombie survival game where movement is combat. Players auto-attack based on their weapon and upgrade by killing zombies.",
+  "requestFramePermissions": []
+}
