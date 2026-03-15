@@ -5,13 +5,22 @@ import { Game } from '../src/game/Game';
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
 // ── HTTP 伺服器（Render 健康檢查 + 喚醒冷啟動） ───────────
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+};
 const httpServer = createServer((req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
   if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.writeHead(200, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
     res.end('OK');
     return;
   }
-  res.writeHead(404);
+  res.writeHead(404, CORS_HEADERS);
   res.end();
 });
 
@@ -133,7 +142,7 @@ function startRoom(room: Room) {
     } catch (e) {
       console.error(`[Room ${room.code}] Game error:`, e);
     }
-  }, 50); // 20Hz
+  }, 33); // ~30Hz
 }
 
 function stopRoom(room: Room) {

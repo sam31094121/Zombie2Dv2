@@ -90,15 +90,12 @@ export class Game {
       if (!player) continue;
 
       if (ps.id !== this.networkPlayerId) {
-        // 遠端玩家：直接套用伺服器位置
-        player.x = ps.x;
-        player.y = ps.y;
+        // 遠端玩家：記錄目標位置，由 update() 做插值（平滑移動）
+        (player as any)._tx = ps.x;
+        (player as any)._ty = ps.y;
         player.aimAngle = ps.aim;
-      } else {
-        // 本地玩家：位置差距超過 80px 才修正（避免跳動）
-        const dist = Math.hypot(player.x - ps.x, player.y - ps.y);
-        if (dist > 80) { player.x = ps.x; player.y = ps.y; }
       }
+      // 本地玩家：完全不修正位置，客戶端預測為準（避免跳位）
       player.hp = ps.hp;
       player.maxHp = ps.mh;
       player.xp = ps.xp;
@@ -187,11 +184,22 @@ export class Game {
         this.camera.y += (localPlayer.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
         this.mapManager.update(localPlayer.x, localPlayer.y);
 
-        // 每 50ms 傳送一次輸入給伺服器
+        // 每 33ms 傳送一次輸入（~30fps），降低延遲
         this.networkInputSendTimer += dt;
-        if (this.networkInputSendTimer >= 50 && this.onSendInput) {
+        if (this.networkInputSendTimer >= 33 && this.onSendInput) {
           this.networkInputSendTimer = 0;
           this.onSendInput(finalInput.x, finalInput.y);
+        }
+      }
+
+      // 遠端玩家插值（平滑移動，避免每 33ms 跳一次）
+      const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
+      if (remotePlayer) {
+        const tx = (remotePlayer as any)._tx as number | undefined;
+        const ty = (remotePlayer as any)._ty as number | undefined;
+        if (tx !== undefined && ty !== undefined) {
+          remotePlayer.x += (tx - remotePlayer.x) * 0.25;
+          remotePlayer.y += (ty - remotePlayer.y) * 0.25;
         }
       }
 

@@ -131,6 +131,9 @@ export const GameUI: React.FC = () => {
     };
 
     gameRef.current = game;
+    // 直接同步更新 ref，確保 gameLoop 第一幀就能通過 gameStateRef 檢查
+    // （WebSocket callback 非 React 事件，rAF 可能比 useEffect 更早執行）
+    gameStateRef.current = 'playing';
     setGameState('playing');
     lastTimeRef.current = performance.now();
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
