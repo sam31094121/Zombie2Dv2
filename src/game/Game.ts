@@ -32,6 +32,12 @@ export class Game {
   onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void;
   waveManager: WaveManager;
 
+  // 網路多人模式
+  networkMode: boolean = false;
+  networkPlayerId: number = 1;
+  networkInputSendTimer: number = 0;
+  onSendInput: ((dx: number, dy: number) => void) | null = null;
+
   constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void) {
     this.onGameOver = onGameOver;
     this.onUpdateUI = onUpdateUI;
@@ -61,13 +67,79 @@ export class Game {
     this.mapManager = new MapManager();
     this.camera = { x: 0, y: 0 };
 
-    window.addEventListener('keydown', this.handleKeyDown);
-    window.addEventListener('keyup', this.handleKeyUp);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this.handleKeyDown);
+      window.addEventListener('keyup', this.handleKeyUp);
+    }
   }
 
   destroy() {
-    window.removeEventListener('keydown', this.handleKeyDown);
-    window.removeEventListener('keyup', this.handleKeyUp);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', this.handleKeyDown);
+      window.removeEventListener('keyup', this.handleKeyUp);
+    }
+  }
+
+  // 接收伺服器狀態並更新本地實體
+  applyNetworkState(state: any) {
+    if (!this.networkMode) return;
+
+    // 更新玩家
+    for (const ps of state.ps) {
+      const player = this.players.find(p => p.id === ps.id);
+      if (!player) continue;
+
+      if (ps.id !== this.networkPlayerId) {
+        // 遠端玩家：直接套用伺服器位置
+        player.x = ps.x;
+        player.y = ps.y;
+        player.aimAngle = ps.aim;
+      } else {
+        // 本地玩家：位置差距超過 80px 才修正（避免跳動）
+        const dist = Math.hypot(player.x - ps.x, player.y - ps.y);
+        if (dist > 80) { player.x = ps.x; player.y = ps.y; }
+      }
+      player.hp = ps.hp;
+      player.maxHp = ps.mh;
+      player.xp = ps.xp;
+      player.maxXp = ps.mx;
+      player.level = ps.lv;
+      player.prestigeLevel = ps.pl;
+      player.weapon = ps.wp as 'sword' | 'gun';
+      player.shield = ps.sh;
+    }
+
+    // 更新殭屍（直接替換陣列）
+    this.zombies = state.zs.map((zs: any) => {
+      const z = new Zombie(zs.x, zs.y, zs.tp);
+      z.hp = zs.hp;
+      z.maxHp = zs.mh;
+      z.angle = zs.ag;
+      z.time = Date.now();
+      return z;
+    });
+
+    // 更新子彈
+    this.projectiles = state.pj.map((ps: any) => {
+      const p = new Projectile(
+        ps.oi, ps.x, ps.y, ps.vx, ps.vy,
+        0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en
+      );
+      p.maxLifetime = ps.ml;
+      return p;
+    });
+
+    // 更新道具
+    this.items = state.it.map((is: any) => {
+      return new Item(is.x, is.y, is.tp as ItemType, 99999, is.v, is.c);
+    });
+
+    // 更新波次狀態
+    this.waveManager.currentWave = state.wv.w;
+    this.waveManager.isResting = state.wv.r;
+    this.waveManager.timer = state.wv.t;
+    this.waveManager.isInfinite = state.wv.i;
+    this.waveManager.activeMechanics = state.wv.m;
   }
 
   handleKeyDown = (e: KeyboardEvent) => {
@@ -86,6 +158,71 @@ export class Game {
 
   update(dt: number) {
     if (this.isGameOver) return;
+
+    // ── 網路模式：只處理本地玩家預測 + 傳送輸入 ──
+    if (this.networkMode) {
+      const playerIdx = this.networkPlayerId - 1;
+      const localPlayer = this.players[playerIdx];
+
+      if (localPlayer && localPlayer.hp > 0) {
+        // 鍵盤轉成 joystick 輸入（允許 WASD / 方向鍵）
+        if (!this.joystickInputs[playerIdx]) {
+          let dx = 0, dy = 0;
+          if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp'])    dy -= 1;
+          if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown'])  dy += 1;
+          if (this.keys['a'] || this.keys['A'] || this.keys['ArrowLeft'])  dx -= 1;
+          if (this.keys['d'] || this.keys['D'] || this.keys['ArrowRight']) dx += 1;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0) this.joystickInputs[playerIdx] = { x: dx / len, y: dy / len };
+        }
+
+        const obstacles = this.mapManager.getNearbyObstacles(localPlayer.x, localPlayer.y);
+        localPlayer.update(dt, this.keys, obstacles, this.joystickInputs[playerIdx] || undefined);
+
+        // 平滑跟機攝影機
+        this.camera.x += (localPlayer.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
+        this.camera.y += (localPlayer.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
+        this.mapManager.update(localPlayer.x, localPlayer.y);
+
+        // 每 50ms 傳送一次輸入給伺服器
+        this.networkInputSendTimer += dt;
+        if (this.networkInputSendTimer >= 50 && this.onSendInput) {
+          this.networkInputSendTimer = 0;
+          const ji = this.joystickInputs[playerIdx];
+          let sdx = ji?.x ?? 0, sdy = ji?.y ?? 0;
+          this.onSendInput(sdx, sdy);
+        }
+
+        // 重置 joystick（讓下一幀可以重新讀鍵盤）
+        if (this.joystickInputs[playerIdx]) {
+          const ji = this.joystickInputs[playerIdx];
+          // 只重置由鍵盤臨時設定的（非外部設定的）
+          if (!this.keys['w'] && !this.keys['W'] && !this.keys['ArrowUp'] &&
+              !this.keys['s'] && !this.keys['S'] && !this.keys['ArrowDown'] &&
+              !this.keys['a'] && !this.keys['A'] && !this.keys['ArrowLeft'] &&
+              !this.keys['d'] && !this.keys['D'] && !this.keys['ArrowRight']) {
+            if (ji && Math.abs(ji.x) + Math.abs(ji.y) < 0.01) {
+              this.joystickInputs[playerIdx] = null;
+            }
+          }
+        }
+      }
+
+      // 更新 VFX
+      this.healVFX = this.healVFX.filter(vfx => {
+        vfx.y -= 1;
+        vfx.alpha -= 0.02;
+        return vfx.alpha > 0;
+      });
+      for (let i = this.hitEffects.length - 1; i >= 0; i--) {
+        this.hitEffects[i].lifetime -= dt;
+        if (this.hitEffects[i].lifetime <= 0) this.hitEffects.splice(i, 1);
+      }
+
+      this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
+      return;
+    }
+
     const isIntro = this.waveManager.waveIntroTimer > 0;
 
     // Apply Wave Mechanisms
