@@ -113,15 +113,26 @@ export class Game {
       if (!player) continue;
 
       if (ps.id !== this.networkPlayerId) {
-        // 遠端玩家：設定插值目標位置
+        // 遠端玩家：設定插值目標位置（含速度估算備外插用）
+        const prevTx = (player as any)._tx as number | undefined;
+        const prevTy = (player as any)._ty as number | undefined;
         (player as any)._tx = ps.x;
         (player as any)._ty = ps.y;
+        if (prevTx !== undefined && prevTy !== undefined) {
+          (player as any)._tvx = ps.x - prevTx;
+          (player as any)._tvy = ps.y - prevTy;
+        }
         player.aimAngle = ps.aim;
-      } else if (isHardSync) {
-        // 本地玩家：只在 HardSync 時強制校準位置（波次切換 / 背景分頁恢復）
-        player.x = ps.x;
-        player.y = ps.y;
-        this._hardSyncFade = 0.55;  // 觸發淡入遮罩
+      } else {
+        // 本地玩家：記錄伺服器位置（供子彈偏移補償用）
+        (player as any)._serverX = ps.x;
+        (player as any)._serverY = ps.y;
+        if (isHardSync) {
+          // HardSync：強制校準位置（波次切換 / 背景分頁恢復）
+          player.x = ps.x;
+          player.y = ps.y;
+          this._hardSyncFade = 0.55;
+        }
       }
       player.hp  = ps.hp;
       player.maxHp = ps.mh;
@@ -172,9 +183,19 @@ export class Game {
       delete e._pendingZombieIdx;
     }
 
-    // ── 子彈（高速移動，直接替換）──────────────────────────
+    // ── 子彈（高速移動，直接替換；本地玩家子彈補偏移消除攻擊延遲感）
+    const localPlayerForProj = this.players[this.networkPlayerId - 1];
+    const projOffX = localPlayerForProj
+      ? localPlayerForProj.x - ((localPlayerForProj as any)._serverX ?? localPlayerForProj.x)
+      : 0;
+    const projOffY = localPlayerForProj
+      ? localPlayerForProj.y - ((localPlayerForProj as any)._serverY ?? localPlayerForProj.y)
+      : 0;
     this.projectiles = (state.pj as any[]).map((ps) => {
-      const p = new Projectile(ps.oi, ps.x, ps.y, ps.vx, ps.vy, 0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en);
+      const isLocalOwned = ps.oi === this.networkPlayerId && !ps.en;
+      const px = ps.x + (isLocalOwned ? projOffX : 0);
+      const py = ps.y + (isLocalOwned ? projOffY : 0);
+      const p = new Projectile(ps.oi, px, py, ps.vx, ps.vy, 0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en);
       p.maxLifetime = ps.ml;
       return p;
     });
@@ -242,15 +263,35 @@ export class Game {
         const obstacles = this.mapManager.getNearbyObstacles(localPlayer.x, localPlayer.y);
         localPlayer.update(dt, this.keys, obstacles, finalInput);
 
+        // 修復 Fix 2：本地玩家自動瞄準（網路模式也更新 aimAngle）
+        {
+          let targetAngle = Math.atan2(localPlayer.lastMoveDir.y, localPlayer.lastMoveDir.x);
+          let nearestEnemy = null;
+          let minDistSq = Infinity;
+          for (const z of this.zombies) {
+            const zDx = z.x - localPlayer.x, zDy = z.y - localPlayer.y;
+            const distSq = zDx * zDx + zDy * zDy;
+            if (distSq < minDistSq) { minDistSq = distSq; nearestEnemy = z; }
+          }
+          if (nearestEnemy) {
+            targetAngle = Math.atan2((nearestEnemy as any).y - localPlayer.y, (nearestEnemy as any).x - localPlayer.x);
+          }
+          let angleDiff = targetAngle - localPlayer.aimAngle;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          const maxRot = 2 * (dt / 1000);
+          localPlayer.aimAngle += Math.abs(angleDiff) <= maxRot ? angleDiff : Math.sign(angleDiff) * maxRot;
+          while (localPlayer.aimAngle > Math.PI) localPlayer.aimAngle -= Math.PI * 2;
+          while (localPlayer.aimAngle < -Math.PI) localPlayer.aimAngle += Math.PI * 2;
+        }
+
         // 平滑跟機攝影機
         this.camera.x += (localPlayer.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
         this.camera.y += (localPlayer.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
         this.mapManager.update(localPlayer.x, localPlayer.y);
 
-        // 模組 A / C：每 33ms 傳送 binary 輸入 + 寫入環形緩衝區
-        this.networkInputSendTimer += dt;
-        if (this.networkInputSendTimer >= 33 && this.onSendInput) {
-          this.networkInputSendTimer = 0;
+        // 模組 A / C：每幀傳送 binary 輸入（Fix 3 零延遲）+ 寫入環形緩衝區
+        if (this.onSendInput) {
           this.onSendInput(finalInput.x, finalInput.y);
           // 模組 C：環形緩衝區（紀錄本地狀態，備未來 Rollback 用）
           this.localTick = (this.localTick + 1) >>> 0;
@@ -274,14 +315,19 @@ export class Game {
         }
       }
 
-      // 模組 D：遠端玩家插值（平滑移動）
+      // 模組 D：遠端玩家插值 + 速度外插（Fix 3 降低感知延遲）
       const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
       if (remotePlayer) {
         const tx = (remotePlayer as any)._tx as number | undefined;
         const ty = (remotePlayer as any)._ty as number | undefined;
+        const tvx = ((remotePlayer as any)._tvx as number | undefined) ?? 0;
+        const tvy = ((remotePlayer as any)._tvy as number | undefined) ?? 0;
         if (tx !== undefined && ty !== undefined) {
-          remotePlayer.x += (tx - remotePlayer.x) * 0.25;
-          remotePlayer.y += (ty - remotePlayer.y) * 0.25;
+          // 外插目標 = 最後已知位置 + 一幀速度預測（減少 30Hz 廣播的感知延遲）
+          const extrapX = tx + tvx * 0.5;
+          const extrapY = ty + tvy * 0.5;
+          remotePlayer.x += (extrapX - remotePlayer.x) * 0.35;
+          remotePlayer.y += (extrapY - remotePlayer.y) * 0.35;
         }
       }
 
