@@ -231,8 +231,13 @@ export const GameUI: React.FC = () => {
   // ── 遊戲主迴圈 ───────────────────────────────────────────
   const gameLoop = (time: number) => {
     if (gameStateRef.current !== 'playing') return;
-    const dt = time - lastTimeRef.current;
+    const rawDt = time - lastTimeRef.current;
     lastTimeRef.current = time;
+    // 模組 F：背景分頁恢復保護 — dt 超過 250ms 觸發 HardSync
+    const dt = Math.min(rawDt, 250);
+    if (rawDt > 250 && gameRef.current?.networkMode) {
+      gameRef.current.triggerHardSync();
+    }
 
     if (gameRef.current && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');

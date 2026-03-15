@@ -38,6 +38,18 @@ export class Game {
   networkInputSendTimer: number = 0;
   onSendInput: ((dx: number, dy: number) => void) | null = null;
 
+  // ── 模組 C：環形緩衝區（最近 200 幀本地狀態，備 Rollback 用）
+  private localTick = 0;
+  private readonly CIRC_BUF_SIZE = 200;
+  private circularBuffer: Array<{ tick: number; x: number; y: number; vx: number; vy: number } | null>
+    = new Array(200).fill(null);
+
+  // ── 模組 H：道具拾取預測（client-side prediction）
+  private pendingPickups: Array<{ x: number; y: number; type: string; time: number }> = [];
+
+  // ── 模組 E / F：HardSync 旗標（背景分頁恢復 or 波次切換）
+  pendingHardSync = false;
+
   constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void) {
     this.onGameOver = onGameOver;
     this.onUpdateUI = onUpdateUI;
@@ -80,25 +92,40 @@ export class Game {
     }
   }
 
+  // 模組 F：背景分頁恢復 — 觸發下一幀強制硬同步
+  triggerHardSync() {
+    this.pendingHardSync = true;
+  }
+
   // 接收伺服器狀態並更新本地實體
+  // HardSync 淡入遮罩（0 = 全透明，>0 漸出）
+  _hardSyncFade = 0;
+
   applyNetworkState(state: any) {
     if (!this.networkMode) return;
 
-    // 更新玩家
+    const isHardSync = !!(state.hs) || this.pendingHardSync;
+    this.pendingHardSync = false;
+
+    // ── 玩家更新 ─────────────────────────────────────────────
     for (const ps of state.ps) {
       const player = this.players.find(p => p.id === ps.id);
       if (!player) continue;
 
       if (ps.id !== this.networkPlayerId) {
-        // 遠端玩家：記錄目標位置，由 update() 做插值（平滑移動）
+        // 遠端玩家：設定插值目標位置
         (player as any)._tx = ps.x;
         (player as any)._ty = ps.y;
         player.aimAngle = ps.aim;
+      } else if (isHardSync) {
+        // 本地玩家：只在 HardSync 時強制校準位置（波次切換 / 背景分頁恢復）
+        player.x = ps.x;
+        player.y = ps.y;
+        this._hardSyncFade = 0.55;  // 觸發淡入遮罩
       }
-      // 本地玩家：完全不修正位置，客戶端預測為準（避免跳位）
-      player.hp = ps.hp;
+      player.hp  = ps.hp;
       player.maxHp = ps.mh;
-      player.xp = ps.xp;
+      player.xp  = ps.xp;
       player.maxXp = ps.mx;
       player.level = ps.lv;
       player.prestigeLevel = ps.pl;
@@ -106,36 +133,73 @@ export class Game {
       player.shield = ps.sh;
     }
 
-    // 更新殭屍（直接替換陣列）
-    this.zombies = state.zs.map((zs: any) => {
-      const z = new Zombie(zs.x, zs.y, zs.tp);
-      z.hp = zs.hp;
-      z.maxHp = zs.mh;
-      z.angle = zs.ag;
-      z.time = Date.now();
+    // ── 模組 D：殭屍插值（比對最近同類型殭屍，重用物件不重建）
+    const matched = new Set<number>();
+    const nowStamp = Date.now();
+    this.zombies = (state.zs as any[]).map((ns) => {
+      let bestIdx = -1;
+      let bestDist = 80; // 80px 匹配半徑
+      for (let j = 0; j < this.zombies.length; j++) {
+        if (matched.has(j)) continue;
+        if (this.zombies[j].type !== ns.tp) continue;
+        const d = Math.hypot(this.zombies[j].x - ns.x, this.zombies[j].y - ns.y);
+        if (d < bestDist) { bestDist = d; bestIdx = j; }
+      }
+      if (bestIdx >= 0) {
+        matched.add(bestIdx);
+        const z = this.zombies[bestIdx];
+        (z as any)._prevHp = z.hp; // 模組 I：供擊中補償比對
+        (z as any)._tx = ns.x;
+        (z as any)._ty = ns.y;
+        z.hp = ns.hp;
+        z.maxHp = ns.mh;
+        z.angle = ns.ag;
+        return z;
+      }
+      const z = new Zombie(ns.x, ns.y, ns.tp);
+      z.hp = ns.hp; z.maxHp = ns.mh; z.angle = ns.ag; z.time = nowStamp;
+      (z as any)._tx = ns.x; (z as any)._ty = ns.y;
       return z;
     });
 
-    // 更新子彈
-    this.projectiles = state.pj.map((ps: any) => {
-      const p = new Projectile(
-        ps.oi, ps.x, ps.y, ps.vx, ps.vy,
-        0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en
-      );
+    // ── 模組 I：擊中視覺補償（HP 未下降 → 血跡灰化）────────
+    for (const e of this.hitEffects as any[]) {
+      if (!e._pendingZombieIdx) continue;
+      const z = this.zombies[e._pendingZombieIdx];
+      if (z && (z as any)._prevHp !== undefined && z.hp >= (z as any)._prevHp) {
+        e._grayOut = true; // 未命中，灰化消散
+      }
+      delete e._pendingZombieIdx;
+    }
+
+    // ── 子彈（高速移動，直接替換）──────────────────────────
+    this.projectiles = (state.pj as any[]).map((ps) => {
+      const p = new Projectile(ps.oi, ps.x, ps.y, ps.vx, ps.vy, 0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en);
       p.maxLifetime = ps.ml;
       return p;
     });
 
-    // 更新道具
-    this.items = state.it.map((is: any) => {
-      return new Item(is.x, is.y, is.tp as ItemType, 99999, is.v, is.c);
+    // ── 模組 H：道具（預測拾取校驗 + 淡入修復）─────────────
+    const nowMs = Date.now();
+    this.pendingPickups = this.pendingPickups.filter(p => nowMs - p.time < 600);
+    this.items = (state.it as any[]).map((is) => {
+      const item = new Item(is.x, is.y, is.tp as ItemType, 99999, is.v, is.c);
+      const pendingIdx = this.pendingPickups.findIndex(
+        p => Math.hypot(p.x - is.x, p.y - is.y) < 12 && p.type === is.tp
+      );
+      if (pendingIdx >= 0) {
+        // 伺服器否決（道具仍存在）→ 淡入修復
+        (item as any)._fadeAlpha = 0;
+        this.pendingPickups.splice(pendingIdx, 1);
+      }
+      return item;
     });
 
-    // 更新波次狀態
-    this.waveManager.currentWave = state.wv.w;
-    this.waveManager.isResting = state.wv.r;
-    this.waveManager.timer = state.wv.t;
-    this.waveManager.isInfinite = state.wv.i;
+    // ── 波次狀態 ─────────────────────────────────────────────
+    this.waveManager.currentWave     = state.wv.w;
+    this.waveManager.isResting       = state.wv.r;
+    this.waveManager.timer           = state.wv.t;
+    this.waveManager.isInfinite      = state.wv.i;
     this.waveManager.activeMechanics = state.wv.m;
   }
 
@@ -176,7 +240,6 @@ export class Game {
         const finalInput = mobileInput ?? { x: dx, y: dy };
 
         const obstacles = this.mapManager.getNearbyObstacles(localPlayer.x, localPlayer.y);
-        // 永遠傳入 externalInput，繞過 Player 內部的 id 判斷
         localPlayer.update(dt, this.keys, obstacles, finalInput);
 
         // 平滑跟機攝影機
@@ -184,15 +247,34 @@ export class Game {
         this.camera.y += (localPlayer.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
         this.mapManager.update(localPlayer.x, localPlayer.y);
 
-        // 每 33ms 傳送一次輸入（~30fps），降低延遲
+        // 模組 A / C：每 33ms 傳送 binary 輸入 + 寫入環形緩衝區
         this.networkInputSendTimer += dt;
         if (this.networkInputSendTimer >= 33 && this.onSendInput) {
           this.networkInputSendTimer = 0;
           this.onSendInput(finalInput.x, finalInput.y);
+          // 模組 C：環形緩衝區（紀錄本地狀態，備未來 Rollback 用）
+          this.localTick = (this.localTick + 1) >>> 0;
+          this.circularBuffer[this.localTick % this.CIRC_BUF_SIZE] = {
+            tick: this.localTick, x: localPlayer.x, y: localPlayer.y,
+            vx: finalInput.x, vy: finalInput.y,
+          };
+        }
+
+        // 模組 H：道具拾取預測（本地立即消失 + 播音效）
+        const nowPick = Date.now();
+        for (let i = this.items.length - 1; i >= 0; i--) {
+          const item = this.items[i];
+          if ((item as any)._fadeAlpha !== undefined) continue; // 正在淡入修復中，跳過
+          const dist = Math.hypot(localPlayer.x - item.x, localPlayer.y - item.y);
+          if (dist < localPlayer.radius + item.radius) {
+            audioManager.playPickup();
+            this.pendingPickups.push({ x: item.x, y: item.y, type: item.type, time: nowPick });
+            this.items.splice(i, 1);
+          }
         }
       }
 
-      // 遠端玩家插值（平滑移動，避免每 33ms 跳一次）
+      // 模組 D：遠端玩家插值（平滑移動）
       const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
       if (remotePlayer) {
         const tx = (remotePlayer as any)._tx as number | undefined;
@@ -201,6 +283,21 @@ export class Game {
           remotePlayer.x += (tx - remotePlayer.x) * 0.25;
           remotePlayer.y += (ty - remotePlayer.y) * 0.25;
         }
+      }
+
+      // 模組 D：殭屍 Lerp（每幀趨近目標位置）
+      for (const z of this.zombies) {
+        const tx = (z as any)._tx as number | undefined;
+        const ty = (z as any)._ty as number | undefined;
+        if (tx !== undefined && ty !== undefined) {
+          z.x += (tx - z.x) * 0.25;
+          z.y += (ty - z.y) * 0.25;
+        }
+      }
+
+      // 模組 E：HardSync 淡入遮罩逐幀消散
+      if (this._hardSyncFade > 0) {
+        this._hardSyncFade = Math.max(0, this._hardSyncFade - 0.03);
       }
 
       // 更新 VFX
@@ -1260,7 +1357,18 @@ export class Game {
       ctx.closePath();
     }
 
-    for (const item of this.items) item.draw(ctx);
+    // 模組 H：道具淡入修復動畫（_fadeAlpha: 0→1 漸出）
+    for (const item of this.items) {
+      const alpha = (item as any)._fadeAlpha;
+      if (alpha !== undefined) {
+        ctx.globalAlpha = alpha;
+        const next = Math.min(1, alpha + 0.05);
+        (item as any)._fadeAlpha = next;
+        if (next >= 1) delete (item as any)._fadeAlpha;
+      }
+      item.draw(ctx);
+      if (alpha !== undefined) ctx.globalAlpha = 1;
+    }
     for (const proj of this.projectiles) proj.draw(ctx);
     for (const zombie of this.zombies) zombie.draw(ctx);
     for (const player of this.players) player.draw(ctx);
@@ -1270,6 +1378,11 @@ export class Game {
 
     for (const effect of this.hitEffects) {
       ctx.save();
+      // 模組 I：擊中補償灰化（伺服器未確認的命中特效快速灰化消散）
+      if ((effect as any)._grayOut) {
+        ctx.filter = 'grayscale(100%)';
+        effect.lifetime = Math.min(effect.lifetime, 80); // 加速消散
+      }
       const progress = effect.startTime ? (Date.now() - effect.startTime) / effect.maxLifetime : (effect.lifetime / effect.maxLifetime);
       
       if (effect.type === 'orange_explosion') {
@@ -1547,6 +1660,13 @@ export class Game {
       ctx.beginPath();
       ctx.arc(vfx.x, vfx.y + 20, 15 * (1.5 - vfx.alpha), 0, Math.PI * 2);
       ctx.stroke();
+    }
+    // 模組 E：HardSync 淡入遮罩（波次切換 / 背景分頁恢復後短暫閃白）
+    if (this.networkMode && this._hardSyncFade > 0) {
+      ctx.save();
+      ctx.fillStyle = `rgba(255,255,255,${this._hardSyncFade * 0.4})`;
+      ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
+      ctx.restore();
     }
     ctx.restore();
   }
