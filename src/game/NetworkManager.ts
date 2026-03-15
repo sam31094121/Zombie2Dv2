@@ -70,7 +70,7 @@ export class NetworkManager {
   }
 
   joinRoom(code: string) {
-    this.send({ t: 'JOIN', code: code.toUpperCase().trim() });
+    this.send({ t: 'JOIN', code: code.trim() });
   }
 
   sendInput(dx: number, dy: number) {

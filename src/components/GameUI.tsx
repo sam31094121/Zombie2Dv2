@@ -137,9 +137,23 @@ export const GameUI: React.FC = () => {
     requestRef.current = requestAnimationFrame(gameLoop);
   };
 
+  // ── 喚醒 Render 伺服器（解決冷啟動斷線問題） ────────────
+  const wakeUpServer = async (): Promise<void> => {
+    try {
+      const httpUrl = WS_URL.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
+      await Promise.race([
+        fetch(`${httpUrl}/health`),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('timeout')), 25_000)),
+      ]);
+    } catch { /* 忽略：即使失敗仍繼續嘗試 WebSocket */ }
+  };
+
   // ── 建立房間 ─────────────────────────────────────────────
   const handleCreateRoom = async () => {
+    setOnlineError('正在連線伺服器...');
+    await wakeUpServer();
     setOnlineError('');
+
     const nm = new NetworkManager();
     networkRef.current = nm;
 
@@ -154,18 +168,20 @@ export const GameUI: React.FC = () => {
     try {
       await nm.connect(WS_URL);
     } catch {
-      setOnlineError('無法連線到伺服器，請確認伺服器已啟動');
+      setOnlineError('無法連線到伺服器，請稍後再試');
       return;
     }
 
+    // 用 localPid 避免 React state closure 讀到舊值
+    let localPid = 1;
     nm.onRoomJoined = (code, pid) => {
+      localPid = pid;
       setRoomCode(code);
       setMyPlayerId(pid);
       setOnlineStep('waiting');
     };
-
     nm.onGameStart = () => {
-      startOnlineGame(nm, myPlayerId);
+      startOnlineGame(nm, localPid);
     };
 
     nm.createRoom();
@@ -174,7 +190,10 @@ export const GameUI: React.FC = () => {
   // ── 加入房間 ─────────────────────────────────────────────
   const handleJoinRoom = async () => {
     if (!joinInput.trim()) { setOnlineError('請輸入房間代碼'); return; }
+    setOnlineError('正在連線伺服器...');
+    await wakeUpServer();
     setOnlineError('');
+
     const nm = new NetworkManager();
     networkRef.current = nm;
 
@@ -189,17 +208,18 @@ export const GameUI: React.FC = () => {
     try {
       await nm.connect(WS_URL);
     } catch {
-      setOnlineError('無法連線到伺服器，請確認伺服器已啟動');
+      setOnlineError('無法連線到伺服器，請稍後再試');
       return;
     }
 
+    let localPid = 2;
     nm.onRoomJoined = (code, pid) => {
+      localPid = pid;
       setMyPlayerId(pid);
       setRoomCode(code);
     };
-
     nm.onGameStart = () => {
-      startOnlineGame(nm, myPlayerId);
+      startOnlineGame(nm, localPid);
     };
 
     nm.joinRoom(joinInput);
@@ -339,12 +359,14 @@ export const GameUI: React.FC = () => {
                         <div className="flex flex-col gap-2">
                           <input
                             type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             value={joinInput}
-                            onChange={e => setJoinInput(e.target.value.toUpperCase())}
+                            onChange={e => setJoinInput(e.target.value.replace(/\D/g, ''))}
                             onKeyDown={e => e.key === 'Enter' && handleJoinRoom()}
-                            placeholder="輸入 6 碼房間代碼"
-                            maxLength={6}
-                            className="w-full px-4 py-3 bg-neutral-800 border border-neutral-600 rounded-xl text-white font-mono text-center text-2xl tracking-widest uppercase placeholder-neutral-600 focus:outline-none focus:border-yellow-500"
+                            placeholder="輸入 4 位數字代碼"
+                            maxLength={4}
+                            className="w-full px-4 py-3 bg-neutral-800 border border-neutral-600 rounded-xl text-white font-mono text-center text-2xl tracking-widest placeholder-neutral-600 focus:outline-none focus:border-yellow-500"
                           />
                           <button onClick={handleJoinRoom}
                             className="w-full py-4 bg-neutral-700 hover:bg-neutral-600 text-white font-bold rounded-2xl transition-all text-xl border border-neutral-600">

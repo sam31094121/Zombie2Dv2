@@ -1,13 +1,25 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { createServer } from 'http';
 import { Game } from '../src/game/Game';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+
+// ── HTTP 伺服器（Render 健康檢查 + 喚醒冷啟動） ───────────
+const httpServer = createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK');
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
 
 // ── 型別定義 ──────────────────────────────────────────────
 interface PlayerConn {
   ws: WebSocket;
   playerId: number;
-  input: { dx: number; dy: number };
+  input: { x: number; y: number };
 }
 
 interface Room {
@@ -21,12 +33,7 @@ interface Room {
 const rooms = new Map<string, Room>();
 
 function generateCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
+  return String(Math.floor(Math.random() * 10000)).padStart(4, '0');
 }
 
 function broadcast(room: Room, data: string) {
@@ -140,11 +147,24 @@ function stopRoom(room: Room) {
   console.log(`[Room ${room.code}] Closed`);
 }
 
-// ── WebSocket 伺服器 ──────────────────────────────────────
-const wss = new WebSocketServer({ port: PORT });
-console.log(`🟢 WebSocket server running on ws://localhost:${PORT}`);
+// ── WebSocket 伺服器（掛載在 HTTP 伺服器上） ─────────────
+const wss = new WebSocketServer({ server: httpServer });
+
+// Keepalive ping/pong（防止 Render 因閒置而斷線）
+const pingInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    const socket = ws as WebSocket & { isAlive?: boolean };
+    if (socket.isAlive === false) { ws.terminate(); return; }
+    socket.isAlive = false;
+    ws.ping();
+  });
+}, 30_000);
+wss.on('close', () => clearInterval(pingInterval));
 
 wss.on('connection', (ws) => {
+  (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
+  ws.on('pong', () => { (ws as WebSocket & { isAlive?: boolean }).isAlive = true; });
+
   let currentRoom: Room | null = null;
   let myPlayerId = 0;
 
@@ -161,7 +181,7 @@ wss.on('connection', (ws) => {
         rooms.set(code, room);
         currentRoom = room;
         myPlayerId = 1;
-        room.players.push({ ws, playerId: 1, input: { dx: 0, dy: 0 } });
+        room.players.push({ ws, playerId: 1, input: { x: 0, y: 0 } });
 
         ws.send(JSON.stringify({ t: 'ROOM', code, pid: 1 }));
         console.log(`[Room ${code}] Created by P1`);
@@ -169,7 +189,7 @@ wss.on('connection', (ws) => {
 
       // 加入房間
       else if (msg.t === 'JOIN') {
-        const code = (msg.code as string)?.toUpperCase?.() ?? msg.code;
+        const code = String(msg.code ?? '').trim();
         const room = rooms.get(code);
 
         if (!room) {
@@ -187,7 +207,7 @@ wss.on('connection', (ws) => {
 
         currentRoom = room;
         myPlayerId = 2;
-        room.players.push({ ws, playerId: 2, input: { dx: 0, dy: 0 } });
+        room.players.push({ ws, playerId: 2, input: { x: 0, y: 0 } });
 
         ws.send(JSON.stringify({ t: 'ROOM', code: room.code, pid: 2 }));
         console.log(`[Room ${code}] Joined by P2`);
@@ -199,8 +219,8 @@ wss.on('connection', (ws) => {
         const conn = currentRoom.players.find(p => p.ws === ws);
         if (conn) {
           conn.input = {
-            dx: Math.max(-1, Math.min(1, msg.dx ?? 0)),
-            dy: Math.max(-1, Math.min(1, msg.dy ?? 0)),
+            x: Math.max(-1, Math.min(1, msg.dx ?? 0)),
+            y: Math.max(-1, Math.min(1, msg.dy ?? 0)),
           };
         }
       }
@@ -222,4 +242,8 @@ wss.on('connection', (ws) => {
   ws.on('error', (err) => {
     console.error('WS error:', err.message);
   });
+});
+
+httpServer.listen(PORT, () => {
+  console.log(`🟢 Server running on port ${PORT} (HTTP + WebSocket)`);
 });

@@ -165,19 +165,22 @@ export class Game {
       const localPlayer = this.players[playerIdx];
 
       if (localPlayer && localPlayer.hp > 0) {
-        // 鍵盤轉成 joystick 輸入（允許 WASD / 方向鍵）
-        if (!this.joystickInputs[playerIdx]) {
-          let dx = 0, dy = 0;
-          if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp'])    dy -= 1;
-          if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown'])  dy += 1;
-          if (this.keys['a'] || this.keys['A'] || this.keys['ArrowLeft'])  dx -= 1;
-          if (this.keys['d'] || this.keys['D'] || this.keys['ArrowRight']) dx += 1;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          if (len > 0) this.joystickInputs[playerIdx] = { x: dx / len, y: dy / len };
-        }
+        // 每幀重新計算鍵盤輸入（WASD / 方向鍵均有效，不依賴 player.id）
+        let dx = 0, dy = 0;
+        if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp'])    dy -= 1;
+        if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown'])  dy += 1;
+        if (this.keys['a'] || this.keys['A'] || this.keys['ArrowLeft'])  dx -= 1;
+        if (this.keys['d'] || this.keys['D'] || this.keys['ArrowRight']) dx += 1;
+        const kbLen = Math.sqrt(dx * dx + dy * dy);
+        if (kbLen > 0) { dx /= kbLen; dy /= kbLen; }
+
+        // 手機搖桿優先；沒有搖桿則用鍵盤值（含靜止 0,0）
+        const mobileInput = this.joystickInputs[playerIdx];
+        const finalInput = mobileInput ?? { x: dx, y: dy };
 
         const obstacles = this.mapManager.getNearbyObstacles(localPlayer.x, localPlayer.y);
-        localPlayer.update(dt, this.keys, obstacles, this.joystickInputs[playerIdx] || undefined);
+        // 永遠傳入 externalInput，繞過 Player 內部的 id 判斷
+        localPlayer.update(dt, this.keys, obstacles, finalInput);
 
         // 平滑跟機攝影機
         this.camera.x += (localPlayer.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
@@ -188,23 +191,7 @@ export class Game {
         this.networkInputSendTimer += dt;
         if (this.networkInputSendTimer >= 50 && this.onSendInput) {
           this.networkInputSendTimer = 0;
-          const ji = this.joystickInputs[playerIdx];
-          let sdx = ji?.x ?? 0, sdy = ji?.y ?? 0;
-          this.onSendInput(sdx, sdy);
-        }
-
-        // 重置 joystick（讓下一幀可以重新讀鍵盤）
-        if (this.joystickInputs[playerIdx]) {
-          const ji = this.joystickInputs[playerIdx];
-          // 只重置由鍵盤臨時設定的（非外部設定的）
-          if (!this.keys['w'] && !this.keys['W'] && !this.keys['ArrowUp'] &&
-              !this.keys['s'] && !this.keys['S'] && !this.keys['ArrowDown'] &&
-              !this.keys['a'] && !this.keys['A'] && !this.keys['ArrowLeft'] &&
-              !this.keys['d'] && !this.keys['D'] && !this.keys['ArrowRight']) {
-            if (ji && Math.abs(ji.x) + Math.abs(ji.y) < 0.01) {
-              this.joystickInputs[playerIdx] = null;
-            }
-          }
+          this.onSendInput(finalInput.x, finalInput.y);
         }
       }
 
