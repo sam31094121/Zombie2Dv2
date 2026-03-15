@@ -1,20 +1,35 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Zombie 2D
 
-# Run and deploy your AI Studio app
+一款使用 React + TypeScript + Vite 開發的 2D 殭屍生存遊戲。
 
-This contains everything you need to run your app locally.
+## 遊戲特色
 
-View your app in AI Studio: https://ai.studio/apps/6a8f0f5e-4ecf-48b7-bfde-e33dbc567e2e
+- 2D 俯視角殭屍生存
+- 波次敵人系統
+- 玩家移動與射擊
+- 障礙物與地圖系統
+- 虛擬搖桿支援（行動裝置）
 
-## Run Locally
+## 執行環境需求
 
-**Prerequisites:**  Node.js
+- Node.js
 
+## 安裝與執行
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. 安裝依賴項：
+   ```
+   npm install
+   ```
+
+2. 執行開發伺服器：
+   ```
+   npm run dev
+   ```
+
+3. 開啟瀏覽器前往 `http://localhost:3000`
+
+## 建置
+
+```
+npm run build
+```
