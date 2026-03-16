@@ -149,6 +149,12 @@ function startRoom(room: Room) {
     const elapsed = Math.min(now - lastTime, 100);
     lastTime = now;
 
+    // Fix 3 — Accumulator safety valve: if server falls >5 ticks behind, reset to 1 tick.
+    // Prevents death spiral: Render.com CPU throttle → burst of 3 ticks → more CPU load → worse throttle.
+    if (accumulator > FIXED_DT * 5) {
+      console.warn(`[Room ${room.code}] Accumulator reset (${accumulator.toFixed(0)}ms) — CPU throttle detected`);
+      accumulator = FIXED_DT;
+    }
     // Feature 1: Run physics at deterministic fixed timestep
     accumulator += elapsed;
     let ticksRan = 0;
@@ -203,7 +209,12 @@ function startRoom(room: Room) {
       / Math.max(1, room.players.length);
     room.game.lagCompensationRadius = Math.min(avgLatency * 0.3, 40);
 
-    // Feature 6/3: 60Hz broadcast (every interval, ~16ms) — halves broadcast latency vs 30Hz
+    // Fix 1 — Adaptive broadcast rate:
+    // ≤30 zombies → 60Hz (low latency priority)
+    // >30 zombies → 30Hz (CPU/bandwidth relief — JSON grows linearly with zombie count,
+    //               100 zombies × 60Hz = ~480KB/s JSON parsing on client → frame drops)
+    const zombieCount = room.game.zombies.length;
+    const broadcastEvery = zombieCount > 30 ? 2 : 1;
     const wm = room.game.waveManager;
     const hardSync = wm.currentWave !== prevWave || wm.isResting !== prevResting;
     if (hardSync) {
@@ -211,8 +222,10 @@ function startRoom(room: Room) {
       prevResting = wm.isResting;
       console.log(`[Room ${room.code}] HardSync wave=${wm.currentWave} rest=${wm.isResting}`);
     }
-    const state = serializeState(room.game, serverTick, hardSync);
-    broadcast(room, JSON.stringify(state));
+    if (serverTick % broadcastEvery === 0 || hardSync) {
+      const state = serializeState(room.game, serverTick, hardSync);
+      broadcast(room, JSON.stringify(state));
+    }
   }, 16);
 }
 

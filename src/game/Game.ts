@@ -435,6 +435,12 @@ export class Game {
         this.hitEffects[i].lifetime -= dt;
         if (this.hitEffects[i].lifetime <= 0) this.hitEffects.splice(i, 1);
       }
+      // Fix 4 — Defensive slimeTrails lifetime cleanup in network mode.
+      // Prevents unbounded growth if any code path adds trails on the client side.
+      for (let i = this.slimeTrails.length - 1; i >= 0; i--) {
+        this.slimeTrails[i].lifetime -= dt;
+        if (this.slimeTrails[i].lifetime <= 0) this.slimeTrails.splice(i, 1);
+      }
 
       this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
       return;
@@ -469,11 +475,19 @@ export class Game {
       return;
     }
 
-    // Feature 5 – Backward Reconciliation: snapshot zombie positions before physics moves them
+    // Feature 5 – Backward Reconciliation: snapshot zombie positions before physics moves them.
+    // Fix: reuse the existing Map object (clear + repopulate) instead of allocating a new Map
+    // every physics tick — eliminates the main GC hotspot at high zombie counts.
     {
-      const snap = new Map<number, { x: number; y: number }>();
+      const idx = this._zombieHistoryTick % this._HISTORY_SIZE;
+      let snap = this._zombieHistoryBuf[idx];
+      if (!snap) {
+        snap = new Map<number, { x: number; y: number }>();
+        this._zombieHistoryBuf[idx] = snap;
+      } else {
+        snap.clear();
+      }
       for (const z of this.zombies) snap.set(z.id, { x: z.x, y: z.y });
-      this._zombieHistoryBuf[this._zombieHistoryTick % this._HISTORY_SIZE] = snap;
       this._zombieHistoryTick++;
     }
 
