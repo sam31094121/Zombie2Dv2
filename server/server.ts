@@ -141,20 +141,18 @@ function startRoom(room: Room) {
   // Feature 1: Deterministic tick accumulator (fixed dt = 16ms, max 3 ticks per interval)
   let accumulator = 0;
   const FIXED_DT = 16;
+  // Fix: broadcast rate with hysteresis — prevents 30Hz/60Hz oscillation at the threshold
+  let broadcastEvery = 1; // 1 = 60Hz, 2 = 30Hz
 
   room.interval = setInterval(() => {
     if (!room.game) return;
 
     const now = Date.now();
-    const elapsed = Math.min(now - lastTime, 100);
+    // Root fix: cap elapsed to FIXED_DT*3 (48ms) so accumulator can NEVER outgrow what
+    // the 3-tick cap can drain. No safety valve needed — no time is discarded, no rubber-banding.
+    const elapsed = Math.min(now - lastTime, FIXED_DT * 3);
     lastTime = now;
 
-    // Fix 3 — Accumulator safety valve: if server falls >5 ticks behind, reset to 1 tick.
-    // Prevents death spiral: Render.com CPU throttle → burst of 3 ticks → more CPU load → worse throttle.
-    if (accumulator > FIXED_DT * 5) {
-      console.warn(`[Room ${room.code}] Accumulator reset (${accumulator.toFixed(0)}ms) — CPU throttle detected`);
-      accumulator = FIXED_DT;
-    }
     // Feature 1: Run physics at deterministic fixed timestep
     accumulator += elapsed;
     let ticksRan = 0;
@@ -209,12 +207,12 @@ function startRoom(room: Room) {
       / Math.max(1, room.players.length);
     room.game.lagCompensationRadius = Math.min(avgLatency * 0.3, 40);
 
-    // Fix 1 — Adaptive broadcast rate:
-    // ≤30 zombies → 60Hz (low latency priority)
-    // >30 zombies → 30Hz (CPU/bandwidth relief — JSON grows linearly with zombie count,
-    //               100 zombies × 60Hz = ~480KB/s JSON parsing on client → frame drops)
+    // Adaptive broadcast rate with hysteresis — prevents oscillation at the threshold.
+    // Hysteresis band: switch DOWN at >40 zombies, switch BACK UP only at <20 zombies.
+    // Wide gap (20–40) means the rate stays stable during normal combat.
     const zombieCount = room.game.zombies.length;
-    const broadcastEvery = zombieCount > 30 ? 2 : 1;
+    if      (zombieCount > 40 && broadcastEvery === 1) broadcastEvery = 2; // 60→30Hz
+    else if (zombieCount < 20 && broadcastEvery === 2) broadcastEvery = 1; // 30→60Hz
     const wm = room.game.waveManager;
     const hardSync = wm.currentWave !== prevWave || wm.isResting !== prevResting;
     if (hardSync) {
