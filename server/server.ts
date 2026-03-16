@@ -9,11 +9,50 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
+// ── CPU 使用率量測 ────────────────────────────────────────
+let _cpuSnapshot = process.cpuUsage();
+let _cpuWallMs   = Date.now();
+let _cpuPercent  = 0;
+
+setInterval(() => {
+  const now   = Date.now();
+  const usage = process.cpuUsage(_cpuSnapshot);
+  const wallMs = now - _cpuWallMs;
+  // user + system CPU microseconds → percentage of one core
+  _cpuPercent  = ((usage.user + usage.system) / 1000) / wallMs * 100;
+  _cpuSnapshot = process.cpuUsage();
+  _cpuWallMs   = now;
+
+  const mem = process.memoryUsage();
+  const roomCount = rooms.size;
+  const activeGames = [...rooms.values()].filter(r => r.game !== null).length;
+  console.log(
+    `[Monitor] CPU: ${_cpuPercent.toFixed(1)}%  ` +
+    `RAM: ${(mem.heapUsed / 1024 / 1024).toFixed(1)}MB / ${(mem.heapTotal / 1024 / 1024).toFixed(1)}MB  ` +
+    `Rooms: ${roomCount} (${activeGames} active)`
+  );
+}, 30_000); // 每 30 秒印一次
+
 const httpServer = createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS_HEADERS); res.end(); return; }
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain', ...CORS_HEADERS });
     res.end('OK');
+    return;
+  }
+  // /metrics — 即時查詢 CPU / RAM（瀏覽器直接開這個網址就能看）
+  if (req.url === '/metrics') {
+    const mem = process.memoryUsage();
+    const payload = JSON.stringify({
+      cpu_pct:    +_cpuPercent.toFixed(1),
+      heap_mb:    +(mem.heapUsed  / 1024 / 1024).toFixed(1),
+      heap_total: +(mem.heapTotal / 1024 / 1024).toFixed(1),
+      rss_mb:     +(mem.rss       / 1024 / 1024).toFixed(1),
+      rooms:      rooms.size,
+      active_games: [...rooms.values()].filter(r => r.game !== null).length,
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json', ...CORS_HEADERS });
+    res.end(payload);
     return;
   }
   res.writeHead(404, CORS_HEADERS);
