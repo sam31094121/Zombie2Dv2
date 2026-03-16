@@ -153,6 +153,7 @@ function startRoom(room: Room) {
     accumulator += elapsed;
     let ticksRan = 0;
     while (accumulator >= FIXED_DT && ticksRan < 3) {
+      if (!room.game) break;  // onGameOver may have set room.game = null mid-loop
       serverTick++;
       for (const conn of room.players) {
         room.game.setJoystickInput(conn.playerId - 1, conn.input);
@@ -194,7 +195,10 @@ function startRoom(room: Room) {
       }
     }
 
-    // Feature 5: Lag compensation — set per-player average latency on game instance
+    // Feature 5: Lag compensation — feed per-player latency into game for backward reconciliation
+    for (const conn of room.players) {
+      room.game.playerLatencies.set(conn.playerId, conn.latencyMs);
+    }
     const avgLatency = room.players.reduce((sum, p) => sum + p.latencyMs, 0)
       / Math.max(1, room.players.length);
     room.game.lagCompensationRadius = Math.min(avgLatency * 0.3, 40);

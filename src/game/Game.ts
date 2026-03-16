@@ -53,8 +53,14 @@ export class Game {
   // ── Feature 3/6: Stable zombie IDs
   _zombieIdCounter: number = 0;
 
-  // ── Feature 5: Lag compensation hitbox expansion radius (px), set by server
+  // ── Feature 5: Lag compensation — hitbox expansion + backward reconciliation
   lagCompensationRadius: number = 0;
+  playerLatencies: Map<number, number> = new Map(); // playerId → one-way latency (ms)
+
+  // Zombie position history ring buffer for backward reconciliation (30 ticks @ 60Hz = 500ms)
+  private _zombieHistoryBuf: Array<Map<number, { x: number; y: number }>> = [];
+  private _zombieHistoryTick: number = 0;
+  private readonly _HISTORY_SIZE = 30;
 
   // ── Feature 4: Snapshot ring buffer for timing-based interpolation (50ms render delay)
   private _snapBuffer: Array<{
@@ -168,10 +174,12 @@ export class Game {
             // Hard snap for large divergence (e.g., teleport / respawn)
             player.x = ps.x;
             player.y = ps.y;
-          } else if (dist > 3) {
-            // Smooth correction: blend 20% toward server position each server tick
-            player.x += errX * 0.2;
-            player.y += errY * 0.2;
+          } else if (dist > 12) {
+            // Smooth correction: blend 8% toward server position each server tick.
+            // Threshold 12px avoids micro-corrections fighting client prediction
+            // (which causes visible jitter on direction change).
+            player.x += errX * 0.08;
+            player.y += errY * 0.08;
           }
         }
       }
@@ -467,6 +475,14 @@ export class Game {
       this.isGameOver = true;
       this.onGameOver(Date.now() - this.startTime, this.score);
       return;
+    }
+
+    // Feature 5 – Backward Reconciliation: snapshot zombie positions before physics moves them
+    {
+      const snap = new Map<number, { x: number; y: number }>();
+      for (const z of this.zombies) snap.set(z.id, { x: z.x, y: z.y });
+      this._zombieHistoryBuf[this._zombieHistoryTick % this._HISTORY_SIZE] = snap;
+      this._zombieHistoryTick++;
     }
 
     // Update camera to follow alive players
@@ -767,8 +783,16 @@ export class Game {
 
         let hit = false;
         if (proj.type === 'bullet') {
-          const dist = Math.hypot(proj.x - zombie.x, proj.y - zombie.y);
-          // Feature 5: Lag compensation — expand zombie hitbox proportional to client RTT
+          // Feature 5: Backward Reconciliation — rewind zombie to when shooter fired
+          const shooterLatencyMs = this.playerLatencies.get(proj.ownerId) ?? 0;
+          const rewindTicks = Math.min(Math.round(shooterLatencyMs / 16), this._HISTORY_SIZE - 1);
+          let czx = zombie.x, czy = zombie.y;
+          if (rewindTicks > 0) {
+            const hIdx = ((this._zombieHistoryTick - 1 - rewindTicks) % this._HISTORY_SIZE + this._HISTORY_SIZE) % this._HISTORY_SIZE;
+            const hp = this._zombieHistoryBuf[hIdx]?.get(zombie.id);
+            if (hp) { czx = hp.x; czy = hp.y; }
+          }
+          const dist = Math.hypot(proj.x - czx, proj.y - czy);
           if (dist < proj.radius + zombie.radius + this.lagCompensationRadius) hit = true;
         } else if (proj.type === 'slash') {
           const elapsed = proj.maxLifetime - proj.lifetime;

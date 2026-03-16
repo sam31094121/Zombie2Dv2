@@ -137,6 +137,13 @@ export const GameUI: React.FC = () => {
 
     nm.onStateUpdate = (state) => { game.applyNetworkState(state); };
 
+    // 遊戲結束（伺服器廣播 GO）→ 切換到結束畫面
+    nm.onGameOver = (time, kills) => {
+      setGameStats({ time, kills });
+      setGameState('gameover');
+      audioManager.stopBGM();
+    };
+
     // 復活倒計時（本地玩家死亡時顯示）
     nm.onRespawnStart = (respawnPid, duration) => {
       if (respawnPid === pid) {
