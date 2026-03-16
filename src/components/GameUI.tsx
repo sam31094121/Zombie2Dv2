@@ -34,6 +34,11 @@ export const GameUI: React.FC = () => {
   const [playerCount, setPlayerCount] = useState<number>(1);
   const [platform, setPlatform] = useState<'pc' | 'mobile' | null>(null);
 
+  // ── 復活倒計時 & 重賽準備狀態 ────────────────────────────
+  const [respawnCountdown, setRespawnCountdown] = useState(0);
+  const [readyState, setReadyState] = useState({ myReady: false, otherReady: false });
+  const respawnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // ── 視窗大小 ────────────────────────────────────────────
   useEffect(() => {
     const updateDimensions = () => {
@@ -94,11 +99,16 @@ export const GameUI: React.FC = () => {
     requestRef.current = requestAnimationFrame(gameLoop);
   };
 
-  // ── 線上遊戲開始（NetworkManager 啟動遊戲後呼叫） ────────
+  // ── 線上遊戲開始（NetworkManager 啟動遊戲後呼叫；重賽也走這條路） ──
   const startOnlineGame = (nm: NetworkManager, pid: number) => {
     audioManager.init();
     audioManager.resume();
     audioManager.startBGM();
+
+    // 重置復活 & 準備狀態
+    if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
+    setRespawnCountdown(0);
+    setReadyState({ myReady: false, otherReady: false });
 
     if (gameRef.current) gameRef.current.destroy();
 
@@ -108,7 +118,7 @@ export const GameUI: React.FC = () => {
         setGameStats({ time, kills });
         setGameState('gameover');
         audioManager.stopBGM();
-        nm.disconnect();
+        // 不斷線 — 等待重賽
       },
       (p1, p2, waveManager) => {
         setP1State(p1 ? { ...p1 } as Player : null);
@@ -125,14 +135,37 @@ export const GameUI: React.FC = () => {
     game.networkPlayerId = pid;
     game.onSendInput = (dx, dy) => nm.sendInput(dx, dy);
 
-    // 接收伺服器狀態
-    nm.onStateUpdate = (state) => {
-      game.applyNetworkState(state);
+    nm.onStateUpdate = (state) => { game.applyNetworkState(state); };
+
+    // 復活倒計時（本地玩家死亡時顯示）
+    nm.onRespawnStart = (respawnPid, duration) => {
+      if (respawnPid === pid) {
+        const endsAt = Date.now() + duration;
+        if (respawnTimerRef.current) clearInterval(respawnTimerRef.current);
+        respawnTimerRef.current = setInterval(() => {
+          const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+          setRespawnCountdown(Math.max(0, remaining));
+          if (remaining <= 0 && respawnTimerRef.current) {
+            clearInterval(respawnTimerRef.current);
+            respawnTimerRef.current = null;
+          }
+        }, 200);
+      }
+    };
+    nm.onRespawned = (respawnPid) => {
+      if (respawnPid === pid) {
+        if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
+        setRespawnCountdown(0);
+      }
+    };
+    nm.onPlayerReady = (readyPid) => {
+      setReadyState(prev => ({
+        myReady: prev.myReady || readyPid === pid,
+        otherReady: prev.otherReady || readyPid !== pid,
+      }));
     };
 
     gameRef.current = game;
-    // 直接同步更新 ref，確保 gameLoop 第一幀就能通過 gameStateRef 檢查
-    // （WebSocket callback 非 React 事件，rAF 可能比 useEffect 更早執行）
     gameStateRef.current = 'playing';
     setGameState('playing');
     lastTimeRef.current = performance.now();
@@ -257,6 +290,7 @@ export const GameUI: React.FC = () => {
       cancelAnimationFrame(requestRef.current);
       if (gameRef.current) gameRef.current.destroy();
       networkRef.current?.disconnect();
+      if (respawnTimerRef.current) clearInterval(respawnTimerRef.current);
     };
   }, []);
 
@@ -440,7 +474,21 @@ export const GameUI: React.FC = () => {
                     Play Again
                   </button>
                 )}
-                <button onClick={() => { setGameState('start'); setSelectionStep('platform'); setOnlineStep('menu'); setRoomCode(''); setJoinInput(''); setOnlineError(''); networkRef.current?.disconnect(); }}
+                {isOnlineMode && (
+                  !readyState.myReady ? (
+                    <button onClick={() => {
+                      networkRef.current?.sendReady();
+                      setReadyState(prev => ({ ...prev, myReady: true }));
+                    }} className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-2xl transition-all hover:-translate-y-1 active:translate-y-0 text-xl">
+                      準備重賽
+                    </button>
+                  ) : (
+                    <div className="w-full py-4 text-center text-yellow-400 font-bold text-xl animate-pulse rounded-2xl bg-yellow-500/10 border border-yellow-500/30">
+                      {readyState.otherReady ? '重新開始中...' : '等待對手準備中...'}
+                    </div>
+                  )
+                )}
+                <button onClick={() => { setGameState('start'); setSelectionStep('platform'); setOnlineStep('menu'); setRoomCode(''); setJoinInput(''); setOnlineError(''); setReadyState({ myReady: false, otherReady: false }); networkRef.current?.disconnect(); }}
                   className="w-full py-4 bg-neutral-800 text-white hover:bg-neutral-700 font-bold rounded-2xl transition-all border border-neutral-700 hover:-translate-y-1 active:translate-y-0 text-lg">
                   Main Menu
                 </button>
@@ -453,6 +501,17 @@ export const GameUI: React.FC = () => {
         {gameState === 'playing' && isOnlineMode && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 bg-yellow-500/20 border border-yellow-500/50 text-yellow-300 text-xs font-bold px-3 py-1 rounded-full">
             你是 P{myPlayerId}
+          </div>
+        )}
+
+        {/* ── 復活倒計時 ──────────────────────────────────── */}
+        {gameState === 'playing' && isOnlineMode && respawnCountdown > 0 && (
+          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+            <div className="bg-black/75 rounded-3xl px-14 py-8 text-center border border-red-500/30">
+              <div className="text-red-400 font-bold text-xl mb-1">你已陣亡</div>
+              <div className="text-white font-black text-7xl leading-none">{respawnCountdown}</div>
+              <div className="text-neutral-400 text-base mt-2">秒後復活</div>
+            </div>
           </div>
         )}
 

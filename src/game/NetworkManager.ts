@@ -24,12 +24,15 @@ export class NetworkManager {
   private sendTick = 0;       // Binary input 的 TickID 計數器
 
   // 回呼事件
-  onRoomJoined:  ((code: string, playerId: number) => void) | null = null;
-  onGameStart:   (() => void) | null = null;
-  onStateUpdate: ((state: NetGameState) => void) | null = null;
-  onGameOver:    ((time: number, kills: number) => void) | null = null;
-  onError:       ((msg: string) => void) | null = null;
-  onDisconnect:  (() => void) | null = null;
+  onRoomJoined:    ((code: string, playerId: number) => void) | null = null;
+  onGameStart:     (() => void) | null = null;
+  onStateUpdate:   ((state: NetGameState) => void) | null = null;
+  onGameOver:      ((time: number, kills: number) => void) | null = null;
+  onError:         ((msg: string) => void) | null = null;
+  onDisconnect:    (() => void) | null = null;
+  onRespawnStart:  ((pid: number, duration: number) => void) | null = null;
+  onRespawned:     ((pid: number) => void) | null = null;
+  onPlayerReady:   ((pid: number) => void) | null = null;
 
   // 建立 WebSocket 連線
   connect(url: string): Promise<void> {
@@ -50,11 +53,14 @@ export class NetworkManager {
           try {
             const msg = JSON.parse(e.data as string);
             switch (msg.t) {
-              case 'ROOM':  this.onRoomJoined?.(msg.code, msg.pid); break;
-              case 'START': this.onGameStart?.(); break;
-              case 'ST':    this.onStateUpdate?.(msg as NetGameState); break;
-              case 'GO':    this.onGameOver?.(msg.time, msg.kills); break;
-              case 'ERR':   this.onError?.(msg.msg); break;
+              case 'ROOM':          this.onRoomJoined?.(msg.code, msg.pid); break;
+              case 'START':         this.onGameStart?.(); break;
+              case 'ST':            this.onStateUpdate?.(msg as NetGameState); break;
+              case 'GO':            this.onGameOver?.(msg.time, msg.kills); break;
+              case 'ERR':           this.onError?.(msg.msg); break;
+              case 'RESPAWN_START': this.onRespawnStart?.(msg.pid, msg.dur); break;
+              case 'RESPAWNED':     this.onRespawned?.(msg.pid); break;
+              case 'PLAYER_READY':  this.onPlayerReady?.(msg.pid); break;
             }
           } catch (err) {
             console.error('WS parse error:', err);
@@ -69,6 +75,8 @@ export class NetworkManager {
   createRoom() { this.send({ t: 'CREATE' }); }
 
   joinRoom(code: string) { this.send({ t: 'JOIN', code: code.trim() }); }
+
+  sendReady() { this.send({ t: 'READY' }); }
 
   /**
    * Binary DataView 輸入封包（模組 A）

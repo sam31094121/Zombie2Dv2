@@ -285,7 +285,7 @@ export class Game {
           while (localPlayer.aimAngle < -Math.PI) localPlayer.aimAngle += Math.PI * 2;
         }
 
-        // 平滑跟機攝影機
+        // 攝影機跟隨本地玩家（存活時）
         this.camera.x += (localPlayer.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
         this.camera.y += (localPlayer.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
         this.mapManager.update(localPlayer.x, localPlayer.y);
@@ -293,7 +293,6 @@ export class Game {
         // 模組 A / C：每幀傳送 binary 輸入（Fix 3 零延遲）+ 寫入環形緩衝區
         if (this.onSendInput) {
           this.onSendInput(finalInput.x, finalInput.y);
-          // 模組 C：環形緩衝區（紀錄本地狀態，備未來 Rollback 用）
           this.localTick = (this.localTick + 1) >>> 0;
           this.circularBuffer[this.localTick % this.CIRC_BUF_SIZE] = {
             tick: this.localTick, x: localPlayer.x, y: localPlayer.y,
@@ -305,13 +304,21 @@ export class Game {
         const nowPick = Date.now();
         for (let i = this.items.length - 1; i >= 0; i--) {
           const item = this.items[i];
-          if ((item as any)._fadeAlpha !== undefined) continue; // 正在淡入修復中，跳過
+          if ((item as any)._fadeAlpha !== undefined) continue;
           const dist = Math.hypot(localPlayer.x - item.x, localPlayer.y - item.y);
           if (dist < localPlayer.radius + item.radius) {
             audioManager.playPickup();
             this.pendingPickups.push({ x: item.x, y: item.y, type: item.type, time: nowPick });
             this.items.splice(i, 1);
           }
+        }
+      } else {
+        // 本地玩家死亡時鏡頭跟隨隊友（復活等待期間）
+        const followTarget = this.players.find(p => p.id !== this.networkPlayerId && p.hp > 0);
+        if (followTarget) {
+          this.camera.x += (followTarget.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
+          this.camera.y += (followTarget.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
+          this.mapManager.update(followTarget.x, followTarget.y);
         }
       }
 
@@ -1707,13 +1714,7 @@ export class Game {
       ctx.arc(vfx.x, vfx.y + 20, 15 * (1.5 - vfx.alpha), 0, Math.PI * 2);
       ctx.stroke();
     }
-    // 模組 E：HardSync 淡入遮罩（波次切換 / 背景分頁恢復後短暫閃白）
-    if (this.networkMode && this._hardSyncFade > 0) {
-      ctx.save();
-      ctx.fillStyle = `rgba(255,255,255,${this._hardSyncFade * 0.4})`;
-      ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-      ctx.restore();
-    }
+    // HardSync 視覺效果已移除（白閃太明顯影響體驗）
     ctx.restore();
   }
 

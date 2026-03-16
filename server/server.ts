@@ -33,6 +33,8 @@ interface Room {
   players: PlayerConn[];
   game: Game | null;
   interval: ReturnType<typeof setInterval> | null;
+  readyStates: boolean[];               // [p1Ready, p2Ready] for rematch
+  respawnTimers: Map<number, number>;   // playerId → death timestamp
 }
 
 // ── 房間管理 ──────────────────────────────────────────────
@@ -106,13 +108,23 @@ function serializeState(game: Game, tick: number, hardSync: boolean) {
   };
 }
 
-// ── 開始遊戲（60Hz 物理 + 30Hz 廣播 + TickID + HardSync） ─
+// ── 開始/重開遊戲（60Hz 物理 + 30Hz 廣播 + TickID + HardSync + 復活 + 重賽） ─
 function startRoom(room: Room) {
+  // 重置復活 & 準備狀態
+  room.readyStates = [false, false];
+  room.respawnTimers = new Map();
+
   room.game = new Game(
     2,
     (time, kills) => {
+      // 兩人都死亡 → 發送遊戲結束，但保留房間等待重賽
       broadcast(room, JSON.stringify({ t: 'GO', time, kills }));
-      stopRoom(room);
+      if (room.interval) { clearInterval(room.interval); room.interval = null; }
+      try { room.game?.destroy(); } catch (_) {}
+      room.game = null;
+      room.readyStates = [false, false];
+      room.respawnTimers = new Map();
+      console.log(`[Room ${room.code}] Game over — waiting for rematch`);
     },
     () => {}
   );
@@ -130,16 +142,42 @@ function startRoom(room: Room) {
 
     serverTick++;
     const now = Date.now();
-    const dt = Math.min(now - lastTime, 100); // 最大 dt 100ms，防跳幀
+    const dt = Math.min(now - lastTime, 100);
     lastTime = now;
 
-    // 套用每位玩家輸入（binary 解碼後已存入 conn.input）
     for (const conn of room.players) {
       room.game.setJoystickInput(conn.playerId - 1, conn.input);
     }
 
     try {
       room.game.update(dt);
+
+      // ── 復活邏輯 ──────────────────────────────────────────
+      const alivePlayers = room.game.players.filter(p => p.hp > 0);
+      for (const p of room.game.players) {
+        // 玩家剛死亡 且 有隊友存活 → 啟動復活倒計時
+        if (p.hp <= 0 && !room.respawnTimers.has(p.id) && alivePlayers.length > 0) {
+          room.respawnTimers.set(p.id, now);
+          broadcast(room, JSON.stringify({ t: 'RESPAWN_START', pid: p.id, dur: 10000 }));
+          console.log(`[Room ${room.code}] P${p.id} died — respawn in 10s`);
+        }
+      }
+      for (const [pid, deathTime] of room.respawnTimers) {
+        if (now - deathTime >= 10000) {
+          room.respawnTimers.delete(pid);
+          const dead  = room.game.players.find(p => p.id === pid);
+          const alive = room.game.players.find(p => p.id !== pid && p.hp > 0);
+          if (dead && alive) {
+            const angle = Math.random() * Math.PI * 2;
+            dead.x = alive.x + Math.cos(angle) * 60;
+            dead.y = alive.y + Math.sin(angle) * 60;
+            dead.hp = dead.maxHp;
+            dead.shield = true;   // 一格護盾作為無敵緩衝
+            broadcast(room, JSON.stringify({ t: 'RESPAWNED', pid }));
+            console.log(`[Room ${room.code}] P${pid} respawned`);
+          }
+        }
+      }
 
       // 30Hz 廣播（每 2 幀），偵測波次切換觸發 HardSync
       if (serverTick % 2 === 0) {
@@ -156,7 +194,7 @@ function startRoom(room: Room) {
     } catch (e) {
       console.error(`[Room ${room.code}] Game error:`, e);
     }
-  }, 16); // 60Hz
+  }, 16);
 }
 
 function stopRoom(room: Room) {
@@ -211,7 +249,7 @@ wss.on('connection', (ws) => {
         let code = generateCode();
         while (rooms.has(code)) code = generateCode();
 
-        const room: Room = { code, players: [], game: null, interval: null };
+        const room: Room = { code, players: [], game: null, interval: null, readyStates: [false, false], respawnTimers: new Map() };
         rooms.set(code, room);
         currentRoom = room;
         myPlayerId  = 1;
@@ -219,6 +257,17 @@ wss.on('connection', (ws) => {
 
         ws.send(JSON.stringify({ t: 'ROOM', code, pid: 1 }));
         console.log(`[Room ${code}] Created by P1`);
+
+      } else if (msg.t === 'READY') {
+        // 重賽準備（遊戲結束後雙方都按準備才重開）
+        if (!currentRoom || currentRoom.game) return; // 只有遊戲結束後才允許
+        const idx = myPlayerId - 1;
+        currentRoom.readyStates[idx] = true;
+        broadcast(currentRoom, JSON.stringify({ t: 'PLAYER_READY', pid: myPlayerId }));
+        console.log(`[Room ${currentRoom.code}] P${myPlayerId} ready`);
+        if (currentRoom.readyStates.every(r => r)) {
+          startRoom(currentRoom); // 兩人都準備 → 重開
+        }
 
       } else if (msg.t === 'JOIN') {
         const code = String(msg.code ?? '').trim();
