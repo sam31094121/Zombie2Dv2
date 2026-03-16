@@ -41,6 +41,13 @@ export const GameUI: React.FC = () => {
   // ── UI 更新節流：HUD (HP/波次) 只需 ~10fps，避免 React 每幀 reconcile 拖慢 rAF ──
   const uiFrameRef = useRef(0);
 
+  // ── Host 模式（P2P）專用 refs ────────────────────────────
+  const hostTickRef         = useRef(0);
+  const hostBroadcastTimer  = useRef(0);
+  const hostPrevWave        = useRef(1);
+  const hostPrevResting     = useRef(false);
+  const hostRespawnTimers   = useRef<Map<number, number>>(new Map());
+
   // ── 視窗大小 ────────────────────────────────────────────
   useEffect(() => {
     const updateDimensions = () => {
@@ -104,7 +111,9 @@ export const GameUI: React.FC = () => {
     requestRef.current = requestAnimationFrame(gameLoop);
   };
 
-  // ── 線上遊戲開始（NetworkManager 啟動遊戲後呼叫；重賽也走這條路） ──
+  // ── 線上遊戲開始（DataChannel 就緒後呼叫；重賽也走這條路） ──
+  // pid=1 → Host（P2P）：本地跑物理，送狀態給 P2
+  // pid=2 → Client（P2P）：接收 Host 狀態，傳送輸入
   const startOnlineGame = (nm: NetworkManager, pid: number) => {
     audioManager.init();
     audioManager.resume();
@@ -116,6 +125,13 @@ export const GameUI: React.FC = () => {
     setReadyState({ myReady: false, otherReady: false });
     uiFrameRef.current = 0;
 
+    // 重置 Host 專用計數器
+    hostTickRef.current        = 0;
+    hostBroadcastTimer.current = 0;
+    hostPrevWave.current       = 1;
+    hostPrevResting.current    = false;
+    hostRespawnTimers.current  = new Map();
+
     if (gameRef.current) gameRef.current.destroy();
 
     const game = new Game(
@@ -124,6 +140,8 @@ export const GameUI: React.FC = () => {
         setGameStats({ time, kills });
         setGameState('gameover');
         audioManager.stopBGM();
+        // Host：通知 P2 遊戲結束
+        if (pid === 1) nm.sendControl({ t: 'GO', time, kills });
         // 不斷線 — 等待重賽
       },
       (p1, p2, waveManager) => {
@@ -139,53 +157,71 @@ export const GameUI: React.FC = () => {
       }
     );
 
-    game.networkMode = true;
-    game.networkPlayerId = pid;
-    game.onSendInput = (dx, dy) => nm.sendInput(dx, dy);
+    if (pid === 1) {
+      // ── Host 模式：本地跑完整物理，P2 輸入從 DataChannel 接收 ──
+      game.isHostMode = true;
+      // P2 的移動輸入 → 套用到 Player 2 的搖桿槽（index 1）
+      nm.onRemoteInput = (dx, dy) => game.setJoystickInput(1, { x: dx, y: dy });
 
-    nm.onStateUpdate = (state) => { game.applyNetworkState(state); };
+    } else {
+      // ── Client 模式（P2）：接收 Host 狀態，自己只跑預測 ──
+      game.networkMode     = true;
+      game.networkPlayerId = 2;
+      game.onSendInput     = (dx, dy) => nm.sendInput(dx, dy);
 
-    // 遊戲結束（伺服器廣播 GO）→ 切換到結束畫面
-    nm.onGameOver = (time, kills) => {
-      setGameStats({ time, kills });
-      setGameState('gameover');
-      audioManager.stopBGM();
-    };
+      nm.onStateUpdate = (state) => { game.applyNetworkState(state); };
 
-    // 復活倒計時（本地玩家死亡時顯示）
-    nm.onRespawnStart = (respawnPid, duration) => {
-      if (respawnPid === pid) {
-        const endsAt = Date.now() + duration;
-        if (respawnTimerRef.current) clearInterval(respawnTimerRef.current);
-        respawnTimerRef.current = setInterval(() => {
-          const remaining = Math.ceil((endsAt - Date.now()) / 1000);
-          setRespawnCountdown(Math.max(0, remaining));
-          if (remaining <= 0 && respawnTimerRef.current) {
-            clearInterval(respawnTimerRef.current);
-            respawnTimerRef.current = null;
-          }
-        }, 200);
-      }
-    };
-    nm.onRespawned = (respawnPid) => {
-      if (respawnPid === pid) {
-        if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
-        setRespawnCountdown(0);
-      }
-    };
+      nm.onGameOver = (time, kills) => {
+        setGameStats({ time, kills });
+        setGameState('gameover');
+        audioManager.stopBGM();
+      };
+
+      // 復活倒計時（P2 死亡時本地顯示）
+      nm.onRespawnStart = (respawnPid, duration) => {
+        if (respawnPid === pid) {
+          const endsAt = Date.now() + duration;
+          if (respawnTimerRef.current) clearInterval(respawnTimerRef.current);
+          respawnTimerRef.current = setInterval(() => {
+            const remaining = Math.ceil((endsAt - Date.now()) / 1000);
+            setRespawnCountdown(Math.max(0, remaining));
+            if (remaining <= 0 && respawnTimerRef.current) {
+              clearInterval(respawnTimerRef.current);
+              respawnTimerRef.current = null;
+            }
+          }, 200);
+        }
+      };
+      nm.onRespawned = (respawnPid) => {
+        if (respawnPid === pid) {
+          if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
+          setRespawnCountdown(0);
+        }
+      };
+    }
+
+    // 重賽準備（兩方都按準備 → Host 重啟遊戲）
     nm.onPlayerReady = (readyPid) => {
-      setReadyState(prev => ({
-        myReady: prev.myReady || readyPid === pid,
-        otherReady: prev.otherReady || readyPid !== pid,
-      }));
+      setReadyState(prev => {
+        const next = {
+          myReady:    prev.myReady    || readyPid === pid,
+          otherReady: prev.otherReady || readyPid !== pid,
+        };
+        // Host：雙方都準備好 → 送 START 給 P2 → 本地重新開始
+        if (next.myReady && next.otherReady && nm.isHost) {
+          nm.sendControl({ t: 'START' });
+          startOnlineGame(nm, 1);
+        }
+        return next;
+      });
     };
 
-    gameRef.current = game;
+    gameRef.current      = game;
     gameStateRef.current = 'playing';
     setGameState('playing');
-    lastTimeRef.current = performance.now();
+    lastTimeRef.current  = performance.now();
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    requestRef.current = requestAnimationFrame(gameLoop);
+    requestRef.current   = requestAnimationFrame(gameLoop);
   };
 
   // ── 喚醒 Render 伺服器（解決冷啟動斷線問題） ────────────
@@ -292,6 +328,55 @@ export const GameUI: React.FC = () => {
       if (ctx) {
         gameRef.current.update(dt);
         gameRef.current.draw(ctx);
+
+        // ── Host 模式：序列化狀態送給 P2 + 處理 P2 復活 ──
+        if (gameRef.current.isHostMode && networkRef.current) {
+          const game = gameRef.current;
+          const nm   = networkRef.current;
+          const now  = Date.now();
+
+          // 波次切換時強制 HardSync（含時間戳供 P2 時鐘補償）
+          const wm = game.waveManager;
+          const hardSync = wm.currentWave !== hostPrevWave.current ||
+                           wm.isResting   !== hostPrevResting.current;
+          if (hardSync) {
+            hostPrevWave.current    = wm.currentWave;
+            hostPrevResting.current = wm.isResting;
+          }
+
+          // 廣播至 ~30Hz（每 33ms），HardSync 立刻送出
+          hostBroadcastTimer.current += dt;
+          if (hostBroadcastTimer.current >= 33 || hardSync) {
+            hostBroadcastTimer.current = 0;
+            nm.sendGameState(game.serializeState(hostTickRef.current++, hardSync));
+          }
+
+          // P2 復活管理：偵測 P2 死亡 → 10 秒後復活
+          for (const p of game.players) {
+            if (p.id === 2 && p.hp <= 0 && !hostRespawnTimers.current.has(p.id)) {
+              const alive = game.players.filter(pl => pl.hp > 0);
+              if (alive.length > 0) {
+                hostRespawnTimers.current.set(p.id, now);
+                nm.sendControl({ t: 'RESPAWN_START', pid: p.id, dur: 10000 });
+              }
+            }
+          }
+          for (const [pid2, deathTime] of hostRespawnTimers.current) {
+            if (now - deathTime >= 10000) {
+              hostRespawnTimers.current.delete(pid2);
+              const dead  = game.players.find(p => p.id === pid2);
+              const alive = game.players.find(p => p.id !== pid2 && p.hp > 0);
+              if (dead && alive) {
+                const angle = Math.random() * Math.PI * 2;
+                dead.x  = alive.x + Math.cos(angle) * 60;
+                dead.y  = alive.y + Math.sin(angle) * 60;
+                dead.hp = dead.maxHp;
+                dead.shield = true;
+                nm.sendControl({ t: 'RESPAWNED', pid: pid2 });
+              }
+            }
+          }
+        }
       }
     }
 
@@ -315,7 +400,8 @@ export const GameUI: React.FC = () => {
     return `${m}:${(s % 60).toString().padStart(2, '0')}`;
   };
 
-  const isOnlineMode = gameRef.current?.networkMode ?? false;
+  // Host（isHostMode）和 Client（networkMode）都算線上模式
+  const isOnlineMode = (gameRef.current?.networkMode || gameRef.current?.isHostMode) ?? false;
 
   return (
     <div className="relative w-full h-screen bg-neutral-950 flex items-center justify-center overflow-hidden font-sans">

@@ -53,6 +53,9 @@ export class Game {
   // ── Feature 3/6: Stable zombie IDs
   _zombieIdCounter: number = 0;
 
+  // ── Host 模式（P2P）：本地跑完整物理後序列化送給 P2 ──────
+  isHostMode: boolean = false;
+
   // ── Feature 5: Lag compensation — hitbox expansion + backward reconciliation
   lagCompensationRadius: number = 0;
   playerLatencies: Map<number, number> = new Map(); // playerId → one-way latency (ms)
@@ -116,6 +119,67 @@ export class Game {
   // 模組 F：背景分頁恢復 — 觸發下一幀強制硬同步
   triggerHardSync() {
     this.pendingHardSync = true;
+  }
+
+  // ── Host 模式：序列化遊戲狀態（供 P2P 廣播給 P2）────────
+  // 格式與舊版 server.ts serializeState 完全相同，P2 的 applyNetworkState 不需改動
+  serializeState(tick: number, hardSync: boolean): object {
+    return {
+      t:  'ST',
+      tk: tick,
+      hs: hardSync || undefined,
+      ts: hardSync ? Date.now() : undefined, // HardSync 時間戳，供 P2 時鐘補償
+      ps: this.players.map(p => ({
+        id: p.id,
+        x:  Math.round(p.x),
+        y:  Math.round(p.y),
+        hp: Math.round(p.hp),
+        mh: p.maxHp,
+        xp: p.xp,
+        mx: p.maxXp,
+        lv: p.level,
+        pl: p.prestigeLevel,
+        wp: p.weapon,
+        aim: p.aimAngle,
+        sh: p.shield,
+      })),
+      zs: this.zombies.map(z => ({
+        id: z.id,
+        x:  Math.round(z.x),
+        y:  Math.round(z.y),
+        hp: Math.round(z.hp),
+        mh: z.maxHp,
+        tp: z.type,
+        ag: z.angle,
+      })),
+      pj: this.projectiles.map(p => ({
+        x:  Math.round(p.x),
+        y:  Math.round(p.y),
+        vx: p.vx,
+        vy: p.vy,
+        tp: p.type,
+        lv: p.level,
+        lt: p.lifetime,
+        ml: p.maxLifetime,
+        en: p.isEnemy,
+        r:  p.radius,
+        oi: p.ownerId,
+      })),
+      it: this.items.map(i => ({
+        x:  Math.round(i.x),
+        y:  Math.round(i.y),
+        tp: i.type,
+        v:  i.value,
+        c:  i.color,
+      })),
+      wv: {
+        w: this.waveManager.currentWave,
+        r: this.waveManager.isResting,
+        t: Math.round(this.waveManager.timer),
+        i: this.waveManager.isInfinite,
+        m: this.waveManager.activeMechanics,
+      },
+    };
   }
 
   // 接收伺服器狀態並更新本地實體
