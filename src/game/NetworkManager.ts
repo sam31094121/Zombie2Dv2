@@ -5,6 +5,7 @@ export interface NetPlayerState {
   xp: number; mx: number;
   lv: number; pl: number;
   wp: string; aim: number; sh: boolean;
+  sl: number;  // slowDebuffTimer（ms）— 同步給 P2 保持減速預測一致
 }
 
 export interface NetGameState {

@@ -34,10 +34,21 @@ export const GameUI: React.FC = () => {
   const [playerCount, setPlayerCount] = useState<number>(1);
   const [platform, setPlatform] = useState<'pc' | 'mobile' | null>(null);
 
-  // ── 復活倒計時 & 重賽準備狀態 ────────────────────────────
-  const [respawnCountdown, setRespawnCountdown] = useState(0);
+  // ── 復活倒計時（P1 / P2 各自獨立，兩台電腦都顯示在血量卡片）────
+  const [p1RespawnCountdown, setP1RespawnCountdown] = useState(0);
+  const [p2RespawnCountdown, setP2RespawnCountdown] = useState(0);
+  const p1RespawnRef = useRef(0);  // 用於節流（只在數字變化時觸發 setState）
+  const p2RespawnRef = useRef(0);
+
+  // ── 重賽準備狀態 ──────────────────────────────────────────
   const [readyState, setReadyState] = useState({ myReady: false, otherReady: false });
-  const respawnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // readyRef：用 ref 追蹤雙方準備狀態，避免在 setState 中產生副作用
+  const readyRef = useRef({ myReady: false, otherReady: false });
+
+  // Client（P2）端復活計時器（管理兩個玩家的倒數）
+  const clientRespawnEndTimes = useRef<Map<number, number>>(new Map());
+  const clientRespawnInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // ── UI 更新節流：HUD (HP/波次) 只需 ~10fps，避免 React 每幀 reconcile 拖慢 rAF ──
   const uiFrameRef = useRef(0);
 
@@ -119,9 +130,14 @@ export const GameUI: React.FC = () => {
     audioManager.resume();
     audioManager.startBGM();
 
-    // 重置復活 & 準備狀態
-    if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
-    setRespawnCountdown(0);
+    // 重置復活倒數
+    if (clientRespawnInterval.current) { clearInterval(clientRespawnInterval.current); clientRespawnInterval.current = null; }
+    clientRespawnEndTimes.current = new Map();
+    p1RespawnRef.current = 0; setP1RespawnCountdown(0);
+    p2RespawnRef.current = 0; setP2RespawnCountdown(0);
+
+    // 重置準備狀態
+    readyRef.current = { myReady: false, otherReady: false };
     setReadyState({ myReady: false, otherReady: false });
     uiFrameRef.current = 0;
 
@@ -177,43 +193,47 @@ export const GameUI: React.FC = () => {
         audioManager.stopBGM();
       };
 
-      // 復活倒計時（P2 死亡時本地顯示）
+      // 復活倒計時（P1 或 P2 死亡，兩台電腦都顯示在各自的血量卡片）
       nm.onRespawnStart = (respawnPid, duration) => {
-        if (respawnPid === pid) {
-          const endsAt = Date.now() + duration;
-          if (respawnTimerRef.current) clearInterval(respawnTimerRef.current);
-          respawnTimerRef.current = setInterval(() => {
-            const remaining = Math.ceil((endsAt - Date.now()) / 1000);
-            setRespawnCountdown(Math.max(0, remaining));
-            if (remaining <= 0 && respawnTimerRef.current) {
-              clearInterval(respawnTimerRef.current);
-              respawnTimerRef.current = null;
+        const endsAt = Date.now() + duration;
+        clientRespawnEndTimes.current.set(respawnPid, endsAt);
+        // 統一用一個 interval 管理所有玩家的復活倒數
+        if (!clientRespawnInterval.current) {
+          clientRespawnInterval.current = setInterval(() => {
+            const now2 = Date.now();
+            for (const [pid2, endsAt2] of clientRespawnEndTimes.current) {
+              const rem = Math.max(0, Math.ceil((endsAt2 - now2) / 1000));
+              if (pid2 === 1 && rem !== p1RespawnRef.current) { p1RespawnRef.current = rem; setP1RespawnCountdown(rem); }
+              if (pid2 === 2 && rem !== p2RespawnRef.current) { p2RespawnRef.current = rem; setP2RespawnCountdown(rem); }
+              if (rem <= 0) clientRespawnEndTimes.current.delete(pid2);
+            }
+            if (clientRespawnEndTimes.current.size === 0 && clientRespawnInterval.current) {
+              clearInterval(clientRespawnInterval.current);
+              clientRespawnInterval.current = null;
             }
           }, 200);
         }
       };
       nm.onRespawned = (respawnPid) => {
-        if (respawnPid === pid) {
-          if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
-          setRespawnCountdown(0);
-        }
+        clientRespawnEndTimes.current.delete(respawnPid);
+        if (respawnPid === 1) { p1RespawnRef.current = 0; setP1RespawnCountdown(0); }
+        if (respawnPid === 2) { p2RespawnRef.current = 0; setP2RespawnCountdown(0); }
       };
     }
 
     // 重賽準備（兩方都按準備 → Host 重啟遊戲）
+    // 用 readyRef 追蹤狀態，避免在 setState updater 中觸發副作用（React 禁止）
     nm.onPlayerReady = (readyPid) => {
-      setReadyState(prev => {
-        const next = {
-          myReady:    prev.myReady    || readyPid === pid,
-          otherReady: prev.otherReady || readyPid !== pid,
-        };
-        // Host：雙方都準備好 → 送 START 給 P2 → 本地重新開始
-        if (next.myReady && next.otherReady && nm.isHost) {
-          nm.sendControl({ t: 'START' });
-          startOnlineGame(nm, 1);
-        }
-        return next;
-      });
+      const isMe = readyPid === pid;
+      if (isMe) readyRef.current.myReady = true;
+      else      readyRef.current.otherReady = true;
+      setReadyState({ ...readyRef.current });
+
+      if (nm.isHost && readyRef.current.myReady && readyRef.current.otherReady) {
+        readyRef.current = { myReady: false, otherReady: false };
+        nm.sendControl({ t: 'START' });
+        startOnlineGame(nm, 1);
+      }
     };
 
     gameRef.current      = game;
@@ -346,34 +366,43 @@ export const GameUI: React.FC = () => {
 
           // 廣播至 ~30Hz（每 33ms），HardSync 立刻送出
           hostBroadcastTimer.current += dt;
-          if (hostBroadcastTimer.current >= 33 || hardSync) {
+          if (hostBroadcastTimer.current >= 16 || hardSync) {
             hostBroadcastTimer.current = 0;
             nm.sendGameState(game.serializeState(hostTickRef.current++, hardSync));
           }
 
-          // P2 復活管理：偵測 P2 死亡 → 10 秒後復活
+          // 復活管理：偵測 P1 / P2 任一方死亡 → 10 秒後復活
+          const alive = game.players.filter(pl => pl.hp > 0);
           for (const p of game.players) {
-            if (p.id === 2 && p.hp <= 0 && !hostRespawnTimers.current.has(p.id)) {
-              const alive = game.players.filter(pl => pl.hp > 0);
-              if (alive.length > 0) {
-                hostRespawnTimers.current.set(p.id, now);
-                nm.sendControl({ t: 'RESPAWN_START', pid: p.id, dur: 10000 });
-              }
+            if (p.hp <= 0 && !hostRespawnTimers.current.has(p.id) && alive.length > 0) {
+              hostRespawnTimers.current.set(p.id, now);
+              nm.sendControl({ t: 'RESPAWN_START', pid: p.id, dur: 10000 });
             }
           }
           for (const [pid2, deathTime] of hostRespawnTimers.current) {
-            if (now - deathTime >= 10000) {
+            const elapsed   = now - deathTime;
+            const remaining = Math.max(0, Math.ceil((10000 - elapsed) / 1000));
+            // 只在數字變化時更新 React state（避免每幀 60 次 re-render）
+            if (pid2 === 1 && remaining !== p1RespawnRef.current) {
+              p1RespawnRef.current = remaining; setP1RespawnCountdown(remaining);
+            }
+            if (pid2 === 2 && remaining !== p2RespawnRef.current) {
+              p2RespawnRef.current = remaining; setP2RespawnCountdown(remaining);
+            }
+            if (elapsed >= 10000) {
               hostRespawnTimers.current.delete(pid2);
-              const dead  = game.players.find(p => p.id === pid2);
-              const alive = game.players.find(p => p.id !== pid2 && p.hp > 0);
-              if (dead && alive) {
+              const dead     = game.players.find(p => p.id === pid2);
+              const aliveNow = game.players.find(p => p.id !== pid2 && p.hp > 0);
+              if (dead && aliveNow) {
                 const angle = Math.random() * Math.PI * 2;
-                dead.x  = alive.x + Math.cos(angle) * 60;
-                dead.y  = alive.y + Math.sin(angle) * 60;
+                dead.x = aliveNow.x + Math.cos(angle) * 60;
+                dead.y = aliveNow.y + Math.sin(angle) * 60;
                 dead.hp = dead.maxHp;
                 dead.shield = true;
                 nm.sendControl({ t: 'RESPAWNED', pid: pid2 });
               }
+              if (pid2 === 1) { p1RespawnRef.current = 0; setP1RespawnCountdown(0); }
+              if (pid2 === 2) { p2RespawnRef.current = 0; setP2RespawnCountdown(0); }
             }
           }
         }
@@ -390,7 +419,7 @@ export const GameUI: React.FC = () => {
       cancelAnimationFrame(requestRef.current);
       if (gameRef.current) gameRef.current.destroy();
       networkRef.current?.disconnect();
-      if (respawnTimerRef.current) clearInterval(respawnTimerRef.current);
+      if (clientRespawnInterval.current) clearInterval(clientRespawnInterval.current);
     };
   }, []);
 
@@ -578,8 +607,18 @@ export const GameUI: React.FC = () => {
                 {isOnlineMode && (
                   !readyState.myReady ? (
                     <button onClick={() => {
-                      networkRef.current?.sendReady();
+                      // 1. 本地標記自己已準備
+                      readyRef.current.myReady = true;
                       setReadyState(prev => ({ ...prev, myReady: true }));
+                      // 2. 通知對方
+                      networkRef.current?.sendReady();
+                      // 3. Host 若對方已準備 → 立刻啟動重賽
+                      const nm2 = networkRef.current;
+                      if (nm2?.isHost && readyRef.current.otherReady) {
+                        readyRef.current = { myReady: false, otherReady: false };
+                        nm2.sendControl({ t: 'START' });
+                        startOnlineGame(nm2, 1);
+                      }
                     }} className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-2xl transition-all hover:-translate-y-1 active:translate-y-0 text-xl">
                       準備重賽
                     </button>
@@ -605,16 +644,6 @@ export const GameUI: React.FC = () => {
           </div>
         )}
 
-        {/* ── 復活倒計時 ──────────────────────────────────── */}
-        {gameState === 'playing' && isOnlineMode && respawnCountdown > 0 && (
-          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-            <div className="bg-black/75 rounded-3xl px-14 py-8 text-center border border-red-500/30">
-              <div className="text-red-400 font-bold text-xl mb-1">你已陣亡</div>
-              <div className="text-white font-black text-7xl leading-none">{respawnCountdown}</div>
-              <div className="text-neutral-400 text-base mt-2">秒後復活</div>
-            </div>
-          </div>
-        )}
 
         {/* ── 手機搖桿 ──────────────────────────────────────── */}
         {gameState === 'playing' && platform === 'mobile' && (
@@ -648,12 +677,18 @@ export const GameUI: React.FC = () => {
                       Lv.{p1State.level}{p1State.prestigeLevel > 0 ? ` (+${p1State.prestigeLevel})` : ''}
                     </div>
                   </div>
-                  <div className="w-full bg-neutral-800 h-3 sm:h-4 rounded-full mb-1 sm:mb-2 overflow-hidden border border-neutral-700 relative">
-                    <div className="bg-gradient-to-r from-red-600 to-red-400 h-full transition-all duration-300" style={{ width: `${(p1State.hp / p1State.maxHp) * 100}%` }} />
-                    <div className="absolute inset-0 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white drop-shadow-sm">
-                      {Math.ceil(p1State.hp)} / {p1State.maxHp}
+                  {p1RespawnCountdown > 0 ? (
+                    <div className="w-full h-3 sm:h-4 rounded-full mb-1 sm:mb-2 flex items-center justify-center bg-neutral-800 border border-red-500/50">
+                      <span className="text-[8px] sm:text-[10px] font-bold text-red-400">{p1RespawnCountdown}s 復活</span>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="w-full bg-neutral-800 h-3 sm:h-4 rounded-full mb-1 sm:mb-2 overflow-hidden border border-neutral-700 relative">
+                      <div className="bg-gradient-to-r from-red-600 to-red-400 h-full transition-all duration-300" style={{ width: `${(p1State.hp / p1State.maxHp) * 100}%` }} />
+                      <div className="absolute inset-0 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white drop-shadow-sm">
+                        {Math.ceil(p1State.hp)} / {p1State.maxHp}
+                      </div>
+                    </div>
+                  )}
                   <div className="w-full bg-neutral-800 h-1.5 sm:h-2 rounded-full mb-1 overflow-hidden border border-neutral-700">
                     <div className="bg-gradient-to-r from-blue-600 to-blue-400 h-full transition-all duration-300" style={{ width: `${p1State.level === 5 ? 100 : (p1State.xp / p1State.maxXp) * 100}%` }} />
                   </div>
@@ -680,12 +715,18 @@ export const GameUI: React.FC = () => {
                     </div>
                     <div className="text-green-400 font-bold text-xs sm:text-lg leading-none">Player 2</div>
                   </div>
-                  <div className="w-full bg-neutral-800 h-3 sm:h-4 rounded-full mb-1 sm:mb-2 overflow-hidden border border-neutral-700 relative flex justify-end">
-                    <div className="bg-gradient-to-l from-red-600 to-red-400 h-full transition-all duration-300" style={{ width: `${(p2State.hp / p2State.maxHp) * 100}%` }} />
-                    <div className="absolute inset-0 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white drop-shadow-sm">
-                      {Math.ceil(p2State.hp)} / {p2State.maxHp}
+                  {p2RespawnCountdown > 0 ? (
+                    <div className="w-full h-3 sm:h-4 rounded-full mb-1 sm:mb-2 flex items-center justify-center bg-neutral-800 border border-red-500/50">
+                      <span className="text-[8px] sm:text-[10px] font-bold text-red-400">{p2RespawnCountdown}s 復活</span>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="w-full bg-neutral-800 h-3 sm:h-4 rounded-full mb-1 sm:mb-2 overflow-hidden border border-neutral-700 relative flex justify-end">
+                      <div className="bg-gradient-to-l from-red-600 to-red-400 h-full transition-all duration-300" style={{ width: `${(p2State.hp / p2State.maxHp) * 100}%` }} />
+                      <div className="absolute inset-0 flex items-center justify-center text-[8px] sm:text-[10px] font-bold text-white drop-shadow-sm">
+                        {Math.ceil(p2State.hp)} / {p2State.maxHp}
+                      </div>
+                    </div>
+                  )}
                   <div className="w-full bg-neutral-800 h-1.5 sm:h-2 rounded-full mb-1 overflow-hidden border border-neutral-700 flex justify-end">
                     <div className="bg-gradient-to-l from-green-600 to-green-400 h-full transition-all duration-300" style={{ width: `${p2State.level === 5 ? 100 : (p2State.xp / p2State.maxXp) * 100}%` }} />
                   </div>

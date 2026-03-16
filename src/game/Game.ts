@@ -142,6 +142,7 @@ export class Game {
         wp: p.weapon,
         aim: p.aimAngle,
         sh: p.shield,
+        sl: Math.round(p.slowDebuffTimer),  // 減速計時器（0 = 不減速）
       })),
       zs: this.zombies.map(z => ({
         id: z.id,
@@ -238,6 +239,9 @@ export class Game {
             player.y = ps.y;
           }
         }
+        // 同步減速計時器：讓 P2 本地預測與 Host 物理保持一致
+        // 不同步 → P2 預測全速移動但 Host 說半速 → 累積誤差 → 回溯
+        player.slowDebuffTimer = (ps as any).sl ?? 0;
       }
       player.hp  = ps.hp;
       player.maxHp = ps.mh;
