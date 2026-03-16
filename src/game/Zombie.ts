@@ -6,6 +6,7 @@ import { Projectile } from './Projectile';
 export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter';
 
 export class Zombie {
+  id: number = 0;  // Feature 3/6: Stable ID for delta tracking & ID-based matching
   x: number;
   y: number;
   radius: number;

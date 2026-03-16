@@ -26,6 +26,7 @@ interface PlayerConn {
   playerId: number;
   input: { x: number; y: number };
   lastTickId: number;
+  latencyMs: number;     // Feature 5: Estimated one-way latency (ms)
 }
 
 interface Room {
@@ -71,6 +72,7 @@ function serializeState(game: Game, tick: number, hardSync: boolean) {
       sh: p.shield,
     })),
     zs: game.zombies.map(z => ({
+      id: z.id,             // Feature 3/6: Stable ID for client-side ID-based matching
       x:  Math.round(z.x),
       y:  Math.round(z.y),
       hp: Math.round(z.hp),
@@ -136,64 +138,77 @@ function startRoom(room: Room) {
   let serverTick = 0;
   let prevWave = 1;
   let prevResting = false;
+  // Feature 1: Deterministic tick accumulator (fixed dt = 16ms, max 3 ticks per interval)
+  let accumulator = 0;
+  const FIXED_DT = 16;
 
   room.interval = setInterval(() => {
     if (!room.game) return;
 
-    serverTick++;
     const now = Date.now();
-    const dt = Math.min(now - lastTime, 100);
+    const elapsed = Math.min(now - lastTime, 100);
     lastTime = now;
 
-    for (const conn of room.players) {
-      room.game.setJoystickInput(conn.playerId - 1, conn.input);
+    // Feature 1: Run physics at deterministic fixed timestep
+    accumulator += elapsed;
+    let ticksRan = 0;
+    while (accumulator >= FIXED_DT && ticksRan < 3) {
+      serverTick++;
+      for (const conn of room.players) {
+        room.game.setJoystickInput(conn.playerId - 1, conn.input);
+      }
+      try {
+        room.game.update(FIXED_DT);
+      } catch (e) {
+        console.error(`[Room ${room.code}] Game error:`, e);
+      }
+      accumulator -= FIXED_DT;
+      ticksRan++;
     }
 
-    try {
-      room.game.update(dt);
+    if (ticksRan === 0 || !room.game) return;
 
-      // ── 復活邏輯 ──────────────────────────────────────────
-      const alivePlayers = room.game.players.filter(p => p.hp > 0);
-      for (const p of room.game.players) {
-        // 玩家剛死亡 且 有隊友存活 → 啟動復活倒計時
-        if (p.hp <= 0 && !room.respawnTimers.has(p.id) && alivePlayers.length > 0) {
-          room.respawnTimers.set(p.id, now);
-          broadcast(room, JSON.stringify({ t: 'RESPAWN_START', pid: p.id, dur: 10000 }));
-          console.log(`[Room ${room.code}] P${p.id} died — respawn in 10s`);
-        }
+    // ── 復活邏輯 ──────────────────────────────────────────
+    const alivePlayers = room.game.players.filter(p => p.hp > 0);
+    for (const p of room.game.players) {
+      if (p.hp <= 0 && !room.respawnTimers.has(p.id) && alivePlayers.length > 0) {
+        room.respawnTimers.set(p.id, now);
+        broadcast(room, JSON.stringify({ t: 'RESPAWN_START', pid: p.id, dur: 10000 }));
+        console.log(`[Room ${room.code}] P${p.id} died — respawn in 10s`);
       }
-      for (const [pid, deathTime] of room.respawnTimers) {
-        if (now - deathTime >= 10000) {
-          room.respawnTimers.delete(pid);
-          const dead  = room.game.players.find(p => p.id === pid);
-          const alive = room.game.players.find(p => p.id !== pid && p.hp > 0);
-          if (dead && alive) {
-            const angle = Math.random() * Math.PI * 2;
-            dead.x = alive.x + Math.cos(angle) * 60;
-            dead.y = alive.y + Math.sin(angle) * 60;
-            dead.hp = dead.maxHp;
-            dead.shield = true;   // 一格護盾作為無敵緩衝
-            broadcast(room, JSON.stringify({ t: 'RESPAWNED', pid }));
-            console.log(`[Room ${room.code}] P${pid} respawned`);
-          }
-        }
-      }
-
-      // 30Hz 廣播（每 2 幀），偵測波次切換觸發 HardSync
-      if (serverTick % 2 === 0) {
-        const wm = room.game.waveManager;
-        const hardSync = wm.currentWave !== prevWave || wm.isResting !== prevResting;
-        if (hardSync) {
-          prevWave = wm.currentWave;
-          prevResting = wm.isResting;
-          console.log(`[Room ${room.code}] HardSync wave=${wm.currentWave} rest=${wm.isResting}`);
-        }
-        const state = serializeState(room.game, serverTick, hardSync);
-        broadcast(room, JSON.stringify(state));
-      }
-    } catch (e) {
-      console.error(`[Room ${room.code}] Game error:`, e);
     }
+    for (const [pid, deathTime] of room.respawnTimers) {
+      if (now - deathTime >= 10000) {
+        room.respawnTimers.delete(pid);
+        const dead  = room.game.players.find(p => p.id === pid);
+        const alive = room.game.players.find(p => p.id !== pid && p.hp > 0);
+        if (dead && alive) {
+          const angle = Math.random() * Math.PI * 2;
+          dead.x = alive.x + Math.cos(angle) * 60;
+          dead.y = alive.y + Math.sin(angle) * 60;
+          dead.hp = dead.maxHp;
+          dead.shield = true;
+          broadcast(room, JSON.stringify({ t: 'RESPAWNED', pid }));
+          console.log(`[Room ${room.code}] P${pid} respawned`);
+        }
+      }
+    }
+
+    // Feature 5: Lag compensation — set per-player average latency on game instance
+    const avgLatency = room.players.reduce((sum, p) => sum + p.latencyMs, 0)
+      / Math.max(1, room.players.length);
+    room.game.lagCompensationRadius = Math.min(avgLatency * 0.3, 40);
+
+    // Feature 6/3: 60Hz broadcast (every interval, ~16ms) — halves broadcast latency vs 30Hz
+    const wm = room.game.waveManager;
+    const hardSync = wm.currentWave !== prevWave || wm.isResting !== prevResting;
+    if (hardSync) {
+      prevWave = wm.currentWave;
+      prevResting = wm.isResting;
+      console.log(`[Room ${room.code}] HardSync wave=${wm.currentWave} rest=${wm.isResting}`);
+    }
+    const state = serializeState(room.game, serverTick, hardSync);
+    broadcast(room, JSON.stringify(state));
   }, 16);
 }
 
@@ -227,16 +242,22 @@ wss.on('connection', (ws) => {
   let myPlayerId = 0;
 
   ws.on('message', (rawData) => {
-    // ── Binary input 封包（6 bytes：TickID + dx_i8 + dy_i8）
-    if (Buffer.isBuffer(rawData) && rawData.length === 6) {
+    // ── Feature 5: Binary input 封包（8 bytes：TickID + clientTs_u16 + dx_i8 + dy_i8）
+    if (Buffer.isBuffer(rawData) && rawData.length === 8) {
       if (!currentRoom) return;
-      const tickId = rawData.readUInt32BE(0);
-      const dx     = rawData.readInt8(4) / 127;
-      const dy     = rawData.readInt8(5) / 127;
-      const conn   = currentRoom.players.find(p => p.ws === ws);
+      const tickId   = rawData.readUInt32BE(0);
+      const clientTs = rawData.readUInt16BE(4);         // 16-bit truncated ms timestamp
+      const dx       = rawData.readInt8(6) / 127;
+      const dy       = rawData.readInt8(7) / 127;
+      // RTT estimation: compare server time (16-bit) vs client timestamp
+      const now16    = Date.now() & 0xFFFF;
+      const rttMs    = (now16 - clientTs + 65536) & 0xFFFF;  // handle wrap-around
+      const conn     = currentRoom.players.find(p => p.ws === ws);
       if (conn) {
-        conn.input     = { x: Math.max(-1, Math.min(1, dx)), y: Math.max(-1, Math.min(1, dy)) };
+        conn.input      = { x: Math.max(-1, Math.min(1, dx)), y: Math.max(-1, Math.min(1, dy)) };
         conn.lastTickId = tickId;
+        // Smooth latency update (exponential moving average, α=0.1)
+        conn.latencyMs  = conn.latencyMs * 0.9 + Math.min(rttMs * 0.5, 300) * 0.1;
       }
       return;
     }
@@ -253,7 +274,7 @@ wss.on('connection', (ws) => {
         rooms.set(code, room);
         currentRoom = room;
         myPlayerId  = 1;
-        room.players.push({ ws, playerId: 1, input: { x: 0, y: 0 }, lastTickId: 0 });
+        room.players.push({ ws, playerId: 1, input: { x: 0, y: 0 }, lastTickId: 0, latencyMs: 0 });
 
         ws.send(JSON.stringify({ t: 'ROOM', code, pid: 1 }));
         console.log(`[Room ${code}] Created by P1`);
@@ -279,7 +300,7 @@ wss.on('connection', (ws) => {
 
         currentRoom = room;
         myPlayerId  = 2;
-        room.players.push({ ws, playerId: 2, input: { x: 0, y: 0 }, lastTickId: 0 });
+        room.players.push({ ws, playerId: 2, input: { x: 0, y: 0 }, lastTickId: 0, latencyMs: 0 });
 
         ws.send(JSON.stringify({ t: 'ROOM', code: room.code, pid: 2 }));
         console.log(`[Room ${code}] Joined by P2`);

@@ -50,6 +50,21 @@ export class Game {
   // ── 模組 E / F：HardSync 旗標（背景分頁恢復 or 波次切換）
   pendingHardSync = false;
 
+  // ── Feature 3/6: Stable zombie IDs
+  _zombieIdCounter: number = 0;
+
+  // ── Feature 5: Lag compensation hitbox expansion radius (px), set by server
+  lagCompensationRadius: number = 0;
+
+  // ── Feature 4: Snapshot ring buffer for timing-based interpolation (50ms render delay)
+  private _snapBuffer: Array<{
+    ts: number;
+    zs: Array<{ id: number; x: number; y: number; hp: number; mh: number; tp: string; ag: number }>;
+    remotePs: Array<{ id: number; x: number; y: number }>;
+  }> = [];
+  private readonly _SNAP_DELAY_MS = 50;
+  private readonly _SNAP_BUF_MAX = 24;
+
   constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void) {
     this.onGameOver = onGameOver;
     this.onUpdateUI = onUpdateUI;
@@ -107,13 +122,27 @@ export class Game {
     const isHardSync = !!(state.hs) || this.pendingHardSync;
     this.pendingHardSync = false;
 
+    // ── Feature 4: Push snapshot to ring buffer BEFORE any position changes
+    this._snapBuffer.push({
+      ts: Date.now(),
+      zs: (state.zs as any[]).map((ns: any) => ({
+        id: ns.id ?? 0, x: ns.x, y: ns.y, hp: ns.hp, mh: ns.mh, tp: ns.tp, ag: ns.ag,
+      })),
+      remotePs: (state.ps as any[])
+        .filter((ps: any) => ps.id !== this.networkPlayerId)
+        .map((ps: any) => ({ id: ps.id, x: ps.x, y: ps.y })),
+    });
+    if (this._snapBuffer.length > this._SNAP_BUF_MAX) this._snapBuffer.shift();
+    // Clear buffer on hard sync so we don't interpolate through a discontinuity
+    if (isHardSync) this._snapBuffer = [];
+
     // ── 玩家更新 ─────────────────────────────────────────────
     for (const ps of state.ps) {
       const player = this.players.find(p => p.id === ps.id);
       if (!player) continue;
 
       if (ps.id !== this.networkPlayerId) {
-        // 遠端玩家：設定插值目標位置（含速度估算備外插用）
+        // 遠端玩家：儲存 lerp 備援目標（snapshot interpolation 優先，但 buffer 暖起來前用 lerp）
         const prevTx = (player as any)._tx as number | undefined;
         const prevTy = (player as any)._ty as number | undefined;
         (player as any)._tx = ps.x;
@@ -124,14 +153,26 @@ export class Game {
         }
         player.aimAngle = ps.aim;
       } else {
-        // 本地玩家：記錄伺服器位置（供子彈偏移補償用）
+        // Feature 2: Local player — smooth reconciliation (Client-Side Prediction + Reconciliation)
         (player as any)._serverX = ps.x;
         (player as any)._serverY = ps.y;
         if (isHardSync) {
-          // HardSync：強制校準位置（波次切換 / 背景分頁恢復）
           player.x = ps.x;
           player.y = ps.y;
           this._hardSyncFade = 0.55;
+        } else {
+          const errX = ps.x - player.x;
+          const errY = ps.y - player.y;
+          const dist = Math.hypot(errX, errY);
+          if (dist >= 200) {
+            // Hard snap for large divergence (e.g., teleport / respawn)
+            player.x = ps.x;
+            player.y = ps.y;
+          } else if (dist > 3) {
+            // Smooth correction: blend 20% toward server position each server tick
+            player.x += errX * 0.2;
+            player.y += errY * 0.2;
+          }
         }
       }
       player.hp  = ps.hp;
@@ -144,34 +185,30 @@ export class Game {
       player.shield = ps.sh;
     }
 
-    // ── 模組 D：殭屍插值（比對最近同類型殭屍，重用物件不重建）
-    const matched = new Set<number>();
+    // ── Feature 3/6: ID-based zombie matching (replaces proximity-based approach)
     const nowStamp = Date.now();
-    this.zombies = (state.zs as any[]).map((ns) => {
-      let bestIdx = -1;
-      let bestDist = 80; // 80px 匹配半徑
-      for (let j = 0; j < this.zombies.length; j++) {
-        if (matched.has(j)) continue;
-        if (this.zombies[j].type !== ns.tp) continue;
-        const d = Math.hypot(this.zombies[j].x - ns.x, this.zombies[j].y - ns.y);
-        if (d < bestDist) { bestDist = d; bestIdx = j; }
+    const serverIds = new Set((state.zs as any[]).map((ns: any) => ns.id ?? 0));
+    // Remove zombies that no longer exist on server
+    this.zombies = this.zombies.filter(z => serverIds.has(z.id));
+    // Update existing or add new zombies
+    for (const ns of state.zs as any[]) {
+      const nsId = ns.id ?? 0;
+      const existing = this.zombies.find(z => z.id === nsId);
+      if (existing) {
+        (existing as any)._prevHp = existing.hp; // 模組 I：供擊中補償比對
+        existing.hp = ns.hp;
+        existing.maxHp = ns.mh;
+        existing.angle = ns.ag;
+        (existing as any)._tx = ns.x;
+        (existing as any)._ty = ns.y;
+      } else {
+        const z = new Zombie(ns.x, ns.y, ns.tp);
+        z.id = nsId;
+        z.hp = ns.hp; z.maxHp = ns.mh; z.angle = ns.ag; z.time = nowStamp;
+        (z as any)._tx = ns.x; (z as any)._ty = ns.y;
+        this.zombies.push(z);
       }
-      if (bestIdx >= 0) {
-        matched.add(bestIdx);
-        const z = this.zombies[bestIdx];
-        (z as any)._prevHp = z.hp; // 模組 I：供擊中補償比對
-        (z as any)._tx = ns.x;
-        (z as any)._ty = ns.y;
-        z.hp = ns.hp;
-        z.maxHp = ns.mh;
-        z.angle = ns.ag;
-        return z;
-      }
-      const z = new Zombie(ns.x, ns.y, ns.tp);
-      z.hp = ns.hp; z.maxHp = ns.mh; z.angle = ns.ag; z.time = nowStamp;
-      (z as any)._tx = ns.x; (z as any)._ty = ns.y;
-      return z;
-    });
+    }
 
     // ── 模組 I：擊中視覺補償（HP 未下降 → 血跡灰化）────────
     for (const e of this.hitEffects as any[]) {
@@ -322,29 +359,64 @@ export class Game {
         }
       }
 
-      // 模組 D：遠端玩家插值 + 速度外插（Fix 3 降低感知延遲）
-      const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
-      if (remotePlayer) {
-        const tx = (remotePlayer as any)._tx as number | undefined;
-        const ty = (remotePlayer as any)._ty as number | undefined;
-        const tvx = ((remotePlayer as any)._tvx as number | undefined) ?? 0;
-        const tvy = ((remotePlayer as any)._tvy as number | undefined) ?? 0;
-        if (tx !== undefined && ty !== undefined) {
-          // 外插目標 = 最後已知位置 + 一幀速度預測（減少 30Hz 廣播的感知延遲）
-          const extrapX = tx + tvx * 0.5;
-          const extrapY = ty + tvy * 0.5;
-          remotePlayer.x += (extrapX - remotePlayer.x) * 0.35;
-          remotePlayer.y += (extrapY - remotePlayer.y) * 0.35;
+      // ── Feature 4: Snapshot interpolation — render remote entities 50ms behind live ──
+      const renderTime = Date.now() - this._SNAP_DELAY_MS;
+      let snapA: typeof this._snapBuffer[0] | null = null;
+      let snapB: typeof this._snapBuffer[0] | null = null;
+      for (let _si = 0; _si < this._snapBuffer.length - 1; _si++) {
+        if (this._snapBuffer[_si].ts <= renderTime && this._snapBuffer[_si + 1].ts >= renderTime) {
+          snapA = this._snapBuffer[_si];
+          snapB = this._snapBuffer[_si + 1];
+          break;
         }
       }
 
-      // 模組 D：殭屍 Lerp（每幀趨近目標位置）
-      for (const z of this.zombies) {
-        const tx = (z as any)._tx as number | undefined;
-        const ty = (z as any)._ty as number | undefined;
-        if (tx !== undefined && ty !== undefined) {
-          z.x += (tx - z.x) * 0.25;
-          z.y += (ty - z.y) * 0.25;
+      if (snapA && snapB) {
+        const _alpha = (renderTime - snapA.ts) / Math.max(1, snapB.ts - snapA.ts);
+        const _t = Math.max(0, Math.min(1, _alpha));
+
+        // Interpolate zombies by stable ID
+        for (const z of this.zombies) {
+          const zA = snapA.zs.find(s => s.id === z.id);
+          const zB = snapB.zs.find(s => s.id === z.id);
+          if (zA && zB) {
+            z.x = zA.x + (zB.x - zA.x) * _t;
+            z.y = zA.y + (zB.y - zA.y) * _t;
+          } else if (zB) {
+            z.x = zB.x; z.y = zB.y;
+          }
+        }
+
+        // Interpolate remote player position
+        const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
+        if (remotePlayer) {
+          const rpA = snapA.remotePs.find(p => p.id === remotePlayer.id);
+          const rpB = snapB.remotePs.find(p => p.id === remotePlayer.id);
+          if (rpA && rpB) {
+            remotePlayer.x = rpA.x + (rpB.x - rpA.x) * _t;
+            remotePlayer.y = rpA.y + (rpB.y - rpA.y) * _t;
+          }
+        }
+      } else {
+        // Fallback: simple lerp when snapshot buffer isn't warm yet (game start / after hard sync)
+        const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
+        if (remotePlayer) {
+          const tx = (remotePlayer as any)._tx as number | undefined;
+          const ty = (remotePlayer as any)._ty as number | undefined;
+          const tvx = ((remotePlayer as any)._tvx as number | undefined) ?? 0;
+          const tvy = ((remotePlayer as any)._tvy as number | undefined) ?? 0;
+          if (tx !== undefined && ty !== undefined) {
+            remotePlayer.x += (tx + tvx * 0.5 - remotePlayer.x) * 0.35;
+            remotePlayer.y += (ty + tvy * 0.5 - remotePlayer.y) * 0.35;
+          }
+        }
+        for (const z of this.zombies) {
+          const tx = (z as any)._tx as number | undefined;
+          const ty = (z as any)._ty as number | undefined;
+          if (tx !== undefined && ty !== undefined) {
+            z.x += (tx - z.x) * 0.25;
+            z.y += (ty - z.y) * 0.25;
+          }
         }
       }
 
@@ -696,13 +768,14 @@ export class Game {
         let hit = false;
         if (proj.type === 'bullet') {
           const dist = Math.hypot(proj.x - zombie.x, proj.y - zombie.y);
-          if (dist < proj.radius + zombie.radius) hit = true;
+          // Feature 5: Lag compensation — expand zombie hitbox proportional to client RTT
+          if (dist < proj.radius + zombie.radius + this.lagCompensationRadius) hit = true;
         } else if (proj.type === 'slash') {
           const elapsed = proj.maxLifetime - proj.lifetime;
           // Only hit during the "slash" phase (50ms to 150ms)
           if (elapsed >= 50 && elapsed <= 150) {
             const dist = Math.hypot(proj.x - zombie.x, proj.y - zombie.y);
-            if (dist < proj.radius + zombie.radius) {
+            if (dist < proj.radius + zombie.radius + this.lagCompensationRadius) {
               // Check angle
               const angleToZombie = Math.atan2(zombie.y - proj.y, zombie.x - proj.x);
               const slashAngle = Math.atan2(proj.vy, proj.vx);
@@ -1334,7 +1407,8 @@ export class Game {
     else type = 'normal';
 
     const zombie = new Zombie(x, y, type);
-    
+    zombie.id = ++this._zombieIdCounter;  // Feature 3/6: Stable ID for delta tracking
+
     // Apply difficulty multiplier
     const mult = this.waveManager.difficultyMultiplier;
     

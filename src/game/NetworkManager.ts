@@ -79,18 +79,19 @@ export class NetworkManager {
   sendReady() { this.send({ t: 'READY' }); }
 
   /**
-   * Binary DataView 輸入封包（模組 A）
-   * 格式：[0-3] TickID Uint32BE  [4] dx×127 Int8  [5] dy×127 Int8
-   * 6 bytes vs JSON ~26 bytes → 頻寬 ↓77%
+   * Feature 5: Binary DataView 輸入封包（8 bytes）
+   * [0-3] TickID Uint32BE  [4-5] clientTs Uint16BE  [6] dx×127 Int8  [7] dy×127 Int8
+   * clientTs = Date.now() & 0xFFFF（16-bit 截斷毫秒），供伺服器估算 RTT / 延遲補償半徑
    */
   sendInput(dx: number, dy: number) {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     this.sendTick = (this.sendTick + 1) >>> 0;   // Uint32 wrapping increment
-    const buf  = new ArrayBuffer(6);
+    const buf  = new ArrayBuffer(8);
     const view = new DataView(buf);
-    view.setUint32(0, this.sendTick, false);      // big-endian TickID
-    view.setInt8(4, Math.round(Math.max(-1, Math.min(1, dx)) * 127));
-    view.setInt8(5, Math.round(Math.max(-1, Math.min(1, dy)) * 127));
+    view.setUint32(0, this.sendTick, false);                              // big-endian TickID
+    view.setUint16(4, Date.now() & 0xFFFF, false);                       // 16-bit client timestamp
+    view.setInt8(6, Math.round(Math.max(-1, Math.min(1, dx)) * 127));
+    view.setInt8(7, Math.round(Math.max(-1, Math.min(1, dy)) * 127));
     this.ws.send(buf);
   }
 
