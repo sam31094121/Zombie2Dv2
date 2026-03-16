@@ -65,8 +65,8 @@ export class Game {
   // ── Feature 4: Snapshot ring buffer for timing-based interpolation (50ms render delay)
   private _snapBuffer: Array<{
     ts: number;
-    zs: Array<{ id: number; x: number; y: number; hp: number; mh: number; tp: string; ag: number }>;
-    remotePs: Array<{ id: number; x: number; y: number }>;
+    zs: Map<number, { x: number; y: number }>;      // id → position (O(1) lookup)
+    remotePs: Map<number, { x: number; y: number }>; // id → position (O(1) lookup)
   }> = [];
   private readonly _SNAP_DELAY_MS = 50;
   private readonly _SNAP_BUF_MAX = 24;
@@ -128,15 +128,13 @@ export class Game {
     const isHardSync = !!(state.hs) || this.pendingHardSync;
     this.pendingHardSync = false;
 
-    // ── Feature 4: Push snapshot to ring buffer BEFORE any position changes
+    // ── Feature 4: Push snapshot to ring buffer BEFORE any position changes (Maps for O(1) lookup)
     this._snapBuffer.push({
       ts: Date.now(),
-      zs: (state.zs as any[]).map((ns: any) => ({
-        id: ns.id ?? 0, x: ns.x, y: ns.y, hp: ns.hp, mh: ns.mh, tp: ns.tp, ag: ns.ag,
-      })),
-      remotePs: (state.ps as any[])
+      zs: new Map((state.zs as any[]).map((ns: any) => [ns.id ?? 0, { x: ns.x as number, y: ns.y as number }])),
+      remotePs: new Map((state.ps as any[])
         .filter((ps: any) => ps.id !== this.networkPlayerId)
-        .map((ps: any) => ({ id: ps.id, x: ps.x, y: ps.y })),
+        .map((ps: any) => [ps.id as number, { x: ps.x as number, y: ps.y as number }])),
     });
     if (this._snapBuffer.length > this._SNAP_BUF_MAX) this._snapBuffer.shift();
     // Clear buffer on hard sync so we don't interpolate through a discontinuity
@@ -167,19 +165,13 @@ export class Game {
           player.y = ps.y;
           this._hardSyncFade = 0.55;
         } else {
-          const errX = ps.x - player.x;
-          const errY = ps.y - player.y;
-          const dist = Math.hypot(errX, errY);
-          if (dist >= 200) {
-            // Hard snap for large divergence (e.g., teleport / respawn)
+          // Trust client-side prediction fully; only hard-snap on large divergence.
+          // No soft correction — any gradient correction fights prediction during direction
+          // changes and produces visible trembling/stutter.
+          const dist = Math.hypot(ps.x - player.x, ps.y - player.y);
+          if (dist >= 100) {
             player.x = ps.x;
             player.y = ps.y;
-          } else if (dist > 12) {
-            // Smooth correction: blend 8% toward server position each server tick.
-            // Threshold 12px avoids micro-corrections fighting client prediction
-            // (which causes visible jitter on direction change).
-            player.x += errX * 0.08;
-            player.y += errY * 0.08;
           }
         }
       }
@@ -383,10 +375,10 @@ export class Game {
         const _alpha = (renderTime - snapA.ts) / Math.max(1, snapB.ts - snapA.ts);
         const _t = Math.max(0, Math.min(1, _alpha));
 
-        // Interpolate zombies by stable ID
+        // Interpolate zombies by stable ID — O(1) Map lookup instead of O(n) find
         for (const z of this.zombies) {
-          const zA = snapA.zs.find(s => s.id === z.id);
-          const zB = snapB.zs.find(s => s.id === z.id);
+          const zA = snapA.zs.get(z.id);
+          const zB = snapB.zs.get(z.id);
           if (zA && zB) {
             z.x = zA.x + (zB.x - zA.x) * _t;
             z.y = zA.y + (zB.y - zA.y) * _t;
@@ -398,8 +390,8 @@ export class Game {
         // Interpolate remote player position
         const remotePlayer = this.players.find(p => p.id !== this.networkPlayerId);
         if (remotePlayer) {
-          const rpA = snapA.remotePs.find(p => p.id === remotePlayer.id);
-          const rpB = snapB.remotePs.find(p => p.id === remotePlayer.id);
+          const rpA = snapA.remotePs.get(remotePlayer.id);
+          const rpB = snapB.remotePs.get(remotePlayer.id);
           if (rpA && rpB) {
             remotePlayer.x = rpA.x + (rpB.x - rpA.x) * _t;
             remotePlayer.y = rpA.y + (rpB.y - rpA.y) * _t;

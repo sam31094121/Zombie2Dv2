@@ -38,6 +38,8 @@ export const GameUI: React.FC = () => {
   const [respawnCountdown, setRespawnCountdown] = useState(0);
   const [readyState, setReadyState] = useState({ myReady: false, otherReady: false });
   const respawnTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // ── UI 更新節流：HUD (HP/波次) 只需 ~10fps，避免 React 每幀 reconcile 拖慢 rAF ──
+  const uiFrameRef = useRef(0);
 
   // ── 視窗大小 ────────────────────────────────────────────
   useEffect(() => {
@@ -75,6 +77,7 @@ export const GameUI: React.FC = () => {
 
     if (gameRef.current) gameRef.current.destroy();
 
+    uiFrameRef.current = 0;
     gameRef.current = new Game(
       count,
       (time, kills) => {
@@ -83,6 +86,8 @@ export const GameUI: React.FC = () => {
         audioManager.stopBGM();
       },
       (p1, p2, waveManager) => {
+        // Throttle to ~10fps: React reconciles HUD only every 6 frames, not 60fps
+        if (++uiFrameRef.current % 6 !== 0) return;
         setP1State(p1 ? { ...p1 } as Player : null);
         setP2State(p2 ? { ...p2 } as Player : null);
         setWaveState({
@@ -109,6 +114,7 @@ export const GameUI: React.FC = () => {
     if (respawnTimerRef.current) { clearInterval(respawnTimerRef.current); respawnTimerRef.current = null; }
     setRespawnCountdown(0);
     setReadyState({ myReady: false, otherReady: false });
+    uiFrameRef.current = 0;
 
     if (gameRef.current) gameRef.current.destroy();
 
@@ -121,6 +127,8 @@ export const GameUI: React.FC = () => {
         // 不斷線 — 等待重賽
       },
       (p1, p2, waveManager) => {
+        // Throttle to ~10fps: React reconciles HUD only every 6 frames, not 60fps
+        if (++uiFrameRef.current % 6 !== 0) return;
         setP1State(p1 ? { ...p1 } as Player : null);
         setP2State(p2 ? { ...p2 } as Player : null);
         setWaveState({
