@@ -161,6 +161,6 @@ wss.on('connection', (ws) => {
   ws.on('error', (err) => { console.error('WS error:', err.message); });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`🟢 Signaling server running on port ${PORT} (WebRTC P2P — game physics on Host browser)`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`Signaling server running on port ${PORT} (WebRTC P2P)`);
 });

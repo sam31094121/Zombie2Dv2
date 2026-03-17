@@ -1,0 +1,11 @@
+services:
+  # ── WebSocket 信令伺服器 ──────────────────────────────────
+  - type: web
+    name: zombie2d-server
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm run server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
