@@ -1,6 +1,7 @@
 import { CONSTANTS } from './Constants';
 import { Player } from './Player';
-import { Zombie } from './Zombie';
+import { Zombie, ZombieType } from './Zombie';
+import { ObstacleType } from './types';
 import { Projectile } from './Projectile';
 import { Item, ItemType } from './Item';
 import { MapManager } from './map/MapManager';
@@ -146,13 +147,99 @@ export class Game {
     _applyNetworkState(this, state);
   }
 
+  testMode: boolean = false;
+  debugPaused: boolean = false;
+
   handleKeyDown = (e: KeyboardEvent) => {
     this.keys[e.key] = true;
+    if (e.key === '`') { this.testMode = !this.testMode; return; }
+    if (!this.testMode) return;
+    if (e.key === 'b' || e.key === 'B') this._debugSpawn('butcher');
+    if (e.key === 'n' || e.key === 'N') for (let i = 0; i < 5; i++) this._debugSpawn('normal');
+    if (e.key === 'k' || e.key === 'K') this.zombies = [];
+    if (e.key === 'h' || e.key === 'H') this.players.forEach(p => { p.hp = p.maxHp; });
+    const lvl = parseInt(e.key);
+    if (lvl >= 1 && lvl <= 5 && this.players[0]) this.players[0].level = lvl;
+    if ((e.key === 'q' || e.key === 'Q') && this.players[0]) this.players[0].weapon = 'sword';
+    if ((e.key === 'e' || e.key === 'E') && this.players[0]) this.players[0].weapon = 'gun';
   };
 
   handleKeyUp = (e: KeyboardEvent) => {
     this.keys[e.key] = false;
   };
+
+  private _debugSpawn(type: ZombieType) {
+    const p = this.players[0];
+    if (!p) return;
+    const angle = Math.random() * Math.PI * 2;
+    const z = new Zombie(p.x + Math.cos(angle) * 200, p.y + Math.sin(angle) * 200, type);
+    z.id = ++this._zombieIdCounter;
+    this.zombies.push(z);
+  }
+
+  // ── Debug API（供 TestModePanel 呼叫）────────────────────────────────────
+  debugSpawnZombie(type: ZombieType, count: number = 1) {
+    for (let i = 0; i < count; i++) this._debugSpawn(type);
+  }
+
+  debugHealAll() {
+    this.players.forEach(p => { p.hp = p.maxHp; });
+  }
+
+  debugSetWeapon(pid: number, weapon: 'sword' | 'gun', level: number) {
+    const p = this.players.find(pl => pl.id === pid);
+    if (!p) return;
+    p.weapon = weapon;
+    p.level  = Math.max(1, Math.min(5, level));
+  }
+
+  debugSpawnItem(type: ItemType) {
+    const p = this.players[0];
+    if (!p) return;
+    const angle = Math.random() * Math.PI * 2;
+    this.items.push(new Item(p.x + Math.cos(angle) * 100, p.y + Math.sin(angle) * 100, type, 15000));
+  }
+
+  debugSpawnObstacle(type: ObstacleType) {
+    const p = this.players[0];
+    if (!p) return;
+    const angle = Math.random() * Math.PI * 2;
+    const x = p.x + Math.cos(angle) * 130;
+    const y = p.y + Math.sin(angle) * 130;
+    const sizes: Partial<Record<string, [number, number]>> = {
+      sandbag: [24, 24], electric_fence: [8, 50], explosive_barrel: [22, 22],
+      tombstone: [30, 40], vending_machine: [32, 48], container: [64, 32],
+      altar: [40, 40], monolith: [16, 60], wall: [40, 20], streetlight: [12, 12],
+    };
+    const [w, h] = sizes[type] ?? [30, 30];
+    const obs = new Obstacle(x - w/2, y - h/2, w, h, type as any);
+    const CHUNK_SIZE = 800;
+    const key = `${Math.floor(x / CHUNK_SIZE)},${Math.floor(y / CHUNK_SIZE)}`;
+    const list = this.mapManager.obstacles.get(key) ?? [];
+    list.push(obs);
+    this.mapManager.obstacles.set(key, list);
+  }
+
+  debugSetWave(wave: number) {
+    this.waveManager.currentWave = Math.max(1, Math.min(99, wave));
+  }
+
+  debugClearSlime() {
+    this.slimeTrails = [];
+  }
+
+  debugToggleStatus(pid: number, key: 'shield' | 'speedBoost' | 'slowDebuff' | 'glow') {
+    const p = this.players.find(pl => pl.id === pid);
+    if (!p) return;
+    if (key === 'shield')     p.shield = !p.shield;
+    if (key === 'speedBoost') p.speedBoostTimer = p.speedBoostTimer > 0 ? 0 : 6000;
+    if (key === 'slowDebuff') p.slowDebuffTimer  = p.slowDebuffTimer  > 0 ? 0 : 5000;
+    if (key === 'glow')       p.isInfiniteGlow  = !p.isInfiniteGlow;
+  }
+
+  debugTogglePause() {
+    this.debugPaused = !this.debugPaused;
+  }
 
   setJoystickInput(playerIndex: number, input: { x: number, y: number } | null) {
     if (this.joystickInputs[playerIndex] !== undefined) {
@@ -467,7 +554,7 @@ export class Game {
 
     // Spawn zombies
     this.waveManager.update(dt);
-    if (!this.waveManager.isResting) {
+    if (!this.waveManager.isResting && !this.debugPaused) {
       this.zombieSpawnTimer += dt;
       let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
       
@@ -946,6 +1033,7 @@ export class Game {
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
+
   }
 
   drawWaveFilters(ctx: CanvasRenderingContext2D) {

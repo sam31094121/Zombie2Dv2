@@ -15,7 +15,7 @@ export type ObstacleType =
   | 'street_lamp' | 'tombstone' | 'vending_machine' | 'container'
   | 'altar' | 'monolith';
 
-export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter';
+export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' | 'butcher';
 
 // 子彈建立規格（WeaponDefinitions.fire() 的回傳型別）
 export interface ProjectileSpec {

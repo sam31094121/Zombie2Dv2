@@ -12,6 +12,7 @@ import { GameOverScreen } from './screens/GameOverScreen';
 import { P1Card } from './hud/P1Card';
 import { P2Card } from './hud/P2Card';
 import { WaveDisplay } from './hud/WaveDisplay';
+import { TestModePanel } from './debug/TestModePanel';
 
 const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
@@ -374,6 +375,9 @@ export const GameUI: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* ── 測試面板 ─────────────────────────────────────────── */}
+        {gameState === 'playing' && <TestModePanel gameRef={gameRef} />}
 
         {/* ── HUD ─────────────────────────────────────────────── */}
         {gameState === 'playing' && waveState && (
