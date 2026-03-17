@@ -7,13 +7,21 @@ import { MapManager } from './map/MapManager';
 import { Obstacle } from './map/Obstacle';
 import { audioManager } from './AudioManager';
 import { WaveManager } from './WaveManager';
+import { ZOMBIE_REGISTRY } from './entities/definitions/ZombieDefinitions';
+import { WEAPON_REGISTRY } from './entities/definitions/WeaponDefinitions';
+import { drawHitEffect, drawHealVFX, HitEffect } from './renderers/EffectRenderer';
+import { resolveOverlaps } from './systems/PhysicsSystem';
+import { spawnZombie as _spawnZombie, spawnItemAt as _spawnItemAt, spawnItem as _spawnItem } from './systems/SpawnSystem';
+import { applyWaveMechanisms as _applyWaveMechanisms, drawWaveFilters as _drawWaveFilters } from './systems/WaveMechanicsSystem';
+import { serializeState as _serializeState, applyNetworkState as _applyNetworkState } from './systems/NetworkSyncSystem';
+import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestZombie as _findNearestZombie, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
 
 export class Game {
   players: Player[] = [];
   zombies: Zombie[] = [];
   projectiles: Projectile[] = [];
   items: Item[] = [];
-  hitEffects: { x: number, y: number, type: string, lifetime: number, maxLifetime: number, startTime?: number }[] = [];
+  hitEffects: HitEffect[] = [];
   healVFX: { x: number, y: number, alpha: number, startTime: number }[] = [];
   slimeTrails: { x: number, y: number, radius: number, lifetime: number, maxLifetime: number }[] = [];
   mapManager: MapManager;
@@ -45,7 +53,7 @@ export class Game {
     = new Array(200).fill(null);
 
   // ── 模組 H：道具拾取預測（client-side prediction）
-  private pendingPickups: Array<{ x: number; y: number; type: string; time: number }> = [];
+  pendingPickups: Array<{ x: number; y: number; type: string; time: number }> = [];
 
   // ── 模組 E / F：HardSync 旗標（背景分頁恢復 or 波次切換）
   pendingHardSync = false;
@@ -66,13 +74,13 @@ export class Game {
   private readonly _HISTORY_SIZE = 30;
 
   // ── Feature 4: Snapshot ring buffer for timing-based interpolation (50ms render delay)
-  private _snapBuffer: Array<{
+  _snapBuffer: Array<{
     ts: number;
-    zs: Map<number, { x: number; y: number }>;      // id → position (O(1) lookup)
-    remotePs: Map<number, { x: number; y: number }>; // id → position (O(1) lookup)
+    zs: Map<number, { x: number; y: number }>;
+    remotePs: Map<number, { x: number; y: number }>;
   }> = [];
   private readonly _SNAP_DELAY_MS = 50;
-  private readonly _SNAP_BUF_MAX = 24;
+  readonly _SNAP_BUF_MAX = 24;
 
   constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void) {
     this.onGameOver = onGameOver;
@@ -124,63 +132,7 @@ export class Game {
   // ── Host 模式：序列化遊戲狀態（供 P2P 廣播給 P2）────────
   // 格式與舊版 server.ts serializeState 完全相同，P2 的 applyNetworkState 不需改動
   serializeState(tick: number, hardSync: boolean): object {
-    return {
-      t:  'ST',
-      tk: tick,
-      hs: hardSync || undefined,
-      ts: hardSync ? Date.now() : undefined, // HardSync 時間戳，供 P2 時鐘補償
-      ps: this.players.map(p => ({
-        id: p.id,
-        x:  Math.round(p.x),
-        y:  Math.round(p.y),
-        hp: Math.round(p.hp),
-        mh: p.maxHp,
-        xp: p.xp,
-        mx: p.maxXp,
-        lv: p.level,
-        pl: p.prestigeLevel,
-        wp: p.weapon,
-        aim: p.aimAngle,
-        sh: p.shield,
-        sl: Math.round(p.slowDebuffTimer),  // 減速計時器（0 = 不減速）
-      })),
-      zs: this.zombies.map(z => ({
-        id: z.id,
-        x:  Math.round(z.x),
-        y:  Math.round(z.y),
-        hp: Math.round(z.hp),
-        mh: z.maxHp,
-        tp: z.type,
-        ag: z.angle,
-      })),
-      pj: this.projectiles.map(p => ({
-        x:  Math.round(p.x),
-        y:  Math.round(p.y),
-        vx: p.vx,
-        vy: p.vy,
-        tp: p.type,
-        lv: p.level,
-        lt: p.lifetime,
-        ml: p.maxLifetime,
-        en: p.isEnemy,
-        r:  p.radius,
-        oi: p.ownerId,
-      })),
-      it: this.items.map(i => ({
-        x:  Math.round(i.x),
-        y:  Math.round(i.y),
-        tp: i.type,
-        v:  i.value,
-        c:  i.color,
-      })),
-      wv: {
-        w: this.waveManager.currentWave,
-        r: this.waveManager.isResting,
-        t: Math.round(this.waveManager.timer),
-        i: this.waveManager.isInfinite,
-        m: this.waveManager.activeMechanics,
-      },
-    };
+    return _serializeState(this, tick, hardSync);
   }
 
   // 接收伺服器狀態並更新本地實體
@@ -188,145 +140,7 @@ export class Game {
   _hardSyncFade = 0;
 
   applyNetworkState(state: any) {
-    if (!this.networkMode) return;
-
-    const isHardSync = !!(state.hs) || this.pendingHardSync;
-    this.pendingHardSync = false;
-
-    // ── Feature 4: Push snapshot to ring buffer BEFORE any position changes (Maps for O(1) lookup)
-    this._snapBuffer.push({
-      ts: Date.now(),
-      zs: new Map((state.zs as any[]).map((ns: any) => [ns.id ?? 0, { x: ns.x as number, y: ns.y as number }])),
-      remotePs: new Map((state.ps as any[])
-        .filter((ps: any) => ps.id !== this.networkPlayerId)
-        .map((ps: any) => [ps.id as number, { x: ps.x as number, y: ps.y as number }])),
-    });
-    if (this._snapBuffer.length > this._SNAP_BUF_MAX) this._snapBuffer.shift();
-    // Clear buffer on hard sync so we don't interpolate through a discontinuity
-    if (isHardSync) this._snapBuffer = [];
-
-    // ── 玩家更新 ─────────────────────────────────────────────
-    for (const ps of state.ps) {
-      const player = this.players.find(p => p.id === ps.id);
-      if (!player) continue;
-
-      if (ps.id !== this.networkPlayerId) {
-        // 遠端玩家：儲存 lerp 備援目標（snapshot interpolation 優先，但 buffer 暖起來前用 lerp）
-        const prevTx = (player as any)._tx as number | undefined;
-        const prevTy = (player as any)._ty as number | undefined;
-        (player as any)._tx = ps.x;
-        (player as any)._ty = ps.y;
-        if (prevTx !== undefined && prevTy !== undefined) {
-          (player as any)._tvx = ps.x - prevTx;
-          (player as any)._tvy = ps.y - prevTy;
-        }
-        player.aimAngle = ps.aim;
-      } else {
-        // Feature 2: Local player — smooth reconciliation (Client-Side Prediction + Reconciliation)
-        (player as any)._serverX = ps.x;
-        (player as any)._serverY = ps.y;
-        if (isHardSync) {
-          player.x = ps.x;
-          player.y = ps.y;
-          this._hardSyncFade = 0.55;
-        } else {
-          // Trust client-side prediction fully; only hard-snap on large divergence.
-          // No soft correction — any gradient correction fights prediction during direction
-          // changes and produces visible trembling/stutter.
-          const dist = Math.hypot(ps.x - player.x, ps.y - player.y);
-          if (dist >= 100) {
-            player.x = ps.x;
-            player.y = ps.y;
-          }
-        }
-        // 同步減速計時器：讓 P2 本地預測與 Host 物理保持一致
-        // 不同步 → P2 預測全速移動但 Host 說半速 → 累積誤差 → 回溯
-        player.slowDebuffTimer = (ps as any).sl ?? 0;
-      }
-      player.hp  = ps.hp;
-      player.maxHp = ps.mh;
-      player.xp  = ps.xp;
-      player.maxXp = ps.mx;
-      player.level = ps.lv;
-      player.prestigeLevel = ps.pl;
-      player.weapon = ps.wp as 'sword' | 'gun';
-      player.shield = ps.sh;
-    }
-
-    // ── Feature 3/6: ID-based zombie matching (replaces proximity-based approach)
-    const nowStamp = Date.now();
-    const serverIds = new Set((state.zs as any[]).map((ns: any) => ns.id ?? 0));
-    // Remove zombies that no longer exist on server
-    this.zombies = this.zombies.filter(z => serverIds.has(z.id));
-    // Update existing or add new zombies
-    for (const ns of state.zs as any[]) {
-      const nsId = ns.id ?? 0;
-      const existing = this.zombies.find(z => z.id === nsId);
-      if (existing) {
-        (existing as any)._prevHp = existing.hp; // 模組 I：供擊中補償比對
-        existing.hp = ns.hp;
-        existing.maxHp = ns.mh;
-        existing.angle = ns.ag;
-        (existing as any)._tx = ns.x;
-        (existing as any)._ty = ns.y;
-      } else {
-        const z = new Zombie(ns.x, ns.y, ns.tp);
-        z.id = nsId;
-        z.hp = ns.hp; z.maxHp = ns.mh; z.angle = ns.ag; z.time = nowStamp;
-        (z as any)._tx = ns.x; (z as any)._ty = ns.y;
-        this.zombies.push(z);
-      }
-    }
-
-    // ── 模組 I：擊中視覺補償（HP 未下降 → 血跡灰化）────────
-    for (const e of this.hitEffects as any[]) {
-      if (!e._pendingZombieIdx) continue;
-      const z = this.zombies[e._pendingZombieIdx];
-      if (z && (z as any)._prevHp !== undefined && z.hp >= (z as any)._prevHp) {
-        e._grayOut = true; // 未命中，灰化消散
-      }
-      delete e._pendingZombieIdx;
-    }
-
-    // ── 子彈（高速移動，直接替換；本地玩家子彈補偏移消除攻擊延遲感）
-    const localPlayerForProj = this.players[this.networkPlayerId - 1];
-    const projOffX = localPlayerForProj
-      ? localPlayerForProj.x - ((localPlayerForProj as any)._serverX ?? localPlayerForProj.x)
-      : 0;
-    const projOffY = localPlayerForProj
-      ? localPlayerForProj.y - ((localPlayerForProj as any)._serverY ?? localPlayerForProj.y)
-      : 0;
-    this.projectiles = (state.pj as any[]).map((ps) => {
-      const isLocalOwned = ps.oi === this.networkPlayerId && !ps.en;
-      const px = ps.x + (isLocalOwned ? projOffX : 0);
-      const py = ps.y + (isLocalOwned ? projOffY : 0);
-      const p = new Projectile(ps.oi, px, py, ps.vx, ps.vy, 0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en);
-      p.maxLifetime = ps.ml;
-      return p;
-    });
-
-    // ── 模組 H：道具（預測拾取校驗 + 淡入修復）─────────────
-    const nowMs = Date.now();
-    this.pendingPickups = this.pendingPickups.filter(p => nowMs - p.time < 600);
-    this.items = (state.it as any[]).map((is) => {
-      const item = new Item(is.x, is.y, is.tp as ItemType, 99999, is.v, is.c);
-      const pendingIdx = this.pendingPickups.findIndex(
-        p => Math.hypot(p.x - is.x, p.y - is.y) < 12 && p.type === is.tp
-      );
-      if (pendingIdx >= 0) {
-        // 伺服器否決（道具仍存在）→ 淡入修復
-        (item as any)._fadeAlpha = 0;
-        this.pendingPickups.splice(pendingIdx, 1);
-      }
-      return item;
-    });
-
-    // ── 波次狀態 ─────────────────────────────────────────────
-    this.waveManager.currentWave     = state.wv.w;
-    this.waveManager.isResting       = state.wv.r;
-    this.waveManager.timer           = state.wv.t;
-    this.waveManager.isInfinite      = state.wv.i;
-    this.waveManager.activeMechanics = state.wv.m;
+    _applyNetworkState(this, state);
   }
 
   handleKeyDown = (e: KeyboardEvent) => {
@@ -729,64 +543,7 @@ export class Game {
       }
     }
 
-    // Resolve overlaps (prevent entities from overlapping)
-    // 1. Zombie vs Zombie
-    for (let i = 0; i < this.zombies.length; i++) {
-      for (let j = i + 1; j < this.zombies.length; j++) {
-        const z1 = this.zombies[i];
-        const z2 = this.zombies[j];
-        const dx = z2.x - z1.x;
-        const dy = z2.y - z1.y;
-        const dist = Math.hypot(dx, dy);
-        const minDist = z1.radius + z2.radius;
-        if (dist < minDist && dist > 0) {
-          const overlap = minDist - dist;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          z1.x -= (nx * overlap) / 2;
-          z1.y -= (ny * overlap) / 2;
-          z2.x += (nx * overlap) / 2;
-          z2.y += (ny * overlap) / 2;
-        }
-      }
-    }
-
-    // 2. Player vs Zombie
-    for (const player of this.players) {
-      if (player.hp <= 0) continue;
-      for (const zombie of this.zombies) {
-        const dx = zombie.x - player.x;
-        const dy = zombie.y - player.y;
-        const dist = Math.hypot(dx, dy);
-        const minDist = player.radius + zombie.radius;
-        if (dist < minDist && dist > 0) {
-          const overlap = minDist - dist;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          zombie.x += nx * overlap;
-          zombie.y += ny * overlap;
-        }
-      }
-    }
-
-    // 3. Player vs Player
-    if (this.players.length >= 2 && this.players[0].hp > 0 && this.players[1].hp > 0) {
-      const p1 = this.players[0];
-      const p2 = this.players[1];
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const dist = Math.hypot(dx, dy);
-      const minDist = p1.radius + p2.radius;
-      if (dist < minDist && dist > 0) {
-        const overlap = minDist - dist;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        p1.x -= (nx * overlap) / 2;
-        p1.y -= (ny * overlap) / 2;
-        p2.x += (nx * overlap) / 2;
-        p2.y += (ny * overlap) / 2;
-      }
-    }
+    resolveOverlaps(this.zombies, this.players);
 
     this.handleObstacleInteractions(dt);
 
@@ -978,60 +735,37 @@ export class Game {
 
           if (zombie.hp <= 0) {
             audioManager.playKill();
-            
-            // Spawn Energy Orbs
-            let orbCount = 0;
-            let orbColor = '#00bcd4'; // Blue
-            let orbValue = 1;
-            
-            if (zombie.type === 'normal') {
-              orbCount = 1;
-              orbColor = '#2196f3'; // Blue
-            } else if (zombie.type === 'slime_small') {
-              orbCount = 1;
-              orbColor = '#4caf50'; // Green
-            } else if (zombie.type === 'slime') {
-              orbCount = 2;
-              orbColor = '#4caf50'; // Green
-            } else if (zombie.type === 'spitter') {
-              orbCount = 2;
-              orbColor = '#4caf50'; // Green
-            } else if (zombie.type === 'big') {
-              orbCount = 4;
-              orbColor = '#9c27b0'; // Purple
-            }
-            
-            for (let i = 0; i < orbCount; i++) {
+
+            // ── 從登錄表讀取 orb 掉落規格（加新殭屍只加 ZOMBIE_REGISTRY）──
+            const zombieDef = ZOMBIE_REGISTRY[zombie.type];
+            for (let i = 0; i < zombieDef.orbCount; i++) {
               const offsetX = (Math.random() - 0.5) * 20;
               const offsetY = (Math.random() - 0.5) * 20;
-              this.items.push(new Item(zombie.x + offsetX, zombie.y + offsetY, 'energy_orb', 15000, orbValue, orbColor));
+              this.items.push(new Item(
+                zombie.x + offsetX, zombie.y + offsetY,
+                'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor
+              ));
             }
 
+            // 解體特效（高等級子彈）
             if (zombie.type === 'normal' || zombie.type === 'spitter') {
               if (proj.level >= 4) {
-                // Dismemberment effect
                 this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'dismember', lifetime: 500, maxLifetime: 500 });
               }
-            } else if (zombie.type === 'slime') {
-              // Split into two small slimes with explosion velocity
-              const angle1 = Math.random() * Math.PI * 2;
-              const angle2 = angle1 + Math.PI;
-              
-              const s1 = new Zombie(zombie.x + Math.cos(angle1) * 3, zombie.y + Math.sin(angle1) * 3, 'slime_small');
-              const s2 = new Zombie(zombie.x + Math.cos(angle2) * 3, zombie.y + Math.sin(angle2) * 3, 'slime_small');
-              
-              s1.vx = Math.cos(angle1) * 16;
-              s1.vy = Math.sin(angle1) * 16;
-              
-              s2.vx = Math.cos(angle2) * 16;
-              s2.vy = Math.sin(angle2) * 16;
-
-              this.zombies.push(s1, s2);
-              
-              // Prevent current projectile from immediately hitting them
-              proj.hitZombies.add(s1);
-              proj.hitZombies.add(s2);
             }
+
+            // ── 分裂行為：從登錄表讀取（slime → 2 slime_small）────────────
+            if (zombieDef.splitOnDeath) {
+              const specs = zombieDef.splitOnDeath(zombie.x, zombie.y);
+              for (const spec of specs) {
+                const child = new Zombie(spec.x, spec.y, spec.type);
+                child.vx = spec.vx;
+                child.vy = spec.vy;
+                this.zombies.push(child);
+                proj.hitZombies.add(child); // 防止子彈立即再次命中
+              }
+            }
+
             this.zombies.splice(j, 1);
             this.score++;
             const owner = this.players.find(p => p.id === proj.ownerId);
@@ -1134,424 +868,17 @@ export class Game {
   }
 
   applyWaveMechanisms(dt: number) {
-    const wave = this.waveManager.currentWave;
-    const isInfinite = this.waveManager.isInfinite;
-    const mechanics = this.waveManager.activeMechanics;
-
-    // Earthquake (W8 or Infinite)
-    if (wave === 8 || (isInfinite && mechanics.includes('slow_liquid'))) {
-      if (Math.random() < 0.02) {
-        this.shakeTimer = 200;
-      }
-    }
-
-    // Lightning (W9 or Infinite)
-    if (wave === 9 || (isInfinite && mechanics.includes('lightning'))) {
-      if (Math.random() < 0.005) { // Random lightning strike
-        const lx = this.camera.x + Math.random() * CONSTANTS.CANVAS_WIDTH;
-        const ly = this.camera.y + Math.random() * CONSTANTS.CANVAS_HEIGHT;
-        this.hitEffects.push({ x: lx, y: ly, type: 'lightning', lifetime: 500, maxLifetime: 500 });
-        
-        // Stun nearby
-        const stunRadius = 150;
-        for (const player of this.players) {
-          if (Math.hypot(player.x - lx, player.y - ly) < stunRadius) {
-            player.slowDebuffTimer = 2000;
-          }
-        }
-        for (const zombie of this.zombies) {
-          if (Math.hypot(zombie.x - lx, zombie.y - ly) < stunRadius) {
-            zombie.vx = 0; zombie.vy = 0;
-          }
-        }
-      }
-    }
+    _applyWaveMechanisms(this, dt);
   }
 
-  handleObstacleInteractions(dt: number) {
-    const obstacleSet = new Set<Obstacle>();
-    for (const player of this.players) {
-      if (player.hp > 0) {
-        const nearby = this.mapManager.getNearbyObstacles(player.x, player.y);
-        nearby.forEach(obs => obstacleSet.add(obs));
-      }
-    }
-    const allObstacles = Array.from(obstacleSet);
-    
-    for (const player of this.players) {
-      if (player.hp <= 0) continue;
-      player.isInsideContainer = false;
-      player.isAtAltar = false;
-    }
-    for (const zombie of this.zombies) {
-      zombie.isInsideContainer = false;
-    }
-
-    for (const obs of allObstacles) {
-      obs.update(dt, this.players, (p) => {
-        // Enhanced onHeal visual feedback
-        this.healVFX.push({ 
-          x: p.x + (Math.random() - 0.5) * 15, 
-          y: p.y - 30, 
-          alpha: 1.0, 
-          startTime: Date.now() 
-        });
-      });
-
-      if (obs.isDestroyed && !obs.isTriggered) continue;
-
-      // Handle trigger timers
-      if (obs.isTriggered && obs.triggerTimer > 0) {
-        obs.triggerTimer -= dt;
-        if (obs.triggerTimer <= 0) {
-          if (obs.type === 'explosive_barrel') {
-            this.explodeObstacle(obs);
-          } else if (obs.type === 'vending_machine') {
-            this.dropVendingMachineItems(obs);
-          } else if (obs.type === 'tombstone') {
-            this.score += 500;
-            this.hitEffects.push({ x: obs.x + obs.width / 2, y: obs.y + obs.height / 2, type: 'purple_particles', lifetime: 500, maxLifetime: 500 });
-          }
-        }
-      }
-
-      // 1. Sandbags: Destroyed by big zombies
-      if (obs.type === 'sandbag' && !obs.isDestroyed) {
-        for (const zombie of this.zombies) {
-          if (zombie.type === 'big' && obs.collidesWithCircle(zombie.x, zombie.y, zombie.radius)) {
-            obs.takeDamage(100); // Instant destroy
-            this.hitEffects.push({ x: obs.x, y: obs.y, type: 'grey_sparks', lifetime: 300, maxLifetime: 300 });
-          }
-        }
-      }
-
-      // 2. Electric Fence: Damage and paralysis
-      if (obs.type === 'electric_fence') {
-        const now = Date.now();
-        for (const player of this.players) {
-          if (player.hp > 0 && obs.collidesWithCircle(player.x, player.y, player.radius)) {
-            if (now - obs.lastEffectTime > 1000) {
-              player.slowDebuffTimer = 500;
-              obs.lastEffectTime = now;
-            }
-          }
-        }
-        for (const zombie of this.zombies) {
-          if (obs.collidesWithCircle(zombie.x, zombie.y, zombie.radius)) {
-            if (now - obs.lastEffectTime > 1000) {
-              zombie.hp -= 5;
-              zombie.paralysisTimer = 500;
-              obs.lastEffectTime = now;
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'green_electricity', lifetime: 300, maxLifetime: 300 });
-            }
-          }
-        }
-      }
-
-      // 5. Tombstone: Faster spawn
-      if (obs.type === 'tombstone' && !obs.isDestroyed) {
-        // Logic handled in spawn loop
-      }
-
-      // 7. Container: Transparency
-      if (obs.type === 'container') {
-        for (const player of this.players) {
-          if (player.hp > 0 && obs.collidesWithCircle(player.x, player.y, player.radius)) {
-            player.isInsideContainer = true;
-          }
-        }
-        for (const zombie of this.zombies) {
-          if (obs.collidesWithCircle(zombie.x, zombie.y, zombie.radius)) {
-            zombie.isInsideContainer = true;
-          }
-        }
-      }
-
-      // 8. Altar: Buff and Drain
-      if (obs.type === 'altar' && this.waveManager.currentWave >= 7) {
-        for (const player of this.players) {
-          if (player.hp > 0 && obs.collidesWithCircle(player.x, player.y, player.radius)) {
-            player.isAtAltar = true;
-            // player.hp -= 1 * (dt / 1000); // -1 HP/s - Disabled
-            // Damage boost is handled in attack logic
-          }
-        }
-      }
-    }
-  }
-
-  private findNearestZombie(x: number, y: number, maxDist: number) {
-    let nearest = null;
-    let minDist = maxDist;
-    for (const zombie of this.zombies) {
-      const dist = Math.hypot(zombie.x - x, zombie.y - y);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = zombie;
-      }
-    }
-    return nearest;
-  }
-
-  private explodeObstacle(obs: Obstacle) {
-    const explosionRadius = 150;
-    const damage = 50;
-    
-    this.hitEffects.push({ 
-      x: obs.x + obs.width / 2, 
-      y: obs.y + obs.height / 2, 
-      type: 'orange_explosion', 
-      lifetime: 400,
-      startTime: Date.now(),
-      maxLifetime: 400 
-    });
-    
-    // Chain reaction: Explode nearby barrels
-    for (const chunkObstacles of this.mapManager.obstacles.values()) {
-      for (const otherObs of chunkObstacles) {
-        if (otherObs.type === 'explosive_barrel' && !otherObs.isDestroyed && otherObs !== obs) {
-          const dist = Math.hypot(otherObs.x + otherObs.width / 2 - (obs.x + obs.width / 2), otherObs.y + otherObs.height / 2 - (obs.y + obs.height / 2));
-          if (dist < explosionRadius) {
-            otherObs.takeDamage(100); // Trigger explosion
-          }
-        }
-      }
-    }
-
-    for (const player of this.players) {
-      if (player.hp > 0) {
-        const dist = Math.hypot(player.x - (obs.x + obs.width / 2), player.y - (obs.y + obs.height / 2));
-        if (dist < explosionRadius) {
-          player.hp -= damage * (1 - dist / explosionRadius);
-          player.lastDamageTime = Date.now();
-        }
-      }
-    }
-    for (const zombie of this.zombies) {
-      const dist = Math.hypot(zombie.x - (obs.x + obs.width / 2), zombie.y - (obs.y + obs.height / 2));
-      if (dist < explosionRadius) {
-        zombie.hp -= damage * 2 * (1 - dist / explosionRadius);
-        zombie.vx += (zombie.x - (obs.x + obs.width / 2)) / dist * 10;
-        zombie.vy += (zombie.y - (obs.y + obs.height / 2)) / dist * 10;
-      }
-    }
-    obs.isDestroyed = true;
-    obs.isTriggered = false;
-  }
-
-  private dropVendingMachineItems(obs: Obstacle) {
-    // Drop shield or speed boost
-    const type = Math.random() > 0.5 ? 'shield' : 'speed';
-    this.items.push(new Item(
-      obs.x + obs.width / 2,
-      obs.y + obs.height / 2,
-      type,
-      10000
-    ));
-    
-    // Attract zombies with noise
-    for (const zombie of this.zombies) {
-      const dist = Math.hypot(zombie.x - obs.x, zombie.y - obs.y);
-      if (dist < 1000) {
-        // Apply a strong velocity vector towards the vending machine to simulate distraction
-        zombie.vx += ((obs.x + obs.width / 2) - zombie.x) / dist * 15;
-        zombie.vy += ((obs.y + obs.height / 2) - zombie.y) / dist * 15;
-      }
-    }
-    obs.isDestroyed = true;
-    obs.isTriggered = false;
-  }
-
-  handlePlayerAttacks(player: Player) {
-    let attackInterval = CONSTANTS.ATTACK_INTERVAL;
-    if (player.weapon === 'sword') {
-      if (player.level === 1) attackInterval = 800;
-      else if (player.level === 2) attackInterval = 500;
-      else if (player.level === 3) attackInterval = 1000;
-      else if (player.level === 4) attackInterval = 1200;
-      else if (player.level === 5) attackInterval = 1500;
-    } else if (player.weapon === 'gun') {
-      if (player.level === 1) attackInterval = 800;
-      else if (player.level === 2) attackInterval = 500;
-      else if (player.level === 3) attackInterval = 1000;
-      else if (player.level === 4) attackInterval = 1000;
-      else if (player.level === 5) attackInterval = 1300;
-    }
-    
-    attackInterval /= player.attackSpeedMultiplier;
-
-    if (Date.now() - player.lastAttackTime > attackInterval) {
-      player.lastAttackTime = Date.now();
-      
-      const level = player.level;
-
-      if (player.weapon === 'sword') {
-        const dir = { x: Math.cos(player.aimAngle), y: Math.sin(player.aimAngle) };
-        let radius = 50;
-        let damage = 1;
-        let knockback = true;
-
-        if (level === 2) { radius = 90; damage = 3; }
-        else if (level === 3) { radius = 180; damage = 3; }
-        else if (level === 4) { radius = 180; damage = 3; }
-        else if (level === 5) { radius = 300; damage = 5; }
-        
-        damage *= player.damageMultiplier;
-        if (player.isAtAltar) damage *= 1.4;
-
-        audioManager.playSlash(level);
-
-        this.projectiles.push(new Projectile(
-          player.id, player.x, player.y, dir.x, dir.y, damage, Infinity, 250, 'slash', radius, knockback, level
-        ));
-      } else {
-        let count = 1;
-        let damage = 1;
-        let speed = 6;
-        let pierce = 1;
-        let spread = false;
-        let burst = 1;
-
-        if (level === 2) { count = 2; damage = 3; speed = 8; }
-        else if (level === 3) { count = 3; damage = 3; speed = 10; spread = true; }
-        else if (level === 4) { count = 4; damage = 3; speed = 10; pierce = 2; spread = true; }
-        else if (level === 5) { count = 3; damage = 3; speed = 12; pierce = 2; spread = true; burst = 2; }
-        
-        damage *= player.damageMultiplier;
-        if (player.isAtAltar) damage *= 1.4;
-
-        const fireProjectiles = () => {
-          if (player.hp <= 0) return; // Don't fire if dead
-          
-          audioManager.playShoot(level);
-
-          const currentBaseAngle = player.aimAngle;
-          const currentDir = { x: Math.cos(currentBaseAngle), y: Math.sin(currentBaseAngle) };
-          
-          if (!spread) {
-            if (count === 1) {
-              this.projectiles.push(new Projectile(player.id, player.x, player.y, currentDir.x * speed, currentDir.y * speed, damage, pierce, 2000, 'bullet', 5, false, level));
-            } else if (count === 2) {
-              const perpX = -currentDir.y * 10;
-              const perpY = currentDir.x * 10;
-              this.projectiles.push(new Projectile(player.id, player.x + perpX, player.y + perpY, currentDir.x * speed, currentDir.y * speed, damage, pierce, 2000, 'bullet', 5, false, level));
-              this.projectiles.push(new Projectile(player.id, player.x - perpX, player.y - perpY, currentDir.x * speed, currentDir.y * speed, damage, pierce, 2000, 'bullet', 5, false, level));
-            }
-          } else {
-            let spreadAngle = Math.PI / 4; // 45 degrees default
-            if (level === 4) spreadAngle = Math.PI / 3; // 60 degrees
-            if (level === 5) spreadAngle = 55 * Math.PI / 180; // 55 degrees
-            
-            const startAngle = currentBaseAngle - spreadAngle / 2;
-            const angleStep = count > 1 ? spreadAngle / (count - 1) : 0;
-            
-            let bulletRadius = 5;
-            if (level === 4) bulletRadius = 10;
-            if (level === 5) bulletRadius = 12;
-            
-            for (let i = 0; i < count; i++) {
-              const angle = count === 1 ? currentBaseAngle : startAngle + i * angleStep;
-              const vx = Math.cos(angle) * speed;
-              const vy = Math.sin(angle) * speed;
-              this.projectiles.push(new Projectile(player.id, player.x, player.y, vx, vy, damage, pierce, 2000, 'bullet', bulletRadius, false, level));
-            }
-          }
-        };
-
-        fireProjectiles();
-        
-        if (burst > 1) {
-          let burstCount = 1;
-          const burstInterval = setInterval(() => {
-            if (burstCount >= burst || player.hp <= 0) {
-              clearInterval(burstInterval);
-              return;
-            }
-            fireProjectiles();
-            burstCount++;
-          }, 150); // 150ms between bursts
-        }
-      }
-    }
-  }
-
-  spawnZombie() {
-    const side = Math.floor(Math.random() * 4);
-    let x = 0, y = 0;
-    
-    // Spawn just outside the camera view
-    const margin = 100;
-    if (side === 0) { 
-      x = this.camera.x + Math.random() * CONSTANTS.CANVAS_WIDTH; 
-      y = this.camera.y - margin; 
-    } else if (side === 1) { 
-      x = this.camera.x + CONSTANTS.CANVAS_WIDTH + margin; 
-      y = this.camera.y + Math.random() * CONSTANTS.CANVAS_HEIGHT; 
-    } else if (side === 2) { 
-      x = this.camera.x + Math.random() * CONSTANTS.CANVAS_WIDTH; 
-      y = this.camera.y + CONSTANTS.CANVAS_HEIGHT + margin; 
-    } else { 
-      x = this.camera.x - margin; 
-      y = this.camera.y + Math.random() * CONSTANTS.CANVAS_HEIGHT; 
-    }
-
-    const rand = Math.random();
-    const comp = this.waveManager.getComposition();
-    let type: 'normal' | 'big' | 'slime' | 'spitter' = 'normal';
-    
-    if (rand < comp.big) type = 'big';
-    else if (rand < comp.big + comp.slime) type = 'slime';
-    else if (rand < comp.big + comp.slime + comp.spitter) type = 'spitter';
-    else type = 'normal';
-
-    const zombie = new Zombie(x, y, type);
-    zombie.id = ++this._zombieIdCounter;  // Feature 3/6: Stable ID for delta tracking
-
-    // Apply difficulty multiplier
-    const mult = this.waveManager.difficultyMultiplier;
-    
-    if (type === 'big') {
-      zombie.hp *= mult;
-      zombie.speed *= mult;
-    } else if (type === 'slime') {
-      zombie.hp *= mult;
-      zombie.speed *= mult;
-    } else if (type === 'spitter') {
-      zombie.hp = 3 * mult;
-      zombie.speed *= mult;
-    } else {
-      const gameTime = Date.now() - this.startTime;
-      const baseHp = gameTime > 60000 ? 2 : 1;
-      zombie.hp = baseHp * mult;
-      zombie.speed *= mult;
-    }
-    zombie.maxHp = zombie.hp;
-    
-    if (this.waveManager.isInfinite) {
-      zombie.isInfiniteGlow = true;
-    }
-    
-    this.zombies.push(zombie);
-  }
-
-  spawnItemAt(x: number, y: number) {
-    const rand = Math.random();
-    let type: ItemType;
-    if (rand < 0.4) type = 'weapon_sword';
-    else if (rand < 0.8) type = 'weapon_gun';
-    else if (rand < 0.9) type = 'shield';
-    else type = 'speed';
-    
-    this.items.push(new Item(x, y, type, CONSTANTS.ITEM_LIFETIME));
-  }
-
-  spawnItem() {
-    // Spawn item near the center of the camera
-    const margin = 100;
-    const x = this.camera.x + margin + Math.random() * (CONSTANTS.CANVAS_WIDTH - margin * 2);
-    const y = this.camera.y + margin + Math.random() * (CONSTANTS.CANVAS_HEIGHT - margin * 2);
-    this.spawnItemAt(x, y);
-  }
+  handleObstacleInteractions(dt: number) { _handleObstacleInteractions(this, dt); }
+  private findNearestZombie(x: number, y: number, maxDist: number) { return _findNearestZombie(this, x, y, maxDist); }
+  private explodeObstacle(obs: Obstacle) { _explodeObstacle(this, obs); }
+  private dropVendingMachineItems(obs: Obstacle) { _dropVendingMachineItems(this, obs); }
+  handlePlayerAttacks(player: Player) { _handlePlayerAttacks(this, player); }
+  spawnZombie() { _spawnZombie(this); }
+  spawnItemAt(x: number, y: number) { _spawnItemAt(this, x, y); }
+  spawnItem() { _spawnItem(this); }
 
   draw(ctx: CanvasRenderingContext2D) {
     ctx.clearRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
@@ -1602,156 +929,7 @@ export class Game {
     this.drawWaveFilters(ctx);
 
     for (const effect of this.hitEffects) {
-      ctx.save();
-      // 模組 I：擊中補償灰化（伺服器未確認的命中特效快速灰化消散）
-      if ((effect as any)._grayOut) {
-        ctx.filter = 'grayscale(100%)';
-        effect.lifetime = Math.min(effect.lifetime, 80); // 加速消散
-      }
-      const progress = effect.startTime ? (Date.now() - effect.startTime) / effect.maxLifetime : (effect.lifetime / effect.maxLifetime);
-      
-      if (effect.type === 'orange_explosion') {
-        this.drawRealExplosion(ctx, effect.x, effect.y, Math.min(progress, 1));
-      } else if (effect.type === 'grey_sparks') {
-        const p = effect.lifetime / effect.maxLifetime;
-        ctx.fillStyle = `rgba(158, 158, 158, ${p})`;
-        for(let i=0; i<5; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 10;
-          ctx.beginPath();
-          ctx.arc(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 1.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (effect.type === 'blue_circle') {
-        ctx.strokeStyle = `rgba(0, 229, 255, ${progress})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(effect.x, effect.y, 20 * (1 - progress), 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (effect.type === 'green_electricity') {
-        ctx.strokeStyle = `rgba(178, 255, 89, ${progress})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for(let i=0; i<4; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = 10 + Math.random() * 15;
-          ctx.moveTo(effect.x, effect.y);
-          ctx.lineTo(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist);
-        }
-        ctx.stroke();
-      } else if (effect.type === 'orange_explosion') {
-        ctx.fillStyle = `rgba(255, 152, 0, ${progress})`;
-        ctx.beginPath();
-        ctx.arc(effect.x, effect.y, 15 * (1 - progress), 0, Math.PI * 2);
-        ctx.fill();
-        // Residual fire
-        ctx.fillStyle = `rgba(255, 87, 34, ${progress * 0.5})`;
-        for(let i=0; i<3; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 20;
-          ctx.beginPath();
-          ctx.arc(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (effect.type === 'black_hole') {
-        // Black hole collapse
-        if (progress > 0.5) {
-          // Sucking in
-          const suckProgress = (progress - 0.5) * 2; // 1 to 0
-          ctx.fillStyle = `rgba(0, 0, 0, ${suckProgress})`;
-          ctx.beginPath();
-          ctx.arc(effect.x, effect.y, 30 * suckProgress, 0, Math.PI * 2);
-          ctx.fill();
-          
-          ctx.fillStyle = `rgba(255, 255, 255, ${suckProgress})`;
-          for(let i=0; i<10; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 40 * suckProgress;
-            ctx.beginPath();
-            ctx.arc(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 2, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        } else {
-          // Explosion
-          const expProgress = progress * 2; // 1 to 0
-          ctx.fillStyle = `rgba(255, 255, 255, ${expProgress})`;
-          ctx.beginPath();
-          ctx.arc(effect.x, effect.y, 50 * (1 - expProgress), 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (effect.type === 'purple_particles') {
-        ctx.fillStyle = `rgba(156, 39, 176, ${progress})`;
-        for(let i=0; i<5; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 15;
-          ctx.beginPath();
-          ctx.arc(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (effect.type === 'white_cross') {
-        ctx.strokeStyle = `rgba(255, 255, 255, ${progress})`;
-        ctx.lineWidth = 3;
-        const size = 15 * (1 - progress);
-        ctx.beginPath();
-        ctx.moveTo(effect.x - size, effect.y - size);
-        ctx.lineTo(effect.x + size, effect.y + size);
-        ctx.moveTo(effect.x + size, effect.y - size);
-        ctx.lineTo(effect.x - size, effect.y + size);
-        ctx.stroke();
-      } else if (effect.type === 'ice_shatter') {
-        ctx.fillStyle = `rgba(128, 216, 255, ${progress})`;
-        for(let i=0; i<6; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 20;
-          ctx.fillRect(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 4, 4);
-        }
-      } else if (effect.type === 'red_blood') {
-        ctx.fillStyle = `rgba(244, 67, 54, ${progress})`;
-        for(let i=0; i<8; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 25;
-          ctx.beginPath();
-          ctx.arc(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 3 + Math.random() * 3, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (effect.type === 'golden_shatter') {
-        ctx.fillStyle = `rgba(255, 214, 0, ${progress})`;
-        for(let i=0; i<12; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = Math.random() * 30;
-          ctx.beginPath();
-          ctx.moveTo(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist);
-          ctx.lineTo(effect.x + Math.cos(angle) * dist + 5, effect.y + Math.sin(angle) * dist + 5);
-          ctx.lineTo(effect.x + Math.cos(angle) * dist - 2, effect.y + Math.sin(angle) * dist + 8);
-          ctx.fill();
-        }
-      } else if (effect.type === 'dismember') {
-        ctx.fillStyle = `rgba(76, 175, 80, ${progress})`;
-        for(let i=0; i<5; i++) {
-          const angle = Math.random() * Math.PI * 2;
-          const dist = 10 + Math.random() * 30 * (1 - progress);
-          ctx.beginPath();
-          ctx.arc(effect.x + Math.cos(angle) * dist, effect.y + Math.sin(angle) * dist, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (effect.type === 'lightning') {
-        ctx.strokeStyle = `rgba(255, 255, 255, ${progress})`;
-        ctx.lineWidth = 4;
-        ctx.shadowColor = 'white';
-        ctx.shadowBlur = 20;
-        ctx.beginPath();
-        ctx.moveTo(effect.x, effect.y - 1000);
-        let curX = effect.x;
-        let curY = effect.y - 1000;
-        while (curY < effect.y) {
-          curX += (Math.random() - 0.5) * 40;
-          curY += 50;
-          ctx.lineTo(curX, curY);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-      ctx.restore();
+      drawHitEffect(effect, ctx);
     }
     
     ctx.restore(); // Restore camera translation
@@ -1768,230 +946,7 @@ export class Game {
   }
 
   drawWaveFilters(ctx: CanvasRenderingContext2D) {
-    const wave = this.waveManager.currentWave;
-    const isInfinite = this.waveManager.isInfinite;
-    const mechanics = this.waveManager.activeMechanics;
-    const introTimer = this.waveManager.waveIntroTimer;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to screen space
-
-    // Intro Effects (First 3 Seconds)
-    if (introTimer > 0) {
-      const progress = introTimer / 3000; // 1 to 0
-      this.drawIntroEffect(ctx, wave, isInfinite, progress);
-    }
-
-    // Ongoing Mechanics (After or during intro)
-    // ONLY draw these filters during the 3-second intro period
-    if (introTimer > 0) {
-      // Toxic Fog (Green)
-      if (wave === 6 || (isInfinite && mechanics.includes('toxic_fog'))) {
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-        ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-      }
-
-      // Red Filter (Attack Boost / Blood Flow)
-      if (wave === 7 || (isInfinite && mechanics.includes('attack_boost'))) {
-        const time = Date.now() / 1000;
-        const alpha = 0.2 + Math.sin(time * 2) * 0.03;
-        ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
-        ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-        
-        // Blood flow edges
-        ctx.strokeStyle = `rgba(150, 0, 0, ${alpha * 2})`;
-        ctx.lineWidth = 40;
-        ctx.strokeRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-      }
-      
-      // Yellow Filter (Lightning / Flicker)
-      if (wave === 3 || wave === 9 || (isInfinite && mechanics.includes('lightning'))) {
-        const time = Date.now() / 500;
-        let alpha = wave === 3 ? 0.04 : (Math.random() < 0.1 ? 0.15 : 0.06);
-        ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
-        
-        if (wave === 3) {
-          // Edge flicker for W3
-          ctx.strokeStyle = `rgba(255, 255, 0, ${alpha * 5})`;
-          ctx.lineWidth = 20;
-          ctx.strokeRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-        } else {
-          ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-        }
-      }
-
-      // Infinite Mode: Pure Black & Glow
-      if (isInfinite) {
-        // Fog of War effect
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-        ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-
-        ctx.globalCompositeOperation = 'destination-out';
-        
-        // Visibility around players
-        for (const player of this.players) {
-          if (player.hp <= 0) continue;
-          const screenX = player.x - this.camera.x;
-          const screenY = player.y - this.camera.y;
-          const radius = 150;
-          const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius);
-          grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        // Visibility around streetlights
-        const nearbyObstacles = this.mapManager.getNearbyObstacles(this.camera.x + CONSTANTS.CANVAS_WIDTH / 2, this.camera.y + CONSTANTS.CANVAS_HEIGHT / 2);
-        for (const obs of nearbyObstacles) {
-          if (obs.type === 'streetlight' && !obs.isDestroyed) {
-            const screenX = obs.x + obs.width / 2 - this.camera.x;
-            const screenY = obs.y + obs.height / 2 - this.camera.y;
-            const radius = 300; // 200% of player visibility
-            const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius);
-            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-
-        ctx.globalCompositeOperation = 'source-over';
-      }
-    }
-
-    this.drawHealVFX(ctx);
-
-    ctx.restore();
+    _drawWaveFilters(this, ctx);
   }
 
-  drawHealVFX(ctx: CanvasRenderingContext2D) {
-    ctx.save();
-    for (const vfx of this.healVFX) {
-      // 已經在 world space (因為外層有 ctx.translate(-this.camera.x, -this.camera.y))
-      // 所以不需要再減去 camera.x, camera.y
-      
-      ctx.globalAlpha = vfx.alpha;
-      ctx.fillStyle = '#00ff00';
-      ctx.font = 'bold 20px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('+', vfx.x, vfx.y);
-      
-      ctx.strokeStyle = `rgba(0, 255, 0, ${vfx.alpha})`;
-      ctx.beginPath();
-      ctx.arc(vfx.x, vfx.y + 20, 15 * (1.5 - vfx.alpha), 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    // HardSync 視覺效果已移除（白閃太明顯影響體驗）
-    ctx.restore();
-  }
-
-  private drawCloudShadow(ctx: CanvasRenderingContext2D, progress: number, color: string = 'rgba(0, 0, 0, 0.3)') {
-    ctx.fillStyle = color.replace('0.3', (progress * 0.3).toString());
-    for (let i = 0; i < 5; i++) {
-      const x = (Date.now() / 5 + i * 300) % (CONSTANTS.CANVAS_WIDTH * 2) - CONSTANTS.CANVAS_WIDTH;
-      ctx.beginPath();
-      ctx.ellipse(x, CONSTANTS.CANVAS_HEIGHT / 2, 500, 300, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  private drawIntroEffect(ctx: CanvasRenderingContext2D, wave: number, isInfinite: boolean, progress: number) {
-    if (isInfinite) {
-      // W10+: Pure Black Transition
-      ctx.fillStyle = `rgba(0, 0, 0, ${progress})`;
-      ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-      return;
-    }
-
-    switch (wave) {
-      case 1:
-        // W1: Bright grass
-        ctx.fillStyle = `rgba(255, 255, 255, ${progress * 0.5})`;
-        ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-        break;
-      case 2:
-        // W2: Cloud shadows
-        this.drawCloudShadow(ctx, progress);
-        break;
-      case 3:
-        // W3: Green cloud shadows
-        this.drawCloudShadow(ctx, progress, 'rgba(0, 100, 0, 0.3)');
-        break;
-      case 4:
-        // W4: Cloud shadows
-        this.drawCloudShadow(ctx, progress);
-        break;
-      case 5:
-        // W5: Cloud shadows
-        this.drawCloudShadow(ctx, progress);
-        break;
-      case 6:
-        // W6: Deep green cloud shadows
-        this.drawCloudShadow(ctx, progress, 'rgba(0, 100, 0, 0.5)');
-        break;
-      case 7:
-        // W7: Red cloud shadows
-        this.drawCloudShadow(ctx, progress, 'rgba(150, 0, 0, 0.5)');
-        break;
-      case 8:
-        // W8: Cloud shadows + black liquid
-        this.drawCloudShadow(ctx, progress);
-        ctx.fillStyle = `rgba(0, 0, 0, ${progress * 0.4})`;
-        ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-        break;
-      case 9:
-        // W9: Lightning sparks
-        ctx.fillStyle = `rgba(0, 0, 0, ${progress * 0.7})`;
-        ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-        if (Math.random() < 0.2) {
-          ctx.strokeStyle = 'white';
-          ctx.lineWidth = 5;
-          ctx.beginPath();
-          ctx.moveTo(Math.random() * CONSTANTS.CANVAS_WIDTH, 0);
-          ctx.lineTo(Math.random() * CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-          ctx.stroke();
-        }
-        break;
-    }
-  }
-
-  private drawRealExplosion(ctx: CanvasRenderingContext2D, x: number, y: number, progress: number) {
-    const maxRadius = 150; // 爆炸半徑
-    const alpha = 1 - progress;
-
-    ctx.save();
-
-    // 1. 核心強光 (白色 -> 黃色)
-    ctx.beginPath();
-    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-    ctx.arc(x, y, maxRadius * progress * 0.8, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 2. 主爆炸環 (橙色)
-    ctx.beginPath();
-    ctx.strokeStyle = `rgba(255, 100, 0, ${alpha})`;
-    ctx.lineWidth = 15 * (1 - progress);
-    ctx.arc(x, y, maxRadius * Math.pow(progress, 0.5), 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 3. 爆炸碎片 (隨機粒子)
-    const particleCount = 12;
-    ctx.fillStyle = `rgba(255, 200, 50, ${alpha})`;
-    for (let i = 0; i < particleCount; i++) {
-        const angle = (i / particleCount) * Math.PI * 2 + (progress * 2);
-        const dist = maxRadius * progress * 1.2;
-        const px = x + Math.cos(angle) * dist;
-        const py = y + Math.sin(angle) * dist;
-        ctx.beginPath();
-        ctx.arc(px, py, 4 * (1 - progress), 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    ctx.restore();
-  }
 }
