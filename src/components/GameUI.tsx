@@ -117,6 +117,9 @@ export const GameUI: React.FC = () => {
 
     if (gameRef.current) gameRef.current.destroy();
     uiFrameRef.current = 0;
+    hostRespawnTimers.current = new Map();
+    p1RespawnRef.current = 0; setP1RespawnCountdown(0);
+    p2RespawnRef.current = 0; setP2RespawnCountdown(0);
 
     gameRef.current = new Game(
       count,
