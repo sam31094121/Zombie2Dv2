@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 // ── SpriteLoader.ts ───────────────────────────────────────────────────────────
 // 自動去黑背景 + 快取精靈圖
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,8 +39,9 @@ export function getSprite(url: string): HTMLCanvasElement | null {
 }
 
 // ── 屠夫幀列表（依檔名 1~5 排序）────────────────────────────────────────────
+// import.meta.env.BASE_URL 自動跟隨 vite.config.ts 的 base 設定（如 /Zombie2Dv2/）
 export const BUTCHER_FRAME_URLS: string[] = [1, 2, 3, 4, 5].map(
-  i => `/sprites/butcher_${i}.png`
+  i => `${import.meta.env.BASE_URL}sprites/butcher_${i}.png`
 );
 
 // 預載入
