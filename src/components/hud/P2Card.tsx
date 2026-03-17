@@ -13,7 +13,7 @@ export const P2Card: React.FC<P2CardProps> = ({ p2State, p2RespawnCountdown }) =
       <div className="bg-green-500/20 text-green-300 px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-md text-[8px] sm:text-sm font-bold leading-none">
         Lv.{p2State.level}{p2State.prestigeLevel > 0 ? ` (+${p2State.prestigeLevel})` : ''}
       </div>
-      <div className="text-green-400 font-bold text-xs sm:text-lg leading-none">Player 2</div>
+      <div className="text-green-400 font-bold text-xs sm:text-lg leading-none">玩家 2</div>
     </div>
     {p2RespawnCountdown > 0 ? (
       <div className="w-full h-3 sm:h-4 rounded-full mb-1 sm:mb-2 flex items-center justify-center bg-neutral-800 border border-red-500/50">

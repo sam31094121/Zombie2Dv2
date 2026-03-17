@@ -163,7 +163,10 @@ export const GameUI: React.FC = () => {
 
     if (pid === 1) {
       game.isHostMode = true;
-      nm.onRemoteInput = (dx, dy) => game.setJoystickInput(1, { x: dx, y: dy });
+      nm.onRemoteInput = (dx, dy, tick) => {
+        game.setJoystickInput(1, { x: dx, y: dy });
+        game.hostLastAckTick = tick;   // 記錄最後確認的 P2 tick
+      };
     } else {
       game.networkMode     = true;
       game.networkPlayerId = 2;

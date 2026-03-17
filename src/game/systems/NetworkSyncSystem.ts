@@ -9,10 +9,11 @@ import { Item, ItemType } from '../Item';
 
 export function serializeState(game: Game, tick: number, hardSync: boolean): object {
   return {
-    t:  'ST',
-    tk: tick,
-    hs: hardSync || undefined,
-    ts: hardSync ? Date.now() : undefined,
+    t:   'ST',
+    tk:  tick,
+    hs:  hardSync || undefined,
+    ts:  Date.now(),                   // 每幀都送：供 P2 快照插值精確計時
+    ack: game.hostLastAckTick,         // P2 最後確認的 input tick
     ps: game.players.map(p => ({
       id: p.id,
       x:  Math.round(p.x),
@@ -101,14 +102,66 @@ export function applyNetworkState(game: Game, state: any): void {
       (player as any)._serverX = ps.x;
       (player as any)._serverY = ps.y;
       if (isHardSync) {
+        // HardSync（波次切換 / 背景分頁）：強制對齊
         player.x = ps.x;
         player.y = ps.y;
         game._hardSyncFade = 0.55;
       } else {
-        const dist = Math.hypot(ps.x - player.x, ps.y - player.y);
-        if (dist >= 100) {
-          player.x = ps.x;
-          player.y = ps.y;
+        // ── Delta Reconciliation（病因 A + B 修復）────────────────
+        // ackTick = Host 最後確認處理的 P2 input tick
+        // circularBuffer[ackTick] = P2 當時「預測位置」
+        // server position（ps.x/y）= Host 確認的「正確位置」
+        // 兩者之差 = delta，直接平移到當前幀即可修正（免重播）
+        const ackTick = (state as any).ack as number;
+        const bufEntry = ackTick > 0
+          ? game.circularBuffer[ackTick % game.CIRC_BUF_SIZE]
+          : null;
+
+        if (bufEntry && bufEntry.tick === ackTick) {
+          const errX = ps.x - bufEntry.x;
+          const errY = ps.y - bufEntry.y;
+          const err  = Math.hypot(errX, errY);
+
+          if (err <= 1.5) {
+            // Zone 1：浮點噪音，不動
+          } else if (err <= 60) {
+            // Zone 2：線性漂移（網路延遲）→ Delta 平移
+            const alpha = err / 60;
+            player.x += errX * alpha;
+            player.y += errY * alpha;
+          } else {
+            // Zone 3：碰撞分歧 → Snap + Mini Replay（防止 circularBuffer 汙染）
+            // ─────────────────────────────────────────────────────
+            // 問題：P2 預測穿牆，Host 停牆 → circularBuffer[ackTick+1..N] 全是錯誤起點的積分
+            // 解法：從 server truth（ps.x/y）重新跑 velocity vectors，還原「現在應在哪裡」
+            // 注意：不帶牆壁碰撞（近似），但比直接 snap 少 1-2 幀的視覺抖動
+            let replayX = ps.x;
+            let replayY = ps.y;
+            const speed    = player.speed;
+            const replayTo = Math.min(game.localTick, ackTick + 45); // 最多回播 45 幀（750ms）
+            for (let t = ackTick + 1; t <= replayTo; t++) {
+              const e = game.circularBuffer[t % game.CIRC_BUF_SIZE];
+              if (e && e.tick === t) {
+                replayX += e.vx * speed * (16 / 16);
+                replayY += e.vy * speed * (16 / 16);
+              }
+            }
+            player.x = replayX;
+            player.y = replayY;
+            // 覆寫 buffer[ackTick] = server truth，讓下一輪 reconciliation 從乾淨起點算
+            game.circularBuffer[ackTick % game.CIRC_BUF_SIZE] = {
+              tick: ackTick, x: ps.x, y: ps.y,
+              vx: bufEntry.vx, vy: bufEntry.vy,
+            };
+          }
+        } else {
+          // Fallback：ack 不可用時，平滑插值（取代舊版 >= 100px 瞬移）
+          const dist = Math.hypot(ps.x - player.x, ps.y - player.y);
+          if (dist > 2) {
+            const alpha = Math.min(0.25, dist / 120);
+            player.x += (ps.x - player.x) * alpha;
+            player.y += (ps.y - player.y) * alpha;
+          }
         }
       }
       player.slowDebuffTimer = (ps as any).sl ?? 0;

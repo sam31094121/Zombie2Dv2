@@ -47,10 +47,13 @@ export class Game {
   onSendInput: ((dx: number, dy: number) => void) | null = null;
 
   // ── 模組 C：環形緩衝區（最近 200 幀本地狀態，備 Rollback 用）
-  private localTick = 0;
-  private readonly CIRC_BUF_SIZE = 200;
-  private circularBuffer: Array<{ tick: number; x: number; y: number; vx: number; vy: number } | null>
+  localTick = 0;
+  readonly CIRC_BUF_SIZE = 200;
+  circularBuffer: Array<{ tick: number; x: number; y: number; vx: number; vy: number } | null>
     = new Array(200).fill(null);
+
+  // ── Reconciliation：Host 確認的最後一個 P2 input tick ─────
+  hostLastAckTick = 0;
 
   // ── 模組 H：道具拾取預測（client-side prediction）
   pendingPickups: Array<{ x: number; y: number; type: string; time: number }> = [];

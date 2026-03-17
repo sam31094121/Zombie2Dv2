@@ -12,7 +12,8 @@ export interface NetGameState {
   t: 'ST';
   tk: number;       // TickID
   hs?: boolean;     // HardSync flag（波次切換時為 true）
-  ts?: number;      // HardSync 時間戳（供 P2 時鐘同步補償）
+  ts: number;       // 每幀時間戳（供插值與時鐘校正）
+  ack: number;      // Host 最後確認的 P2 input tick（Reconciliation 用）
   ps: NetPlayerState[];
   zs: { id: number; x: number; y: number; hp: number; mh: number; tp: string; ag: number }[];
   pj: { x: number; y: number; vx: number; vy: number; tp: string; lv: number; lt: number; ml: number; en: boolean; r: number; oi: number }[];
@@ -51,8 +52,8 @@ export class NetworkManager {
   onRespawnStart:  ((pid: number, duration: number) => void) | null = null;
   onRespawned:     ((pid: number) => void) | null = null;
   onPlayerReady:   ((pid: number) => void) | null = null;
-  // 新增：Host 接收 P2 的移動輸入
-  onRemoteInput:   ((dx: number, dy: number) => void) | null = null;
+  // Host 接收 P2 的移動輸入（含 inputTick 供 Reconciliation）
+  onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
 
   get isHost() { return this._isHost; }
 
@@ -201,12 +202,14 @@ export class NetworkManager {
       if (e.data instanceof ArrayBuffer) {
         // Binary 移動輸入（8 bytes，只有 Host 會收到來自 P2 的）
         if (e.data.byteLength === 8) {
-          const view = new DataView(e.data);
-          const dx   = view.getInt8(6) / 127;
-          const dy   = view.getInt8(7) / 127;
+          const view      = new DataView(e.data);
+          const inputTick = view.getUint32(0, false);   // bytes 0-3：P2 本地 tick
+          const dx        = view.getInt8(6) / 127;
+          const dy        = view.getInt8(7) / 127;
           this.onRemoteInput?.(
             Math.max(-1, Math.min(1, dx)),
-            Math.max(-1, Math.min(1, dy))
+            Math.max(-1, Math.min(1, dy)),
+            inputTick,
           );
         }
       } else {
