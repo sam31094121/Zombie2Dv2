@@ -149,6 +149,7 @@ export class Game {
 
   testMode: boolean = false;
   debugPaused: boolean = false;
+  debugHpLocked: boolean = false;
 
   handleKeyDown = (e: KeyboardEvent) => {
     this.keys[e.key] = true;
@@ -190,7 +191,13 @@ export class Game {
     const p = this.players.find(pl => pl.id === pid);
     if (!p) return;
     p.weapon = weapon;
-    p.level  = Math.max(1, Math.min(5, level));
+    p.weaponLevels[weapon] = Math.max(1, Math.min(8, level));
+  }
+  debugSetWeaponBranch(pid: number, weapon: 'sword' | 'gun', branch: 'A' | 'B' | null) {
+    const p = this.players.find(pl => pl.id === pid);
+    if (!p) return;
+    p.weaponBranches[weapon] = branch;
+    if (branch && p.weaponLevels[weapon] < 5) p.weaponLevels[weapon] = 5;
   }
 
   debugSpawnItem(type: ItemType) {
@@ -239,6 +246,38 @@ export class Game {
 
   debugTogglePause() {
     this.debugPaused = !this.debugPaused;
+  }
+  debugToggleHpLock() {
+    this.debugHpLocked = !this.debugHpLocked;
+  }
+
+  // ── 升級選擇套用 ────────────────────────────────────────────────────────────
+  applyUpgrade(playerId: number, card: import('../components/UpgradePanel').UpgradeCard) {
+    const player = this.players.find(p => p.id === playerId);
+    if (!player) return;
+
+    if (card.kind === 'weapon_level') {
+      player.weaponLevels[card.weapon] = Math.min(8, player.weaponLevels[card.weapon] + 1);
+    } else if (card.kind === 'branch') {
+      player.weaponBranches[card.weapon] = card.branch;
+      player.weaponLevels[card.weapon] = 5; // 選分支同時升到 Lv5
+    } else {
+      // 被動
+      switch (card.key) {
+        case 'damage':   player.damageMultiplier      += 0.15; break;
+        case 'haste':    player.attackSpeedMultiplier += 0.15; break;
+        case 'agility':  player.speed                 += player.speed * 0.10; break;
+        case 'vitality': player.maxHp += 25; player.hp = Math.min(player.hp + 25, player.maxHp); break;
+        case 'magnet':   player.pickupRadiusMultiplier += 0.5; break;
+        case 'recovery': player.hp = Math.min(player.hp + 30, player.maxHp); break;
+      }
+    }
+    player.pendingLevelUp = false;
+  }
+
+  // 取得需要升級選擇的玩家（回傳第一個等待中的）
+  get upgradePendingPlayer(): import('./Player').Player | null {
+    return this.players.find(p => p.pendingLevelUp) ?? null;
   }
 
   setJoystickInput(playerIndex: number, input: { x: number, y: number } | null) {
@@ -553,7 +592,7 @@ export class Game {
     }
 
     // Spawn zombies
-    this.waveManager.update(dt);
+    if (!this.debugPaused) this.waveManager.update(dt);
     if (!this.waveManager.isResting && !this.debugPaused) {
       this.zombieSpawnTimer += dt;
       let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
@@ -624,7 +663,7 @@ export class Game {
               if (zombie.type === 'slime' || zombie.type === 'slime_small') {
                 damage = 0.5; // Very low damage
               }
-              player.hp -= damage;
+              if (!this.debugHpLocked) player.hp -= damage;
               audioManager.playPlayerHit();
               player.lastDamageTime = Date.now();
             }
@@ -686,7 +725,7 @@ export class Game {
             if (player.shield) {
               player.shield = false;
             } else {
-              player.hp -= proj.damage;
+              if (!this.debugHpLocked) player.hp -= proj.damage;
               audioManager.playPlayerHit();
               player.lastDamageTime = Date.now();
             }

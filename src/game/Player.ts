@@ -12,12 +12,17 @@ export class Player {
   maxHp: number = CONSTANTS.PLAYER_MAX_HP;
   speed: number = CONSTANTS.PLAYER_SPEED;
   weapon: 'sword' | 'gun';
-  level: number = 1;
+  level: number = 1;           // 玩家等級（XP 升級，無上限）
   prestigeLevel: number = 0;
   xp: number = 0;
   maxXp: number = 20;
   overdriveXpThreshold: number = 250;
-  
+
+  // ── 武器等級（與玩家等級分離，最高 8 級）────────────────────────────────
+  weaponLevels: Record<'sword' | 'gun', number> = { sword: 1, gun: 1 };
+  weaponBranches: Record<'sword' | 'gun', 'A' | 'B' | null> = { sword: null, gun: null };
+  pendingLevelUp: boolean = false;   // true 時遊戲暫停顯示升級選擇
+
   // Prestige Stats
   damageMultiplier: number = 1.0;
   attackSpeedMultiplier: number = 1.0;
@@ -49,27 +54,13 @@ export class Player {
   }
 
   addXp(amount: number) {
+    if (this.pendingLevelUp) return; // 等待玩家選擇升級時不累積
     this.xp += amount;
-    
-    if (this.level < 5) {
-      while (this.xp >= this.maxXp && this.level < 5) {
-        this.xp -= this.maxXp;
-        this.level++;
-        if (this.level === 2) this.maxXp = 50;
-        else if (this.level === 3) this.maxXp = 100;
-        else if (this.level === 4) this.maxXp = 200;
-        
-        if (this.level === 5) {
-          this.maxXp = this.overdriveXpThreshold;
-        }
-      }
-    } else {
-      // Overdrive / Prestige logic
-      while (this.xp >= this.overdriveXpThreshold) {
-        this.xp -= this.overdriveXpThreshold;
-        this.prestigeLevel++;
-        this.applyRandomOverdriveUpgrade();
-      }
+    if (this.xp >= this.maxXp) {
+      this.xp -= this.maxXp;
+      this.level++;
+      this.maxXp = Math.round(this.maxXp * 1.35); // 每級需求 ×1.35
+      this.pendingLevelUp = true;
     }
   }
 

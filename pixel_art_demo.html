@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Canvas 像素風格 Demo — 純程式碼，零圖片</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080810;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #aaa;
+    gap: 12px;
+  }
+  h2 { font-size: 13px; color: #555; letter-spacing: 2px; text-transform: uppercase; }
+  canvas { cursor: pointer; }
+  .hint { font-size: 11px; color: #333; }
+</style>
+</head>
+<body>
+<h2>100% Canvas 2D API — 零圖片，純程式碼</h2>
+<canvas id="c" width="720" height="340"></canvas>
+<div class="hint">點擊畫面觸發特效</div>
+
+<script>
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+
+// ─── 調色板 ───────────────────────────────────────────────────────────────
+const K = {
+  _: null,
+  H: '#2C1508', h: '#5C3018',           // 頭髮
+  F: '#FFBB88', f: '#DD9966', k: '#BB7744', // 膚色
+  w: '#FFFFFF', E: '#2244AA', e: '#000022', // 眼睛
+  M: '#CC4444',                          // 嘴巴
+  N: '#EEAA77',                          // 脖子
+  A: '#1C4A8A', a: '#0D2848', L: '#3A7EBB', // 盔甲
+  Y: '#CCAA22', y: '#886600',            // 金色細節
+  B: '#6B4C28', b: '#3D2410',           // 皮革 / 靴
+  P: '#18284A', p: '#0D1929',           // 褲子
+  G: '#AAAAAA', g: '#555555', X: '#333', // 金屬
+  R: '#CC2222', r: '#FF4444',           // 紅
+  O: '#FF8800', o: '#FFEE44',           // 橘 / 黃（特效）
+};
+
+const S = 6; // scale: 每個像素 6px
+
+// ─── 角色像素定義（12 × 21）─────────────────────────────────────────────
+//            0    1    2    3    4    5    6    7    8    9   10   11
+const BASE = [
+/* 0  hair */ ['_', '_', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', '_', '_'],
+/* 1  hair */ ['_', 'H', 'H', 'h', 'h', 'h', 'h', 'h', 'h', 'H', 'H', '_'],
+/* 2  hair */ ['_', 'H', 'H', 'h', 'h', 'H', 'H', 'h', 'h', 'H', 'H', '_'],
+/* 3  face */ ['_', 'H', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'F', 'H', '_'],
+/* 4  eyes */ ['_', 'H', 'F', 'w', 'E', 'e', 'F', 'w', 'E', 'e', 'H', '_'],
+/* 5  face */ ['_', 'H', 'F', 'w', 'f', 'F', 'F', 'w', 'f', 'F', 'H', '_'],
+/* 6  mouth*/ ['_', 'H', 'F', 'f', 'M', 'M', 'M', 'f', 'F', 'F', 'H', '_'],
+/* 7  chin */ ['_', '_', 'H', 'F', 'F', 'F', 'F', 'F', 'F', 'H', '_', '_'],
+/* 8  neck */ ['_', '_', '_', 'N', 'N', 'N', 'N', 'N', '_', '_', '_', '_'],
+/* 9  shldr*/ ['_', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', '_'],
+/* 10 chest*/ ['A', 'A', 'L', 'A', 'A', 'A', 'A', 'A', 'A', 'L', 'A', 'A'],
+/* 11 chest*/ ['A', 'A', 'a', 'A', 'Y', 'y', 'y', 'Y', 'A', 'a', 'A', 'A'],
+/* 12 chest*/ ['A', 'A', 'a', 'A', 'A', 'A', 'A', 'A', 'A', 'a', 'A', 'A'],
+/* 13 belt */ ['_', '_', 'B', 'B', 'Y', 'B', 'B', 'Y', 'B', 'B', '_', '_'],
+];
+
+// 腿部幀（4幀走路）
+const LEGS = [
+  // 站立
+  [['_','_','P','P','P','P','P','P','P','P','_','_'],
+   ['_','_','P','P','P','_','_','P','P','P','_','_'],
+   ['_','_','P','P','P','_','_','P','P','P','_','_'],
+   ['_','_','P','P','P','_','_','P','P','P','_','_'],
+   ['_','_','b','B','B','_','_','b','B','B','_','_'],
+   ['_','b','B','B','B','_','_','B','B','B','b','_'],
+   ['_','b','B','B','B','B','B','B','B','B','b','_']],
+  // 走路 1
+  [['_','_','P','P','P','P','P','P','P','P','_','_'],
+   ['_','_','p','P','P','_','_','P','P','p','_','_'],
+   ['_','_','p','P','P','_','_','P','P','_','_','_'],
+   ['_','_','_','p','P','_','_','_','P','P','_','_'],
+   ['_','_','_','b','B','_','_','_','b','B','_','_'],
+   ['_','_','b','B','B','_','_','_','B','B','_','_'],
+   ['_','b','B','B','_','_','_','_','B','B','b','_']],
+  // 走路 2（同站立）
+  [['_','_','P','P','P','P','P','P','P','P','_','_'],
+   ['_','_','P','P','P','_','_','P','P','P','_','_'],
+   ['_','_','P','P','P','_','_','P','P','P','_','_'],
+   ['_','_','P','P','P','_','_','P','P','P','_','_'],
+   ['_','_','b','B','B','_','_','b','B','B','_','_'],
+   ['_','b','B','B','B','_','_','B','B','B','b','_'],
+   ['_','b','B','B','B','B','B','B','B','B','b','_']],
+  // 走路 3
+  [['_','_','P','P','P','P','P','P','P','P','_','_'],
+   ['_','_','P','P','p','_','_','p','P','P','_','_'],
+   ['_','_','_','P','P','_','_','P','P','p','_','_'],
+   ['_','_','_','P','P','_','_','P','p','_','_','_'],
+   ['_','_','_','b','B','_','_','B','b','_','_','_'],
+   ['_','_','_','B','B','_','_','B','B','b','_','_'],
+   ['_','b','B','B','_','_','_','_','B','B','b','_']],
+];
+
+// 手臂（左右各自偏移，走路搖擺）
+function drawArms(bx, by, frame, attackT) {
+  const armC = K['A'], handC = K['F'];
+  if (attackT > 0) {
+    // 左手靜止
+    for (let r = 0; r < 4; r++) px(bx, by, 0, 9 + r, armC);
+    px(bx, by, 0, 13, handC);
+    // 右手持槍射擊
+    for (let r = 0; r < 4; r++) px(bx, by, 11, 9 + r, armC);
+    px(bx, by, 11, 13, handC);
+    // 槍管
+    px(bx, by, 12, 11, K['G']); px(bx, by, 13, 11, K['G']);
+    px(bx, by, 12, 12, K['g']); px(bx, by, 13, 12, K['g']);
+  } else {
+    const swing = Math.sin(frame * Math.PI / 2);
+    const lo = Math.round(swing);
+    const ro = Math.round(-swing);
+    for (let r = 0; r < 4; r++) {
+      px(bx, by, 0,  9 + r + lo, armC);
+      px(bx, by, 11, 9 + r + ro, armC);
+    }
+    px(bx, by, 0,  13 + lo, handC);
+    px(bx, by, 11, 13 + ro, handC);
+  }
+}
+
+function px(bx, by, col, row, color) {
+  if (!color || color === '_') return;
+  cx.fillStyle = color;
+  cx.fillRect(bx + col * S, by + row * S, S, S);
+}
+
+function drawChar(bx, by, walkF, attackT, glow) {
+  if (glow > 0) {
+    cx.save();
+    cx.shadowColor = '#4488FF';
+    cx.shadowBlur = 20 * glow;
+  }
+  BASE.forEach((row, r) => row.forEach((k, c) => px(bx, by, c, r, K[k])));
+  LEGS[walkF % 4].forEach((row, r) => row.forEach((k, c) => px(bx, by, c, 14 + r, K[k])));
+  drawArms(bx, by, walkF, attackT);
+  if (glow > 0) cx.restore();
+}
+
+// ─── 粒子 ────────────────────────────────────────────────────────────────────
+const parts = [];
+function burst(x, y, color, n, speed = 4) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = 0.5 + Math.random() * speed;
+    parts.push({ x, y, vx: Math.cos(a)*v, vy: Math.sin(a)*v - 1.5,
+                 life: 1, decay: 0.025 + Math.random()*0.03,
+                 size: 2 + Math.random()*3, color });
+  }
+}
+
+// ─── 狀態 ────────────────────────────────────────────────────────────────────
+let walkF = 0, walkT = 0;
+let attackT = 0;
+let glowT = 0;
+let t = 0;
+
+// ─── 多個角色展示 ─────────────────────────────────────────────────────────
+const chars = [
+  { x: 30,  label: '走路動畫',  glow: 0,   attack: 0 },
+  { x: 170, label: '射擊特效',  glow: 0,   attack: 0 },
+  { x: 310, label: '能量護盾',  glow: 1,   attack: 0 },
+  { x: 450, label: '擊中閃爍',  glow: 0,   attack: 0 },
+];
+
+cv.addEventListener('click', (e) => {
+  const rect = cv.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  // 觸發射擊特效
+  chars[1].attack = 1.0;
+  burst(chars[1].x + 13*S, chars[1].y + 11*S, '#FFEE44', 10, 5);
+  burst(chars[1].x + 13*S, chars[1].y + 11*S, '#FF8800', 6, 3);
+  // 觸發擊中
+  chars[3].hitFlash = 1.0;
+  burst(chars[3].x + 6*S, chars[3].y + 10*S, '#FF3333', 12, 4);
+  burst(chars[3].x + 6*S, chars[3].y + 10*S, '#FFAAAA', 6, 2);
+});
+
+function frame() {
+  t += 0.016;
+
+  // 走路計時
+  walkT += 0.016;
+  if (walkT > 0.14) { walkT = 0; walkF = (walkF + 1) % 4; }
+
+  chars.forEach(c => {
+    if (c.attack > 0) c.attack = Math.max(0, c.attack - 0.04);
+    if (c.hitFlash > 0) c.hitFlash = Math.max(0, c.hitFlash - 0.06);
+  });
+
+  // 粒子更新
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.12;
+    p.life -= p.decay;
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+
+  // ── 繪製 ──────────────────────────────────────────────────────────────────
+  cx.fillStyle = '#0C0C18';
+  cx.fillRect(0, 0, W, H);
+
+  // 地板格線
+  cx.strokeStyle = '#151525';
+  cx.lineWidth = 1;
+  for (let gx = 0; gx < W; gx += 40) { cx.beginPath(); cx.moveTo(gx,0); cx.lineTo(gx,H); cx.stroke(); }
+  for (let gy = 0; gy < H; gy += 40) { cx.beginPath(); cx.moveTo(0,gy); cx.lineTo(W,gy); cx.stroke(); }
+
+  const BY = 100; // base Y for characters
+
+  chars.forEach((c, i) => {
+    const cy2 = BY + Math.sin(t * 2 + i * 0.5) * 3; // 呼吸感
+
+    // 陰影
+    cx.save();
+    cx.globalAlpha = 0.3;
+    cx.fillStyle = '#000';
+    cx.beginPath();
+    cx.ellipse(c.x + 6*S, BY + 21*S + 4, 5*S, 5, 0, 0, Math.PI * 2);
+    cx.fill();
+    cx.restore();
+
+    // 能量護盾光圈
+    if (c.glow) {
+      const pulse = Math.sin(t * 3) * 0.3 + 0.7;
+      cx.save();
+      cx.globalAlpha = 0.15 * pulse;
+      cx.fillStyle = '#4488FF';
+      cx.beginPath();
+      cx.ellipse(c.x + 6*S, cy2 + 10*S, 8*S, 12*S, 0, 0, Math.PI * 2);
+      cx.fill();
+      cx.globalAlpha = 0.4 * pulse;
+      cx.strokeStyle = '#66AAFF';
+      cx.lineWidth = 2;
+      cx.stroke();
+      cx.restore();
+    }
+
+    // 擊中閃白
+    if (c.hitFlash > 0) {
+      cx.save();
+      cx.globalAlpha = c.hitFlash * 0.7;
+      cx.fillStyle = '#FF4444';
+      cx.beginPath();
+      cx.ellipse(c.x + 6*S, cy2 + 10*S, 9*S, 13*S, 0, 0, Math.PI * 2);
+      cx.fill();
+      cx.restore();
+    }
+
+    // 角色本體
+    drawChar(c.x, cy2, walkF, c.attack || 0, c.glow ? (Math.sin(t*3)*0.3+0.7) : 0);
+
+    // 攻擊火花
+    if (c.attack > 0.6) {
+      cx.save();
+      cx.globalAlpha = (c.attack - 0.6) / 0.4;
+      cx.fillStyle = '#FFEE44';
+      cx.shadowColor = '#FF8800';
+      cx.shadowBlur = 20;
+      cx.beginPath();
+      cx.arc(c.x + 14*S, cy2 + 11*S, 6, 0, Math.PI*2);
+      cx.fill();
+      cx.restore();
+    }
+
+    // HP Bar
+    cx.fillStyle = '#222';
+    cx.fillRect(c.x, BY + 21*S + 12, 12*S, 5);
+    const hp = c.hitFlash ? 1 - c.hitFlash * 0.5 : 1;
+    cx.fillStyle = hp > 0.5 ? '#44BB44' : '#BBAA22';
+    cx.fillRect(c.x, BY + 21*S + 12, 12*S * hp, 5);
+
+    // 標籤
+    cx.fillStyle = '#444466';
+    cx.font = '11px monospace';
+    cx.textAlign = 'center';
+    cx.fillText(c.label, c.x + 6*S, BY + 21*S + 28);
+  });
+
+  // 粒子
+  parts.forEach(p => {
+    cx.save();
+    cx.globalAlpha = p.life * 0.9;
+    cx.fillStyle = p.color;
+    cx.shadowColor = p.color;
+    cx.shadowBlur = 6;
+    cx.beginPath();
+    cx.arc(p.x, p.y, p.size * p.life, 0, Math.PI*2);
+    cx.fill();
+    cx.restore();
+  });
+
+  // 說明文字
+  cx.textAlign = 'left';
+  cx.fillStyle = '#223';
+  cx.fillRect(0, H - 36, W, 36);
+  cx.fillStyle = '#446';
+  cx.font = '11px monospace';
+  cx.fillText('12×21 像素角色 | Scale 6× | 走路4幀動畫 | 護盾光圈 | 粒子特效 | HP Bar', 16, H - 20);
+  cx.fillText('100% Canvas 2D drawRect — 一張圖片都沒用', 16, H - 8);
+
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

@@ -40,14 +40,14 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
   } else if (zombie.type === 'butcher') {
     swayX = Math.sin(zombie.time / 600) * 2;
     swayY = Math.abs(Math.cos(zombie.time / 600)) * 1.5;
-    rotation += Math.sin(zombie.time / 600) * 0.08;
+    // 精靈圖保持正面朝上，不隨移動方向旋轉
   } else {
     swayX = Math.sin(zombie.time / 100) * 1;
     swayY = Math.cos(zombie.time / 100) * 1;
   }
 
   ctx.translate(zombie.x + swayX, zombie.y + swayY);
-  ctx.rotate(rotation);
+  if (zombie.type !== 'butcher') ctx.rotate(rotation);
 
   if (zombie.type === 'big') {
     const bounce = Math.abs(Math.sin(zombie.time / 400));
@@ -98,32 +98,54 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
     ctx.filter = 'none';
     ctx.shadowBlur = 0;
   } else {
-    ctx.beginPath(); ctx.arc(0, 0, zombie.radius, 0, Math.PI * 2);
-    if      (zombie.type === 'big')         ctx.fillStyle = '#1b5e20';
-    else if (zombie.type === 'slime')       ctx.fillStyle = '#8bc34a';
-    else if (zombie.type === 'slime_small') ctx.fillStyle = '#7cb342';
-    else if (zombie.type === 'spitter')     ctx.fillStyle = '#9c27b0';
-    else                                    ctx.fillStyle = '#4caf50';
-
-    if (zombie.flashWhiteTimer > 0) ctx.fillStyle = '#ffffff';
-    if (zombie.isInfiniteGlow) { ctx.shadowColor = ctx.fillStyle as string; ctx.shadowBlur = 15; }
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#000'; ctx.stroke(); ctx.closePath();
-    ctx.shadowBlur = 0;
+    if (zombie.type !== 'normal') {
+      ctx.beginPath(); ctx.arc(0, 0, zombie.radius, 0, Math.PI * 2);
+      if      (zombie.type === 'big')         ctx.fillStyle = '#1b5e20';
+      else if (zombie.type === 'slime')       ctx.fillStyle = '#8bc34a';
+      else if (zombie.type === 'slime_small') ctx.fillStyle = '#7cb342';
+      else if (zombie.type === 'spitter')     ctx.fillStyle = '#9c27b0';
+      else                                    ctx.fillStyle = '#4caf50';
+      if (zombie.flashWhiteTimer > 0) ctx.fillStyle = '#ffffff';
+      if (zombie.isInfiniteGlow) { ctx.shadowColor = ctx.fillStyle as string; ctx.shadowBlur = 15; }
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#000'; ctx.stroke(); ctx.closePath();
+      ctx.shadowBlur = 0;
+    }
 
     // ── 臉部細節 ────────────────────────────────────────────────────────────
     if (zombie.type === 'normal') {
-      ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff0000';
-      ctx.beginPath(); ctx.arc(-4,-4,2.5,0,Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(4,-4,2.5,0,Math.PI*2); ctx.fill();
+      const walkCycle = Math.sin(zombie.time / 150);
+      // 頭顱
+      ctx.fillStyle = zombie.flashWhiteTimer > 0 ? '#ffffff' : '#e0e0ce';
+      ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(-zombie.radius * 0.7, -zombie.radius * 0.9, zombie.radius * 1.4, zombie.radius * 1.2, 4);
+      ctx.fill(); ctx.stroke();
+      // 眼窩
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.arc(-zombie.radius * 0.3, -zombie.radius * 0.4, 2.5, 0, Math.PI * 2);
+      ctx.arc(zombie.radius * 0.3,  -zombie.radius * 0.4, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      // 靈魂火焰紅眼
+      ctx.fillStyle = '#ff0000';
+      ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(-zombie.radius * 0.3, -zombie.radius * 0.4, 1, 0, Math.PI * 2);
+      ctx.arc(zombie.radius * 0.3,  -zombie.radius * 0.4, 1, 0, Math.PI * 2);
+      ctx.fill();
       ctx.shadowBlur = 0;
-      if (zombie.isCloseToPlayer) {
-        ctx.beginPath(); ctx.moveTo(-6,2); ctx.lineTo(-3,6); ctx.lineTo(0,2); ctx.lineTo(3,6); ctx.lineTo(6,2); ctx.lineTo(6,8); ctx.lineTo(-6,8); ctx.closePath();
-        ctx.fillStyle = '#3e0000'; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
-      } else {
-        ctx.beginPath(); ctx.moveTo(-4,4); ctx.lineTo(4,4); ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+      // 牙齒縫隙
+      ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath(); ctx.moveTo(i * 2, 0); ctx.lineTo(i * 2, 4); ctx.stroke();
       }
+      // 手臂骨
+      const armSwing = walkCycle * 5;
+      ctx.fillStyle = '#e0e0ce'; ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(-zombie.radius * 0.9,  armSwing, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc( zombie.radius * 0.9, -armSwing, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (zombie.type === 'big') {
       ctx.fillStyle = '#8bc34a';
       ctx.beginPath(); ctx.arc(-12,-15,4,0,Math.PI*2); ctx.fill();

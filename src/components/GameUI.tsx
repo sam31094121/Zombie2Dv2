@@ -13,19 +13,21 @@ import { P1Card } from './hud/P1Card';
 import { P2Card } from './hud/P2Card';
 import { WaveDisplay } from './hud/WaveDisplay';
 import { TestModePanel } from './debug/TestModePanel';
+import { UpgradePanel, UpgradeCard } from './UpgradePanel';
+import { LobbyCanvas } from './lobby/LobbyCanvas';
 
 const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
 export const GameUI: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<'start' | 'playing' | 'gameover'>('start');
+  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'gameover'>('start');
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
   const [p2State, setP2State] = useState<Player | null>(null);
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const gameRef = useRef<Game | null>(null);
-  const gameStateRef = useRef<'start' | 'playing' | 'gameover'>('start');
+  const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'gameover'>('start');
 
   // ── 線上模式狀態 ──────────────────────────────────────────
   const [selectionStep, setSelectionStep] = useState<'platform' | 'players' | 'online'>('platform');
@@ -110,7 +112,8 @@ export const GameUI: React.FC = () => {
   };
 
   // ── 本地遊戲開始 ──────────────────────────────────────────
-  const startGame = (count: number) => {
+  // 從大廳傳送門觸發，帶入難度
+  const startGame = (count: number, _difficulty: 'normal' | 'hard' | 'infinite' = 'normal') => {
     setPlayerCount(count);
     audioManager.init();
     audioManager.resume();
@@ -130,6 +133,14 @@ export const GameUI: React.FC = () => {
 
     setGameState('playing');
     startLoop();
+  };
+
+  // StartScreen → 進大廳（單人/雙人本地）
+  const enterLobby = (count: number) => {
+    setPlayerCount(count);
+    audioManager.init();
+    audioManager.resume();
+    setGameState('lobby');
   };
 
   // ── 線上遊戲開始 ──────────────────────────────────────────
@@ -317,6 +328,16 @@ export const GameUI: React.FC = () => {
           className="bg-neutral-900 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-neutral-800 w-full h-full object-cover"
         />
 
+        {/* ── 大廳 ────────────────────────────────────────────── */}
+        {gameState === 'lobby' && (
+          <div className="absolute inset-0 z-30">
+            <LobbyCanvas
+              playerColor="#4fc3f7"
+              onStartGame={(diff) => startGame(playerCount, diff)}
+            />
+          </div>
+        )}
+
         {/* ── 開始畫面 ───────────────────────────────────────── */}
         {gameState === 'start' && (
           <StartScreen
@@ -326,7 +347,7 @@ export const GameUI: React.FC = () => {
             roomCode={roomCode}
             joinInput={joinInput}         setJoinInput={setJoinInput}
             onlineError={onlineError}     setOnlineError={setOnlineError}
-            onStartGame={startGame}
+            onStartGame={enterLobby}
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
             onCancelWait={handleCancelWait}
@@ -375,6 +396,18 @@ export const GameUI: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* ── 升級選擇面板 ─────────────────────────────────────── */}
+        {gameState === 'playing' && (() => {
+          const pendingPlayer = gameRef.current?.upgradePendingPlayer;
+          if (!pendingPlayer) return null;
+          return (
+            <UpgradePanel
+              player={pendingPlayer}
+              onSelect={(card: UpgradeCard) => gameRef.current?.applyUpgrade(pendingPlayer.id, card)}
+            />
+          );
+        })()}
 
         {/* ── 測試面板 ─────────────────────────────────────────── */}
         {gameState === 'playing' && <TestModePanel gameRef={gameRef} />}

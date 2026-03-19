@@ -2,7 +2,7 @@
 // 玩家繪圖邏輯（從 Player.ts 分離，武器繪圖由 WeaponDefinitions 處理）
 // ─────────────────────────────────────────────────────────────────────────────
 import { Player } from '../Player';
-import { WEAPON_REGISTRY } from '../entities/definitions/WeaponDefinitions';
+import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
 
 export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void {
   if (player.hp <= 0) return;
@@ -34,7 +34,8 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
   ctx.save();
   ctx.rotate(angle);
   if (player.weaponSwitchTimer > 0) { ctx.shadowColor = 'white'; ctx.shadowBlur = 10; }
-  WEAPON_REGISTRY[player.weapon]?.[player.level]?.drawWeapon(ctx, player);
+  const wKey = getWeaponKey(player.weaponLevels[player.weapon], player.weaponBranches[player.weapon]);
+  WEAPON_REGISTRY[player.weapon]?.[wKey]?.drawWeapon(ctx, player);
   ctx.restore();
 
   // Hands
@@ -70,7 +71,10 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
 
   // Level indicator
   ctx.fillStyle = 'white'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
-  let levelText = `Lv.${player.level}`;
-  if (player.prestigeLevel > 0) { levelText += ` (+${player.prestigeLevel})`; ctx.fillStyle = '#ffd700'; }
+  const wLv    = player.weaponLevels[player.weapon];
+  const branch = player.weaponBranches[player.weapon];
+  const branchTag = branch ? `[${branch}]` : '';
+  let levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
+  ctx.fillStyle = branch === 'A' ? '#4fc3f7' : branch === 'B' ? '#ff8a65' : 'white';
   ctx.fillText(levelText, player.x, player.y - 30);
 }

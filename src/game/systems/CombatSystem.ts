@@ -7,7 +7,7 @@ import { Player } from '../Player';
 import { Obstacle } from '../map/Obstacle';
 import { Item } from '../Item';
 import { Projectile } from '../Projectile';
-import { WEAPON_REGISTRY } from '../entities/definitions/WeaponDefinitions';
+import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
 
 export function handleObstacleInteractions(game: Game, dt: number): void {
   const obstacleSet = new Set<Obstacle>();
@@ -113,7 +113,9 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
 }
 
 export function handlePlayerAttacks(game: Game, player: Player): void {
-  const weaponDef = WEAPON_REGISTRY[player.weapon]?.[player.level];
+  const wLv  = player.weaponLevels[player.weapon];
+  const wKey = getWeaponKey(wLv, player.weaponBranches[player.weapon]);
+  const weaponDef = WEAPON_REGISTRY[player.weapon]?.[wKey];
   if (!weaponDef) return;
 
   const attackInterval = weaponDef.attackInterval / player.attackSpeedMultiplier;

@@ -84,8 +84,10 @@ export function TestModePanel({ gameRef }: Props) {
   const [open, setOpen] = useState(false);
   const [targetPid, setTargetPid] = useState(1);
   const [spawnCount, setSpawnCount] = useState<1 | 5 | 10>(1);
-  const [p1Lv, setP1Lv] = useState(1);
-  const [p2Lv, setP2Lv] = useState(1);
+  const [p1SwordLv, setP1SwordLv] = useState(1);
+  const [p1GunLv,   setP1GunLv]   = useState(1);
+  const [p2SwordLv, setP2SwordLv] = useState(1);
+  const [p2GunLv,   setP2GunLv]   = useState(1);
 
   const g = () => gameRef.current;
 
@@ -100,17 +102,28 @@ export function TestModePanel({ gameRef }: Props) {
 
   const player = () => g()?.players.find(p => p.id === targetPid) ?? g()?.players[0];
 
+  const getLv = (w: 'sword' | 'gun') =>
+    w === 'sword'
+      ? (targetPid === 1 ? p1SwordLv : p2SwordLv)
+      : (targetPid === 1 ? p1GunLv   : p2GunLv);
+
+  const setLv = (w: 'sword' | 'gun', v: number) => {
+    if (w === 'sword') { targetPid === 1 ? setP1SwordLv(v) : setP2SwordLv(v); }
+    else               { targetPid === 1 ? setP1GunLv(v)   : setP2GunLv(v);   }
+  };
+
   const setWeapon = (w: 'sword' | 'gun') => {
-    const lv = targetPid === 1 ? p1Lv : p2Lv;
-    g()?.debugSetWeapon(targetPid, w, lv);
+    g()?.debugSetWeapon(targetPid, w, getLv(w));
   };
 
   const changeLevel = (w: 'sword' | 'gun', d: number) => {
-    const cur = targetPid === 1 ? p1Lv : p2Lv;
-    const next = Math.max(1, Math.min(5, cur + d));
-    if (targetPid === 1) setP1Lv(next); else setP2Lv(next);
+    const next = Math.max(1, Math.min(8, getLv(w) + d));
+    setLv(w, next);
     g()?.debugSetWeapon(targetPid, w, next);
   };
+
+  const getBranch = (w: 'sword' | 'gun') =>
+    g()?.players.find(p => p.id === targetPid)?.weaponBranches[w] ?? null;
 
   const statusActive = (key: 'shield' | 'speedBoost' | 'slowDebuff' | 'glow') => {
     const p = player();
@@ -150,7 +163,6 @@ export function TestModePanel({ gameRef }: Props) {
     { type: 'monolith',         emoji: '🗿', label: '巨石'  },
   ];
 
-  const curLv = targetPid === 1 ? p1Lv : p2Lv;
 
   if (!open) {
     return (
@@ -190,18 +202,43 @@ export function TestModePanel({ gameRef }: Props) {
           💉 滿血（所有玩家）
         </Btn>
 
+        {/* 劍 */}
         <LevelCtrl
-          label="劍" emoji="🗡️"
-          level={curLv}
+          label="劍" emoji="⚔️"
+          level={getLv('sword')}
           onWeapon={() => setWeapon('sword')}
           onLevel={d => changeLevel('sword', d)}
         />
+        {/* 劍分支（Lv5+ 才顯示） */}
+        {getLv('sword') >= 5 && (
+          <div className="flex gap-1 pl-6">
+            <Btn onClick={() => g()?.debugSetWeaponBranch(targetPid, 'sword', 'A')}
+                 color="blue" active={getBranch('sword') === 'A'}>🌪️ A</Btn>
+            <Btn onClick={() => g()?.debugSetWeaponBranch(targetPid, 'sword', 'B')}
+                 color="red"  active={getBranch('sword') === 'B'}>⚡ B</Btn>
+            <Btn onClick={() => g()?.debugSetWeaponBranch(targetPid, 'sword', null)}
+                 color="gray" active={getBranch('sword') === null}>清除</Btn>
+          </div>
+        )}
+
+        {/* 槍 */}
         <LevelCtrl
           label="槍" emoji="🔫"
-          level={curLv}
+          level={getLv('gun')}
           onWeapon={() => setWeapon('gun')}
           onLevel={d => changeLevel('gun', d)}
         />
+        {/* 槍分支（Lv5+ 才顯示） */}
+        {getLv('gun') >= 5 && (
+          <div className="flex gap-1 pl-6">
+            <Btn onClick={() => g()?.debugSetWeaponBranch(targetPid, 'gun', 'A')}
+                 color="red"  active={getBranch('gun') === 'A'}>🔥 A</Btn>
+            <Btn onClick={() => g()?.debugSetWeaponBranch(targetPid, 'gun', 'B')}
+                 color="yellow" active={getBranch('gun') === 'B'}>🎯 B</Btn>
+            <Btn onClick={() => g()?.debugSetWeaponBranch(targetPid, 'gun', null)}
+                 color="gray" active={getBranch('gun') === null}>清除</Btn>
+          </div>
+        )}
       </Section>
 
       {/* ── 狀態 ── */}
@@ -294,14 +331,20 @@ export function TestModePanel({ gameRef }: Props) {
           active={g()?.debugPaused ?? false}
           className="w-full mt-1"
         >
-          {g()?.debugPaused ? '▶ 繼續生成' : '⏸ 暫停生成'}
+          {g()?.debugPaused ? '▶ 繼續波次' : '⏸ 波次暫停'}
+        </Btn>
+        <Btn
+          onClick={() => g()?.debugToggleHpLock()}
+          color={g()?.debugHpLocked ? 'red' : 'gray'}
+          active={g()?.debugHpLocked ?? false}
+          className="w-full mt-1"
+        >
+          {g()?.debugHpLocked ? '🔓 鎖血：開' : '🔒 鎖血：關'}
         </Btn>
         <div className="grid grid-cols-2 gap-1 mt-1">
           <Btn onClick={() => g()?.debugClearSlime()} color="gray">🧹 黏液</Btn>
           <Btn onClick={() => { if (g()) g()!.hitEffects = []; }} color="gray">🧹 特效</Btn>
-          <Btn onClick={() => { if (g()) g()!.players.forEach(p => { p.hp = p.maxHp; }); }} color="green">
-            💊 全員滿血
-          </Btn>
+          <Btn onClick={() => g()?.debugHealAll()} color="green">💉 全員回血</Btn>
           <Btn onClick={() => { if (g()) g()!.zombies = []; }} color="red">🗑️ 清殭屍</Btn>
         </div>
       </Section>
