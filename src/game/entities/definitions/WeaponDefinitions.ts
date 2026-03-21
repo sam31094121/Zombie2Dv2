@@ -12,7 +12,7 @@ import { ProjectileSpec } from '../../types';
 import { audioManager } from '../../AudioManager';
 import { SwordProjectile } from '../SwordProjectile';
 import type { SwordConfig } from '../SwordProjectile';
-import { drawBranchAShape, drawBranchBShape, getBranchColors } from '../../renderers/SwordRenderer';
+import { drawBranchAShape, drawBranchBShape, getBranchColors, drawStilettoShape, drawWoodenStakeShape, drawRustyDirkShape, drawSoldierDirkShape, drawBlackSteelKatanaShape } from '../../renderers/SwordRenderer';
 
 // ── 武器等級定義介面 ─────────────────────────────────────────────────────────
 export interface IWeaponLevelDef {
@@ -78,55 +78,15 @@ function swordSwingOffset(player: Player): number {
 // ── 突刺刺刀 drawWeapon 輔助（玩家手持時的外觀）──────────────────────────────
 // 刀丟出去時（_swordOut = true）：顯示空拳，不顯示刀
 // 刀回到手上時：顯示刀
-function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: number): void {
-  // ── 刀飛出去時：顯示空拳（接回動畫） ──────────────────────────────────────
-  if ((player as any)._swordOut) {
-    ctx.save();
-    ctx.translate(14, 8);
-    // 拳頭（小圓＋手指暗示）
-    ctx.fillStyle = '#5d4037';
-    ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#4e342e';
-    ctx.beginPath(); ctx.arc(4, -4, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -5, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(-4, -4, 3, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-    return;
-  }
-
-  // ── 刀在手上：畫刺刀 ───────────────────────────────────────────────────────
-  const glows: Array<string | null> = [null, '#ffffff', '#b3e5fc', '#1565c0'];
-  const blurs = [0, 6, 8, 12];
-  const blades = ['#8d5524', '#9e9e9e', '#cfd8dc', '#78909c'];
-  const glow = glows[level - 1];
-
+function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: number = 2): void {
+  if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   ctx.save();
   ctx.translate(14, 8);
   ctx.rotate(swordSwingOffset(player));
-
-  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = blurs[level - 1]; }
-
-  ctx.fillStyle = blades[level - 1];
-  ctx.beginPath();
-  ctx.moveTo(20, 0);
-  ctx.lineTo(4, -3); ctx.lineTo(-2, -4); ctx.lineTo(-2, -2);
-  ctx.lineTo(-12, -2); ctx.lineTo(-12, 2); ctx.lineTo(-2, 2);
-  ctx.lineTo(-2, 4); ctx.lineTo(4, 3);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.beginPath();
-  ctx.moveTo(16, 0); ctx.lineTo(5, -2); ctx.lineTo(3, -1); ctx.lineTo(15, 0);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 1;
-  for (let i = -10; i <= -4; i += 3) {
-    ctx.beginPath(); ctx.moveTo(i, -2); ctx.lineTo(i, 2); ctx.stroke();
-  }
-  ctx.shadowBlur = 0;
+  if (level === 1)      drawWoodenStakeShape(ctx);
+  else if (level === 2) drawRustyDirkShape(ctx);
+  else if (level === 3) drawSoldierDirkShape(ctx);
+  else                  drawBlackSteelKatanaShape(ctx);
   ctx.restore();
 }
 
@@ -412,23 +372,23 @@ function _drawEmptyFist(ctx: CanvasRenderingContext2D): void {
 }
 
 // ── Branch A/B 手持輔助（呼叫 SwordRenderer 的共用 shape）───────────────────
-function _drawHeldBranchA(ctx: CanvasRenderingContext2D, player: Player, blur: number): void {
+function _drawHeldBranchA(ctx: CanvasRenderingContext2D, player: Player): void {
   if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   const colors = getBranchColors('A', player.weaponLevels[player.weapon]);
   ctx.save();
   ctx.translate(14, 8);
   ctx.rotate(swordSwingOffset(player));
-  drawBranchAShape(ctx, colors, blur);
+  drawBranchAShape(ctx, colors);
   ctx.restore();
 }
 
-function _drawHeldBranchB(ctx: CanvasRenderingContext2D, player: Player, blur: number): void {
+function _drawHeldBranchB(ctx: CanvasRenderingContext2D, player: Player): void {
   if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   const colors = getBranchColors('B', player.weaponLevels[player.weapon]);
   ctx.save();
   ctx.translate(14, 8);
   ctx.rotate(swordSwingOffset(player));
-  drawBranchBShape(ctx, colors, blur);
+  drawBranchBShape(ctx, colors);
   ctx.restore();
 }
 
@@ -443,7 +403,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(5, p, m, 0.35, 200, 70, 3, 1500, 300, 1800, 4)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, 12); },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
   },
   '6A': {
     attackInterval: 1700,
@@ -455,7 +415,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(6, p, m, 0.4, 220, 80, 4, 1800, 280, 1700, 4.5)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, 16); },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
   },
   '7A': {
     attackInterval: 1600,
@@ -467,7 +427,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(7, p, m, 0.45, 240, 90, 5, 2000, 260, 1600, 5)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, 20); },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
   },
   '8A': {
     attackInterval: 1500,
@@ -479,7 +439,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(8, p, m, 0.5, 260, 100, 6, 2200, 240, 1500, 5.5)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, 25); },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
   },
 };
 
@@ -497,7 +457,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(5, p, m, 0.4, 280, 8, 400, 25, 120, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, 14); },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
   },
   '6B': {
     attackInterval: 2000,
@@ -509,7 +469,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(6, p, m, 0.45, 300, 10, 350, 35, 140, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, 18); },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
   },
   '7B': {
     attackInterval: 2000,
@@ -521,7 +481,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(7, p, m, 0.5, 320, 12, 300, 48, 160, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, 22); },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
   },
   '8B': {
     attackInterval: 2000,
@@ -533,7 +493,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(8, p, m, 0.55, 350, 15, 280, 65, 180, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, 30); },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
   },
 };
 

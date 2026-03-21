@@ -25,8 +25,8 @@ export function updateSwordProjectiles(
   for (const sword of swords) {
     if (sword.isDone) continue;
 
-    // Branch A：0.5 rps = π/1000 rad/ms；Branch B 不旋轉（直線刺，不需要此值）
-    if (sword.branch === 'A') sword.visualAngle += dt * (Math.PI / 1000);
+    // Branch A：0.3 rps = 0.6π/1000 rad/ms；Branch B 不旋轉（直線刺，不需要此值）
+    if (sword.branch === 'A') sword.visualAngle += dt * (Math.PI * 0.6 / 1000);
 
     switch (sword.state) {
       case 'going_out': _goingOut(sword, game, dt); break;
