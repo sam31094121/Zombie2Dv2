@@ -181,7 +181,7 @@ export function drawBranchBShape(
 // Branch A going_out / returning: 蛇形曲刀飛行
 // ─────────────────────────────────────────────────────────────────────────────
 function _drawFlyingCurved(sword: SwordProjectile, ctx: CanvasRenderingContext2D): void {
-  const colors = _branchColors(sword);
+  const colors = getBranchColors(sword.branch as 'A' | 'B', sword.level);
   const isReturn = sword.state === 'returning';
 
   ctx.rotate(sword.angle + (isReturn ? Math.PI : 0) + sword.visualAngle * 4);
@@ -203,7 +203,7 @@ function _drawFlyingCurved(sword: SwordProjectile, ctx: CanvasRenderingContext2D
 // Branch B: 直線刺（同鐵劍，但用審判流配色）
 // ─────────────────────────────────────────────────────────────────────────────
 function _drawStraightB(sword: SwordProjectile, ctx: CanvasRenderingContext2D): void {
-  const colors = _branchColors(sword);
+  const colors = getBranchColors('B', sword.level);
   const isReturn = sword.state === 'returning';
 
   ctx.rotate(sword.angle);
@@ -229,14 +229,13 @@ function _drawStraightB(sword: SwordProjectile, ctx: CanvasRenderingContext2D): 
 // 顏色輔助
 // ─────────────────────────────────────────────────────────────────────────────
 
-function _branchColors(sword: SwordProjectile): { glow: string; blade: string; handle: string } {
-  if (sword.branch === 'A') {
+export function getBranchColors(branch: 'A' | 'B', level: number): { glow: string; blade: string; handle: string } {
+  if (branch === 'A') {
     const blades = ['#b3e5fc', '#80d8ff', '#e0f7fa', '#ffffff'];
-    return { glow: '#00e5ff', blade: blades[Math.min(sword.level - 5, 3)], handle: '#006064' };
+    return { glow: '#00e5ff', blade: blades[Math.min(level - 5, 3)], handle: '#006064' };
   } else {
-    // Branch B
     const blades = ['#fff9c4', '#ffe082', '#ffca28', '#ff8f00'];
-    return { glow: '#ffea00', blade: blades[Math.min(sword.level - 5, 3)], handle: '#4a148c' };
+    return { glow: '#ffea00', blade: blades[Math.min(level - 5, 3)], handle: '#4a148c' };
   }
 }
 
