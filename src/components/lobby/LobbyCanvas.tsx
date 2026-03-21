@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { LobbyScene } from '../../game/lobby/LobbyScene';
 import { drawLobby }  from '../../game/lobby/LobbyRenderer';
 import { NPCType }    from '../../game/lobby/LobbyNPC';
+import { Joystick }   from '../Joystick';
 import { PortalPanel }     from './panels/PortalPanel';
 import { BlacksmithPanel } from './panels/BlacksmithPanel';
 import { MerchantPanel }   from './panels/MerchantPanel';
@@ -13,10 +14,11 @@ import { QuestPanel }      from './panels/QuestPanel';
 
 interface Props {
   playerColor?: string;
+  platform?: 'pc' | 'mobile' | null;
   onStartGame: (difficulty: 'normal' | 'hard' | 'infinite') => void;
 }
 
-export function LobbyCanvas({ playerColor = '#4fc3f7', onStartGame }: Props) {
+export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef  = useRef<LobbyScene | null>(null);
   const rafRef    = useRef<number>(0);
@@ -87,6 +89,16 @@ export function LobbyCanvas({ playerColor = '#4fc3f7', onStartGame }: Props) {
         className="block max-w-full max-h-full"
         style={{ imageRendering: 'pixelated' }}
       />
+
+      {/* 手機版搖桿（只在 mobile 且面板未開時顯示） */}
+      {platform === 'mobile' && !openPanel && (
+        <div className="absolute bottom-8 left-8 z-30">
+          <Joystick
+            color={playerColor}
+            onMove={(input) => { if (sceneRef.current) sceneRef.current.joystick = input; }}
+          />
+        </div>
+      )}
 
       {/* NPC 面板 */}
       {openPanel === 'portal'     && <PortalPanel     onStart={onStartGame}      onClose={() => closePanel('portal')}     />}

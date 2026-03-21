@@ -333,6 +333,7 @@ export const GameUI: React.FC = () => {
           <div className="absolute inset-0 z-30">
             <LobbyCanvas
               playerColor="#4fc3f7"
+              platform={platform}
               onStartGame={(diff) => startGame(playerCount, diff)}
             />
           </div>

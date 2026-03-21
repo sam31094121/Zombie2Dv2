@@ -7,8 +7,12 @@
 //   ✅ Game.ts handlePlayerAttacks / Player.ts draw() 主邏輯零修改
 // ────────────────────────────────────────────────────────────────────────────
 import type { Player } from '../../Player';
+import type { Game } from '../../Game';
 import { ProjectileSpec } from '../../types';
 import { audioManager } from '../../AudioManager';
+import { SwordProjectile } from '../SwordProjectile';
+import type { SwordConfig } from '../SwordProjectile';
+import { drawBranchAShape, drawBranchBShape } from '../../renderers/SwordRenderer';
 
 // ── 武器等級定義介面 ─────────────────────────────────────────────────────────
 export interface IWeaponLevelDef {
@@ -19,6 +23,9 @@ export interface IWeaponLevelDef {
   // 產生這次攻擊的所有子彈規格
   // dmgMult = player.damageMultiplier × altar boost（由 caller 計算）
   fire(player: Player, dmgMult: number): ProjectileSpec[];
+
+  // 進階攻擊（Branch A/B 劍系使用）：直接操作 game，fire() 回傳空陣列
+  fireDirect?: (game: Game, player: Player, dmgMult: number) => void;
 
   // 繪製武器（ctx 已由 caller 做 rotate(aimAngle)）
   // 函式內自己 save/restore
@@ -68,99 +75,126 @@ function swordSwingOffset(player: Player): number {
   return t < dur ? -Math.PI / 2 + (t / dur) * Math.PI : -Math.PI / 4;
 }
 
+// ── 突刺刺刀 drawWeapon 輔助（玩家手持時的外觀）──────────────────────────────
+// 刀丟出去時（_swordOut = true）：顯示空拳，不顯示刀
+// 刀回到手上時：顯示刀
+function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: number): void {
+  // ── 刀飛出去時：顯示空拳（接回動畫） ──────────────────────────────────────
+  if ((player as any)._swordOut) {
+    ctx.save();
+    ctx.translate(14, 8);
+    // 拳頭（小圓＋手指暗示）
+    ctx.fillStyle = '#5d4037';
+    ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4e342e';
+    ctx.beginPath(); ctx.arc(4, -4, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -5, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-4, -4, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // ── 刀在手上：畫刺刀 ───────────────────────────────────────────────────────
+  const glows: Array<string | null> = [null, '#ffffff', '#b3e5fc', '#1565c0'];
+  const blurs = [0, 6, 8, 12];
+  const blades = ['#8d5524', '#9e9e9e', '#cfd8dc', '#78909c'];
+  const glow = glows[level - 1];
+
+  ctx.save();
+  ctx.translate(14, 8);
+  ctx.rotate(swordSwingOffset(player));
+
+  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = blurs[level - 1]; }
+
+  ctx.fillStyle = blades[level - 1];
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(4, -3); ctx.lineTo(-2, -4); ctx.lineTo(-2, -2);
+  ctx.lineTo(-12, -2); ctx.lineTo(-12, 2); ctx.lineTo(-2, 2);
+  ctx.lineTo(-2, 4); ctx.lineTo(4, 3);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.beginPath();
+  ctx.moveTo(16, 0); ctx.lineTo(5, -2); ctx.lineTo(3, -1); ctx.lineTo(15, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  for (let i = -10; i <= -4; i += 3) {
+    ctx.beginPath(); ctx.moveTo(i, -2); ctx.lineTo(i, 2); ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ── 飛刀 fireDirect 參數（base branch）──────────────────────────────────────
+function _mkBase(level: number, p: Player, dmgMult: number): SwordConfig {
+  // maxRange 隨等級微增；damage = 等級數；冷卻統一 800ms
+  const ranges = [160, 180, 200, 220];
+  const speed = 0.42;
+  const maxRange = ranges[level - 1];
+  const attackInterval = 800;
+  return {
+    branch: 'base', level, ownerId: p.id,
+    x: p.x, y: p.y, angle: p.aimAngle, dmgMult,
+    passRadius: 12,
+    damage: level,          // Lv1=1, Lv2=2, Lv3=3, Lv4=4
+    speed, maxRange, attackInterval,
+    spinRadius: 0, spinDamage: 0, spinDuration: 0, spinTickMs: 0,
+    embedDuration: 0, explodeDamage: 0, explodeRadius: 0,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// WEAPON REGISTRY
+// WEAPON REGISTRY（劍 Lv1-4：Brotato 回旋飛刀）
 // ═══════════════════════════════════════════════════════════════════════════
 export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
 
   1: {
     attackInterval: 800,
-    fire: (player, dmgMult) => {
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(1);
-      return [makeSwordSpec(player, dmgMult, 50, 1)];
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(1, p, m)));
     },
-    drawWeapon(ctx, player) {
-      ctx.save();
-      ctx.translate(15, 10);
-      ctx.rotate(swordSwingOffset(player));
-      ctx.lineWidth = 2; ctx.strokeStyle = '#222';
-      // Blade
-      ctx.fillStyle = '#9e9e9e';
-      ctx.beginPath(); ctx.moveTo(0,-3); ctx.lineTo(18,-3); ctx.lineTo(22,0); ctx.lineTo(18,3); ctx.lineTo(0,3); ctx.fill();
-      ctx.stroke();
-      // Blood stain
-      ctx.fillStyle = 'rgba(139,0,0,0.6)';
-      ctx.beginPath(); ctx.moveTo(15,-2); ctx.lineTo(21,0); ctx.lineTo(15,2); ctx.fill();
-      // Handle
-      ctx.fillStyle = '#3e2723'; ctx.fillRect(-6,-2,6,4); ctx.strokeRect(-6,-2,6,4);
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 1); },
   },
 
   2: {
-    attackInterval: 500,
-    fire: (player, dmgMult) => {
+    attackInterval: 800,
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(2);
-      return [makeSwordSpec(player, dmgMult, 90, 3)];
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(2, p, m)));
     },
-    drawWeapon(ctx, player) {
-      ctx.save();
-      ctx.translate(15, 10);
-      ctx.rotate(swordSwingOffset(player));
-      ctx.lineWidth = 2; ctx.strokeStyle = '#222';
-      ctx.fillStyle = '#cfd8dc';
-      ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(28,-2); ctx.lineTo(32,0); ctx.lineTo(28,2); ctx.lineTo(0,4); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#90a4ae'; ctx.fillRect(2,-1,20,2);
-      ctx.fillStyle = '#ffb300'; ctx.fillRect(-2,-8,4,16); ctx.strokeRect(-2,-8,4,16);
-      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-8,-2,6,4);
-      ctx.fillStyle = '#ffb300'; ctx.beginPath(); ctx.arc(-9,0,3,0,Math.PI*2); ctx.fill(); ctx.stroke();
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 2); },
   },
 
   3: {
-    attackInterval: 1000,
-    fire: (player, dmgMult) => {
+    attackInterval: 800,
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(3);
-      return [makeSwordSpec(player, dmgMult, 180, 3)];
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(3, p, m)));
     },
-    drawWeapon(ctx, player) {
-      ctx.save();
-      ctx.translate(15, 10);
-      ctx.rotate(swordSwingOffset(player));
-      ctx.lineWidth = 2; ctx.strokeStyle = '#222';
-      ctx.fillStyle = '#eceff1';
-      ctx.beginPath(); ctx.moveTo(0,-2); ctx.quadraticCurveTo(15,-6,35,-2); ctx.lineTo(38,2); ctx.quadraticCurveTo(15,0,0,2); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(2,0); ctx.quadraticCurveTo(15,-2,32,0); ctx.stroke();
-      ctx.lineWidth = 2; ctx.strokeStyle = '#222';
-      ctx.fillStyle = '#212121'; ctx.fillRect(-2,-5,3,10);
-      ctx.fillStyle = '#b71c1c'; ctx.fillRect(-10,-2,8,4);
-      ctx.fillStyle = '#000';
-      for(let i=-9;i<-2;i+=3){ ctx.fillRect(i,-2,1,4); }
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 3); },
   },
 
   4: {
-    attackInterval: 1200,
-    fire: (player, dmgMult) => {
+    attackInterval: 800,
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(4);
-      return [makeSwordSpec(player, dmgMult, 180, 3)];
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(4, p, m)));
     },
-    drawWeapon(ctx, player) {
-      ctx.save();
-      ctx.translate(15, 10);
-      ctx.rotate(swordSwingOffset(player));
-      ctx.lineWidth = 2; ctx.strokeStyle = '#222';
-      ctx.fillStyle = '#37474f';
-      ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(35,-6); ctx.lineTo(45,0); ctx.lineTo(35,6); ctx.lineTo(0,8); ctx.fill(); ctx.stroke();
-      ctx.shadowColor = '#ff1744'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff1744'; ctx.font = '10px Arial'; ctx.fillText('▼▲▼',15,3); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#263238';
-      ctx.beginPath(); ctx.moveTo(-4,-12); ctx.lineTo(2,-8); ctx.lineTo(2,8); ctx.lineTo(-4,12); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#111'; ctx.fillRect(-12,-3,8,6);
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 4); },
   },
 
   5: {
@@ -317,131 +351,197 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SWORD 分支：Lv5A-8A（旋風流） / Lv5B-8B（審判流）
+// SWORD 分支：Lv5A-8A（旋風流）— 回旋鏢 + 旋轉場 + 回飛
+// 使用 fireDirect 直接創建 SwordProjectile，fire() 回傳空陣列
 // ═══════════════════════════════════════════════════════════════════════════
+
+function makeSwordConfigA(
+  level: number,
+  p: Player,
+  dmgMult: number,
+  speed: number,
+  maxRange: number,
+  spinRadius: number,
+  spinDamage: number,
+  spinDuration: number,
+  spinTickMs: number,
+  attackInterval: number,
+  damage: number,
+): SwordConfig {
+  return {
+    branch: 'A', level, ownerId: p.id,
+    x: p.x, y: p.y, angle: p.aimAngle, dmgMult,
+    passRadius: 14, damage, speed, maxRange, attackInterval,
+    spinRadius, spinDamage, spinDuration, spinTickMs,
+    embedDuration: 0, explodeDamage: 0, explodeRadius: 0,
+  };
+}
+
+function makeSwordConfigB(
+  level: number,
+  p: Player,
+  dmgMult: number,
+  speed: number,
+  maxRange: number,
+  damage: number,
+  embedDuration: number,
+  explodeDamage: number,
+  explodeRadius: number,
+  attackInterval: number,
+): SwordConfig {
+  return {
+    branch: 'B', level, ownerId: p.id,
+    x: p.x, y: p.y, angle: p.aimAngle, dmgMult,
+    passRadius: 14, damage, speed, maxRange, attackInterval,
+    spinRadius: 0, spinDamage: 0, spinDuration: 0, spinTickMs: 0,
+    embedDuration, explodeDamage, explodeRadius,
+  };
+}
+
+// ── 空拳（刀丟出去時的手部）─────────────────────────────────────────────────
+function _drawEmptyFist(ctx: CanvasRenderingContext2D): void {
+  ctx.save();
+  ctx.translate(14, 8);
+  ctx.fillStyle = '#5d4037';
+  ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#4e342e';
+  ctx.beginPath(); ctx.arc(4, -4, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -5, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(-4, -4, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// ── Branch A/B 手持輔助（呼叫 SwordRenderer 的共用 shape）───────────────────
+function _drawHeldBranchA(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  colors: { blade: string; glow: string; handle: string },
+  blur: number,
+): void {
+  if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
+  ctx.save();
+  ctx.translate(14, 8);
+  ctx.rotate(swordSwingOffset(player));
+  drawBranchAShape(ctx, colors, blur);
+  ctx.restore();
+}
+
+function _drawHeldBranchB(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  colors: { blade: string; glow: string; handle: string },
+  blur: number,
+): void {
+  if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
+  ctx.save();
+  ctx.translate(14, 8);
+  ctx.rotate(swordSwingOffset(player));
+  drawBranchBShape(ctx, colors, blur);
+  ctx.restore();
+}
+
 const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
   '5A': {
-    attackInterval: 600,
-    fire: (p, m) => { audioManager.playSlash(4); return [makeSwordSpec(p, m, 200, 4)]; },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#4fc3f7'; ctx.shadowBlur = 12;
-      ctx.fillStyle = '#b3e5fc';
-      ctx.beginPath(); ctx.moveTo(0,-5); ctx.lineTo(40,-3); ctx.lineTo(50,0); ctx.lineTo(40,3); ctx.lineTo(0,5); ctx.fill();
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(5,-1); ctx.lineTo(38,0); ctx.lineTo(5,1); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#1a237e'; ctx.fillRect(-10,-4,10,8);
-      ctx.restore();
+    attackInterval: 1800,
+    fire: () => [],
+    fireDirect(game, p, m) {
+      audioManager.playSlash(4);
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigA(5, p, m, 0.35, 200, 70, 3, 1500, 300, 1800, 4)
+      ));
     },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, { glow: '#4fc3f7', blade: '#b3e5fc', handle: '#1a237e' }, 12); },
   },
   '6A': {
-    attackInterval: 550,
-    fire: (p, m) => {
+    attackInterval: 1700,
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(4);
-      const a = p.aimAngle;
-      return [
-        { ...makeSwordSpec(p, m, 220, 4), vx: Math.cos(a - 0.3), vy: Math.sin(a - 0.3) },
-        { ...makeSwordSpec(p, m, 220, 4), vx: Math.cos(a + 0.3), vy: Math.sin(a + 0.3) },
-      ];
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigA(6, p, m, 0.4, 220, 80, 4, 1800, 280, 1700, 4.5)
+      ));
     },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#00b0ff'; ctx.shadowBlur = 16;
-      ctx.fillStyle = '#80d8ff';
-      ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(44,-3); ctx.lineTo(55,0); ctx.lineTo(44,3); ctx.lineTo(0,6); ctx.fill();
-      ctx.fillStyle = '#e1f5fe'; ctx.beginPath(); ctx.moveTo(5,-1); ctx.lineTo(42,0); ctx.lineTo(5,1); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#0d47a1'; ctx.fillRect(-12,-5,12,10);
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, { glow: '#00b0ff', blade: '#80d8ff', handle: '#0d47a1' }, 16); },
   },
   '7A': {
-    attackInterval: 500,
-    fire: (p, m) => {
+    attackInterval: 1600,
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(5);
-      const a = p.aimAngle;
-      return [-0.5, 0, 0.5].map(o => ({ ...makeSwordSpec(p, m, 240, 4.5), vx: Math.cos(a+o), vy: Math.sin(a+o) }));
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigA(7, p, m, 0.45, 240, 90, 5, 2000, 260, 1600, 5)
+      ));
     },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20;
-      ctx.fillStyle = '#e0f7fa';
-      ctx.beginPath(); ctx.moveTo(0,-7); ctx.lineTo(48,-3); ctx.lineTo(60,0); ctx.lineTo(48,3); ctx.lineTo(0,7); ctx.fill();
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(5,-2); ctx.lineTo(46,0); ctx.lineTo(5,2); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#006064'; ctx.fillRect(-14,-5,14,10);
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, { glow: '#00e5ff', blade: '#e0f7fa', handle: '#006064' }, 20); },
   },
   '8A': {
-    attackInterval: 450,
-    fire: (p, m) => {
+    attackInterval: 1500,
+    fire: () => [],
+    fireDirect(game, p, m) {
       audioManager.playSlash(5);
-      const a = p.aimAngle;
-      return [-0.8, -0.3, 0, 0.3, 0.8].map(o => ({ ...makeSwordSpec(p, m, 260, 5), vx: Math.cos(a+o), vy: Math.sin(a+o) }));
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigA(8, p, m, 0.5, 260, 100, 6, 2200, 240, 1500, 5.5)
+      ));
     },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 25;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(0,-7); ctx.lineTo(52,-2); ctx.lineTo(65,0); ctx.lineTo(52,2); ctx.lineTo(0,7); ctx.fill();
-      ctx.fillStyle = '#00e5ff'; ctx.fillRect(10,-2,35,4);
-      ctx.shadowBlur = 0; ctx.fillStyle = '#000051'; ctx.fillRect(-16,-6,16,12);
-      ctx.restore();
-    },
+    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p, { glow: '#00e5ff', blade: '#ffffff', handle: '#000051' }, 25); },
   },
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SWORD 分支：Lv5B-8B（審判流）— 飛出 → 嵌入目標 → AOE 大爆炸
+// ═══════════════════════════════════════════════════════════════════════════
 const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
   '5B': {
-    attackInterval: 1600,
-    fire: (p, m) => { audioManager.playSlash(5); return [makeSwordSpec(p, m, 320, 8)]; },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#ffea00'; ctx.shadowBlur = 14;
-      ctx.fillStyle = '#fff9c4';
-      ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(50,-3); ctx.lineTo(62,0); ctx.lineTo(50,3); ctx.lineTo(0,6); ctx.fill();
-      ctx.fillStyle = '#ffea00'; ctx.beginPath(); ctx.moveTo(8,-2); ctx.lineTo(48,0); ctx.lineTo(8,2); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#4a148c'; ctx.fillRect(-12,-5,12,10);
-      ctx.restore();
+    attackInterval: 2000,
+    fire: () => [],
+    fireDirect(game, p, m) {
+      audioManager.playSlash(5);
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigB(5, p, m, 0.4, 280, 8, 400, 25, 120, 2000)
+      ));
     },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, { glow: '#ffea00', blade: '#fff9c4', handle: '#4a148c' }, 14); },
   },
   '6B': {
-    attackInterval: 1600,
-    fire: (p, m) => { audioManager.playSlash(5); return [makeSwordSpec(p, m, 360, 12)]; },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#ff6f00'; ctx.shadowBlur = 18;
-      ctx.fillStyle = '#ffe0b2';
-      ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(55,-3); ctx.lineTo(68,0); ctx.lineTo(55,3); ctx.lineTo(0,8); ctx.fill();
-      ctx.fillStyle = '#ffcc02'; ctx.beginPath(); ctx.moveTo(8,-2); ctx.lineTo(52,0); ctx.lineTo(8,2); ctx.fill();
-      ctx.shadowBlur = 0; ctx.fillStyle = '#bf360c'; ctx.fillRect(-14,-6,14,12);
-      ctx.restore();
+    attackInterval: 2000,
+    fire: () => [],
+    fireDirect(game, p, m) {
+      audioManager.playSlash(5);
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigB(6, p, m, 0.45, 300, 10, 350, 35, 140, 2000)
+      ));
     },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, { glow: '#ff6f00', blade: '#ffe0b2', handle: '#bf360c' }, 18); },
   },
   '7B': {
-    attackInterval: 1800,
-    fire: (p, m) => { audioManager.playSlash(5); return [makeSwordSpec(p, m, 400, 16)]; },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#ff1744'; ctx.shadowBlur = 22;
-      ctx.fillStyle = '#ffcdd2';
-      ctx.beginPath(); ctx.moveTo(0,-9); ctx.lineTo(58,-3); ctx.lineTo(72,0); ctx.lineTo(58,3); ctx.lineTo(0,9); ctx.fill();
-      ctx.fillStyle = '#ff1744'; ctx.fillRect(10,-3,48,6);
-      ctx.shadowBlur = 0; ctx.fillStyle = '#7f0000'; ctx.fillRect(-16,-7,16,14);
-      ctx.restore();
+    attackInterval: 2000,
+    fire: () => [],
+    fireDirect(game, p, m) {
+      audioManager.playSlash(5);
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigB(7, p, m, 0.5, 320, 12, 300, 48, 160, 2000)
+      ));
     },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, { glow: '#ff1744', blade: '#ffcdd2', handle: '#7f0000' }, 22); },
   },
   '8B': {
     attackInterval: 2000,
-    fire: (p, m) => { audioManager.playSlash(5); return [makeSwordSpec(p, m, 450, 22)]; },
-    drawWeapon(ctx, p) {
-      ctx.save(); ctx.translate(15,10); ctx.rotate(swordSwingOffset(p));
-      ctx.shadowColor = '#ff1744'; ctx.shadowBlur = 30;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(62,-3); ctx.lineTo(78,0); ctx.lineTo(62,3); ctx.lineTo(0,10); ctx.fill();
-      ctx.fillStyle = '#ff1744'; ctx.fillRect(12,-3,52,6);
-      ctx.fillStyle = '#ffea00'; ctx.fillRect(50,-5,12,10);
-      ctx.shadowBlur = 0; ctx.fillStyle = '#4a148c'; ctx.fillRect(-18,-8,18,16);
-      ctx.restore();
+    fire: () => [],
+    fireDirect(game, p, m) {
+      audioManager.playSlash(5);
+      (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(
+        makeSwordConfigB(8, p, m, 0.55, 350, 15, 280, 65, 180, 2000)
+      ));
     },
+    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p, { glow: '#ff1744', blade: '#ffffff', handle: '#4a148c' }, 30); },
   },
 };
 

@@ -118,6 +118,9 @@ export function handlePlayerAttacks(game: Game, player: Player): void {
   const weaponDef = WEAPON_REGISTRY[player.weapon]?.[wKey];
   if (!weaponDef) return;
 
+  // 劍系：刀在飛行中時不允許再丟（安全保護，正常情況由回程時機自然控制）
+  if (player.weapon === 'sword' && (player as any)._swordOut) return;
+
   const attackInterval = weaponDef.attackInterval / player.attackSpeedMultiplier;
 
   if (Date.now() - player.lastAttackTime > attackInterval) {
@@ -127,12 +130,17 @@ export function handlePlayerAttacks(game: Game, player: Player): void {
 
     const fireOnce = () => {
       if (player.hp <= 0) return;
-      const specs = weaponDef.fire(player, dmgMult);
-      for (const s of specs) {
-        game.projectiles.push(new Projectile(
-          s.ownerId, s.x, s.y, s.vx, s.vy,
-          s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level
-        ));
+      if (weaponDef.fireDirect) {
+        // Branch weapons (Sword A/B): delegate to direct handler
+        weaponDef.fireDirect(game, player, dmgMult);
+      } else {
+        const specs = weaponDef.fire(player, dmgMult);
+        for (const s of specs) {
+          game.projectiles.push(new Projectile(
+            s.ownerId, s.x, s.y, s.vx, s.vy,
+            s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level
+          ));
+        }
       }
     };
 

@@ -115,7 +115,7 @@ export class Zombie {
     }
 
     // 擊退物理（免疫擊退的殭屍跳過）
-    if (!def.immuneToKnockback) {
+    if ((def.knockbackResistLevel ?? 0) < 10) {
       this.x += this.vx * (dt / 16);
       this.y += this.vy * (dt / 16);
       const friction = Math.pow(0.92, dt / 16);

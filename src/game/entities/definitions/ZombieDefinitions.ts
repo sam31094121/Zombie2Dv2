@@ -43,8 +43,10 @@ export interface IZombieDefinition {
   readonly orbCount: number;
   readonly orbColor: string;
   readonly orbValue: number;
-  // 行為旗標
-  readonly immuneToKnockback?: boolean;  // 免疫擊退（屠夫）
+  // 擊退阻力等級 0~10（0=無阻力 / 10=完全免疫）詳見 KNOCKBACK_SPEC.md
+  readonly knockbackResistLevel?: number;
+  /** @deprecated 請改用 knockbackResistLevel: 10 */
+  readonly immuneToKnockback?: boolean;
   readonly leavesTrail?: boolean;        // 移動時留黏液痕（slime 類）
   // 行為 Hook：設定後完全取代預設「追向最近玩家」邏輯
   readonly updateBehavior?: (self: Zombie, ctx: ZombieBehaviorCtx) => void;
@@ -258,6 +260,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 1,
     orbColor: '#2196f3',
     orbValue: 1,
+    knockbackResistLevel: 1,   // 標準小怪，幾乎無阻力
   },
 
   big: {
@@ -267,6 +270,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 4,
     orbColor: '#9c27b0',
     orbValue: 2,
+    knockbackResistLevel: 6,   // 大型，中強阻力（只被推 40%）
     onObstacleCollide: (_self, obs) => {
       if (obs.type === 'sandbag') obs.takeDamage(0.5);
     },
@@ -279,6 +283,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
+    knockbackResistLevel: 1,   // 同 normal
     leavesTrail: true,
     splitOnDeath: slimeSplit,
   },
@@ -290,6 +295,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 1,
     orbColor: '#4caf50',
     orbValue: 1,
+    knockbackResistLevel: 0,   // 最輕，完全無阻力
     leavesTrail: true,
   },
 
@@ -300,17 +306,18 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
+    knockbackResistLevel: 1,   // 同 normal
     updateBehavior: spitterBehavior,
   },
 
   butcher: {
     radius: 40,
-    baseHp: 500,
+    baseHp: 50,
     baseSpeed: 0.7,
     orbCount: 15,
     orbColor: '#f44336',
     orbValue: 8,
-    immuneToKnockback: true,
+    knockbackResistLevel: 7,   // 重型，強阻力（只被推 30%）
     updateBehavior: butcherBehavior,
   },
 };

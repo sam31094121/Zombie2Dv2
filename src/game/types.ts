@@ -17,6 +17,29 @@ export type ObstacleType =
 
 export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' | 'butcher';
 
+// ── 場地殘留效果（龍捲風 / 岩漿標記）────────────────────────────────────────
+export interface ActiveEffect {
+  type: 'tornado' | 'lava_mark';
+  x: number;
+  y: number;
+  radius: number;
+  lifetime: number;
+  maxLifetime: number;
+
+  // 傷害 tick
+  damage: number;
+  tickInterval: number;   // ms between damage ticks
+  tickTimer: number;      // countdown to next tick
+
+  ownerId: number;
+  level: number;
+
+  // lava_mark 專用：跟蹤目標殭屍，死亡後清空
+  targetZombieId?: number;
+  explodeRadius?: number;
+  explodeDamage?: number;
+}
+
 // 子彈建立規格（WeaponDefinitions.fire() 的回傳型別）
 export interface ProjectileSpec {
   ownerId: number;

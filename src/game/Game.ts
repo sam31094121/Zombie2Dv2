@@ -16,13 +16,21 @@ import { spawnZombie as _spawnZombie, spawnItemAt as _spawnItemAt, spawnItem as 
 import { applyWaveMechanisms as _applyWaveMechanisms, drawWaveFilters as _drawWaveFilters } from './systems/WaveMechanicsSystem';
 import { serializeState as _serializeState, applyNetworkState as _applyNetworkState } from './systems/NetworkSyncSystem';
 import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestZombie as _findNearestZombie, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
+import { SwordProjectile } from './entities/SwordProjectile';
+import { updateSwordProjectiles } from './systems/SwordSystem';
+import { updateActiveEffects } from './systems/ActiveEffectSystem';
+import { drawSwordProjectiles } from './renderers/SwordRenderer';
+import { drawActiveEffects } from './renderers/EffectRenderer';
+import type { ActiveEffect } from './types';
 
 export class Game {
   players: Player[] = [];
   zombies: Zombie[] = [];
   projectiles: Projectile[] = [];
+  swordProjectiles: SwordProjectile[] = [];
   items: Item[] = [];
   hitEffects: HitEffect[] = [];
+  activeEffects: ActiveEffect[] = [];
   healVFX: { x: number, y: number, alpha: number, startTime: number }[] = [];
   slimeTrails: { x: number, y: number, radius: number, lifetime: number, maxLifetime: number }[] = [];
   mapManager: MapManager;
@@ -68,6 +76,9 @@ export class Game {
   // ── Host 模式（P2P）：本地跑完整物理後序列化送給 P2 ──────
   isHostMode: boolean = false;
 
+  // ── 劍系投射物擊殺佇列（SwordSystem 填入，Game.update 結尾處理）
+  pendingSwordKills: Map<Zombie, { ownerId: number; level: number }> = new Map();
+
   // ── Feature 5: Lag compensation — hitbox expansion + backward reconciliation
   lagCompensationRadius: number = 0;
   playerLatencies: Map<number, number> = new Map(); // playerId → one-way latency (ms)
@@ -104,8 +115,10 @@ export class Game {
     }
     this.zombies = [];
     this.projectiles = [];
+    this.swordProjectiles = [];
     this.items = [];
     this.hitEffects = [];
+    this.activeEffects = [];
     this.slimeTrails = [];
     this.keys = {};
     this.score = 0;
@@ -676,6 +689,18 @@ export class Game {
 
     this.handleObstacleInteractions(dt);
 
+    // Update sword projectiles (Branch A/B boomerang + embed)
+    updateSwordProjectiles(this.swordProjectiles, this, dt);
+
+    // 更新場地效果（龍捲風 / 岩漿標記）並蒐集新的擊殺
+    updateActiveEffects(this, dt);
+
+    // 處理劍系 + 場地效果擊殺（SwordSystem / ActiveEffectSystem 蒐集的死亡殭屍）
+    for (const [zombie, { ownerId, level }] of this.pendingSwordKills) {
+      if (zombie.hp <= 0) this.killZombie(zombie, ownerId, level);
+    }
+    this.pendingSwordKills.clear();
+
     // Update projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
@@ -863,49 +888,8 @@ export class Game {
           }
 
           if (zombie.hp <= 0) {
-            audioManager.playKill();
-
-            // ── 從登錄表讀取 orb 掉落規格（加新殭屍只加 ZOMBIE_REGISTRY）──
-            const zombieDef = ZOMBIE_REGISTRY[zombie.type];
-            for (let i = 0; i < zombieDef.orbCount; i++) {
-              const offsetX = (Math.random() - 0.5) * 20;
-              const offsetY = (Math.random() - 0.5) * 20;
-              this.items.push(new Item(
-                zombie.x + offsetX, zombie.y + offsetY,
-                'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor
-              ));
-            }
-
-            // 解體特效（高等級子彈）
-            if (zombie.type === 'normal' || zombie.type === 'spitter') {
-              if (proj.level >= 4) {
-                this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'dismember', lifetime: 500, maxLifetime: 500 });
-              }
-            }
-
-            // ── 分裂行為：從登錄表讀取（slime → 2 slime_small）────────────
-            if (zombieDef.splitOnDeath) {
-              const specs = zombieDef.splitOnDeath(zombie.x, zombie.y);
-              for (const spec of specs) {
-                const child = new Zombie(spec.x, spec.y, spec.type);
-                child.vx = spec.vx;
-                child.vy = spec.vy;
-                this.zombies.push(child);
-                proj.hitZombies.add(child); // 防止子彈立即再次命中
-              }
-            }
-
-            this.zombies.splice(j, 1);
-            this.score++;
-            const owner = this.players.find(p => p.id === proj.ownerId);
-            if (owner) {
-              owner.kills++;
-            }
-            
-            // 10% chance to drop an item
-            if (Math.random() < 0.10) {
-              this.spawnItemAt(zombie.x, zombie.y);
-            }
+            const children = this.killZombie(zombie, proj.ownerId, proj.level);
+            for (const child of children) proj.hitZombies.add(child);
           }
 
           if (proj.type === 'bullet' && proj.hitZombies.size >= proj.pierce) {
@@ -1009,6 +993,62 @@ export class Game {
   spawnItemAt(x: number, y: number) { _spawnItemAt(this, x, y); }
   spawnItem() { _spawnItem(this); }
 
+  /**
+   * 殭屍死亡統一處理：音效、掉落 orb、爆裂特效、slime 分裂、移除、加分。
+   * 回傳新生成的子殭屍（供呼叫方加入命中保護 Set）。
+   */
+  killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number): Zombie[] {
+    audioManager.playKill();
+    const zombieDef = ZOMBIE_REGISTRY[zombie.type];
+
+    // 掉落能量球
+    for (let i = 0; i < zombieDef.orbCount; i++) {
+      const ox = (Math.random() - 0.5) * 20;
+      const oy = (Math.random() - 0.5) * 20;
+      this.items.push(new Item(zombie.x + ox, zombie.y + oy, 'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor));
+    }
+
+    // 爆裂死亡特效
+    this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'death_burst', lifetime: 450, maxLifetime: 450 });
+
+    // 解體特效（高等級攻擊）
+    if ((zombie.type === 'normal' || zombie.type === 'spitter') && attackLevel >= 4) {
+      this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'dismember', lifetime: 500, maxLifetime: 500 });
+    }
+
+    // slime 分裂
+    const children: Zombie[] = [];
+    if (zombieDef.splitOnDeath) {
+      const specs = zombieDef.splitOnDeath(zombie.x, zombie.y);
+      for (const spec of specs) {
+        const child = new Zombie(spec.x, spec.y, spec.type);
+        child.vx = spec.vx;
+        child.vy = spec.vy;
+        this.zombies.push(child);
+        children.push(child);
+      }
+    }
+
+    // 岩漿標記：怪死時鎖定位置 + 生成焦屍視覺
+    for (const effect of this.activeEffects) {
+      if (effect.type === 'lava_mark' && effect.targetZombieId === zombie.id) {
+        effect.targetZombieId = undefined;  // 停止跟蹤，位置已鎖定
+        this.hitEffects.push({ x: effect.x, y: effect.y, type: 'charred_body', lifetime: effect.lifetime + 300, maxLifetime: effect.lifetime + 300 });
+      }
+    }
+
+    const idx = this.zombies.indexOf(zombie);
+    if (idx !== -1) this.zombies.splice(idx, 1);
+
+    this.score++;
+    const owner = this.players.find(p => p.id === ownerId);
+    if (owner) owner.kills++;
+
+    if (Math.random() < 0.10) this.spawnItemAt(zombie.x, zombie.y);
+
+    return children;
+  }
+
   draw(ctx: CanvasRenderingContext2D) {
     ctx.clearRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
     
@@ -1051,6 +1091,8 @@ export class Game {
       if (alpha !== undefined) ctx.globalAlpha = 1;
     }
     for (const proj of this.projectiles) proj.draw(ctx);
+    drawActiveEffects(this.activeEffects, ctx);
+    drawSwordProjectiles(this.swordProjectiles, ctx);
     for (const zombie of this.zombies) zombie.draw(ctx);
     for (const player of this.players) player.draw(ctx);
 
