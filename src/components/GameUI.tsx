@@ -4,7 +4,7 @@ import { Game } from '../game/Game';
 import { CONSTANTS } from '../game/Constants';
 import { Player } from '../game/Player';
 import { audioManager } from '../game/AudioManager';
-import { Joystick } from './Joystick';
+import { MobileControls } from './MobileControls';
 import { NetworkManager } from '../game/NetworkManager';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { StartScreen } from './screens/StartScreen';
@@ -380,22 +380,13 @@ export const GameUI: React.FC = () => {
 
         {/* ── 手機搖桿 ────────────────────────────────────────── */}
         {gameState === 'playing' && platform === 'mobile' && (
-          <div className={`absolute inset-0 pointer-events-none z-20 flex items-end ${(!isOnlineMode && playerCount === 2) ? 'justify-between' : 'justify-center'} p-12`}>
-            <div className="pointer-events-auto">
-              <Joystick
-                onMove={(input) => {
-                  const idx = isOnlineMode ? (myPlayerId - 1) : 0;
-                  gameRef.current?.setJoystickInput(idx, input);
-                }}
-                color="#3498db"
-              />
-            </div>
-            {!isOnlineMode && playerCount === 2 && (
-              <div className="pointer-events-auto">
-                <Joystick onMove={(input) => gameRef.current?.setJoystickInput(1, input)} color="#e74c3c" />
-              </div>
-            )}
-          </div>
+          <MobileControls
+            playerCount={(!isOnlineMode && playerCount === 2) ? 2 : 1}
+            onMove={(playerIdx, input) => {
+              const idx = isOnlineMode ? (myPlayerId - 1) : playerIdx;
+              gameRef.current?.setJoystickInput(idx, input);
+            }}
+          />
         )}
 
         {/* ── 升級選擇面板 ─────────────────────────────────────── */}

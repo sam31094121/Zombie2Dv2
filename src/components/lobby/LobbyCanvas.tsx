@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { LobbyScene } from '../../game/lobby/LobbyScene';
 import { drawLobby }  from '../../game/lobby/LobbyRenderer';
 import { NPCType }    from '../../game/lobby/LobbyNPC';
-import { Joystick }   from '../Joystick';
+import { MobileControls } from '../MobileControls';
 import { PortalPanel }     from './panels/PortalPanel';
 import { BlacksmithPanel } from './panels/BlacksmithPanel';
 import { MerchantPanel }   from './panels/MerchantPanel';
@@ -92,12 +92,10 @@ export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: 
 
       {/* 手機版搖桿（只在 mobile 且面板未開時顯示） */}
       {platform === 'mobile' && !openPanel && (
-        <div className="absolute bottom-8 left-8 z-30">
-          <Joystick
-            color={playerColor}
-            onMove={(input) => { if (sceneRef.current) sceneRef.current.joystick = input; }}
-          />
-        </div>
+        <MobileControls
+          playerCount={1}
+          onMove={(_idx, input) => { if (sceneRef.current) sceneRef.current.joystick = input; }}
+        />
       )}
 
       {/* NPC 面板 */}
