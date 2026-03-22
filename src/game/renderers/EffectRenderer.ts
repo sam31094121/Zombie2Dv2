@@ -12,6 +12,8 @@ export interface HitEffect {
   startTime?: number;
   _grayOut?: boolean;
   radius?: number; // 供 pixel_explosion 等有大小感的特效使用
+  targetX?: number; // 供 arc_lightning 使用
+  targetY?: number; // 供 arc_lightning 使用
 }
 
 export interface HealVFX {
@@ -59,6 +61,65 @@ export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D):
         ctx.fillStyle=`rgba(255,255,255,${ep})`;ctx.beginPath();ctx.arc(effect.x,effect.y,50*(1-ep),0,Math.PI*2);ctx.fill();
       }
       break;
+    case 'fire_trail': {
+      const p = effect.lifetime / effect.maxLifetime;
+      ctx.fillStyle = `rgba(255,100,0,${p * 0.6})`;
+      ctx.beginPath(); ctx.arc(effect.x, effect.y, 10 + (1-p)*10, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    case 'arc_lightning': {
+      if (effect.targetX !== undefined && effect.targetY !== undefined) {
+        const p = effect.lifetime / effect.maxLifetime;
+        // 折線閃電繪製
+        ctx.beginPath();
+        ctx.moveTo(effect.x, effect.y);
+        
+        const dx = effect.targetX - effect.x;
+        const dy = effect.targetY - effect.y;
+        const dist = Math.hypot(dx, dy);
+        const segments = Math.max(3, Math.floor(dist / 20));
+        
+        let cx = effect.x;
+        let cy = effect.y;
+        for (let i = 1; i < segments; i++) {
+          const t = i / segments;
+          // 加入截斷點的隨機偏移 (垂直於原本方向)
+          const nx = effect.x + dx * t;
+          const ny = effect.y + dy * t;
+          const perpX = -dy / dist;
+          const perpY = dx / dist;
+          const offset = (Math.random() - 0.5) * 25;
+          cx = nx + perpX * offset;
+          cy = ny + perpY * offset;
+          ctx.lineTo(cx, cy);
+        }
+        ctx.lineTo(effect.targetX, effect.targetY);
+        
+        ctx.strokeStyle = `rgba(0, 240, 255, ${p})`;
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#00a8ff';
+        ctx.shadowBlur = 10;
+        ctx.lineJoin = 'miter';
+        ctx.stroke();
+
+        // 核心白線
+        ctx.strokeStyle = `rgba(255, 255, 255, ${p})`;
+        ctx.lineWidth = 1;
+        ctx.shadowBlur = 0;
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'arc_spark': {
+      const p = effect.lifetime / effect.maxLifetime;
+      ctx.fillStyle = `rgba(0, 240, 255, ${p})`;
+      ctx.shadowColor = '#00a8ff';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius || 2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
     case 'purple_particles':
       ctx.fillStyle=`rgba(156,39,176,${progress})`;
       for(let i=0;i<5;i++){const a=Math.random()*Math.PI*2;const d=Math.random()*15;ctx.beginPath();ctx.arc(effect.x+Math.cos(a)*d,effect.y+Math.sin(a)*d,2,0,Math.PI*2);ctx.fill();}

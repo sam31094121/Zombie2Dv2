@@ -15,6 +15,7 @@ import type { SwordConfig } from '../SwordProjectile';
 import { drawBranchAShape, drawBranchBShape, getBranchColors, drawStilettoShape, drawWoodenStakeShape, drawRustyDirkShape, drawSoldierDirkShape, drawBlackSteelKatanaShape } from '../../renderers/SwordRenderer';
 import { drawMuzzleFlash } from '../../renderers/EffectRenderer';
 import { MissileProjectile } from '../MissileProjectile';
+import { ArcProjectile } from '../ArcProjectile';
 
 // ── 武器等級定義介面 ─────────────────────────────────────────────────────────
 export interface IWeaponLevelDef {
@@ -87,10 +88,10 @@ function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: num
   ctx.save();
   ctx.translate(14, 8);
   ctx.rotate(swordSwingOffset(player));
-  if (level === 1)      drawWoodenStakeShape(ctx);
+  if (level === 1) drawWoodenStakeShape(ctx);
   else if (level === 2) drawRustyDirkShape(ctx);
   else if (level === 3) drawSoldierDirkShape(ctx);
-  else                  drawBlackSteelKatanaShape(ctx);
+  else drawBlackSteelKatanaShape(ctx);
   ctx.restore();
 }
 
@@ -173,12 +174,12 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
       ctx.rotate(swordSwingOffset(player));
       ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 15;
       ctx.fillStyle = '#e0ffff';
-      ctx.beginPath(); ctx.moveTo(2,-4); ctx.lineTo(45,-2); ctx.lineTo(55,0); ctx.lineTo(45,2); ctx.lineTo(2,4); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(2, -4); ctx.lineTo(45, -2); ctx.lineTo(55, 0); ctx.lineTo(45, 2); ctx.lineTo(2, 4); ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(4,-1); ctx.lineTo(40,0); ctx.lineTo(4,1); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(4, -1); ctx.lineTo(40, 0); ctx.lineTo(4, 1); ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#212121'; ctx.fillRect(-10,-5,12,10);
-      ctx.fillStyle = '#00e5ff'; ctx.fillRect(-6,-3,4,6);
+      ctx.fillStyle = '#212121'; ctx.fillRect(-10, -5, 12, 10);
+      ctx.fillStyle = '#00e5ff'; ctx.fillRect(-6, -3, 4, 6);
       ctx.restore();
     },
   },
@@ -203,49 +204,49 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
 
       const C = {
         silver: '#cbd5e1', white: '#ffffff', shadow: '#475569',
-        deep: '#0f172a',   triggerSteel: '#334155',
-        wood: '#78350f',   woodDark: '#451a03',
-        brass: '#fbbf24',  black: '#000000',
+        deep: '#0f172a', triggerSteel: '#334155',
+        wood: '#78350f', woodDark: '#451a03',
+        brass: '#fbbf24', black: '#000000',
       };
 
       // 1. 槍管
       ctx.fillStyle = C.silver; r(18, 16, 21, 3);
-      ctx.fillStyle = C.white;  r(18, 16, 21, 1);
+      ctx.fillStyle = C.white; r(18, 16, 21, 1);
       ctx.fillStyle = C.shadow; r(18, 18, 21, 1);
-      ctx.fillStyle = C.shadow; r(36, 15,  2, 1); // 準星
+      ctx.fillStyle = C.shadow; r(36, 15, 2, 1); // 準星
 
       // 2. 轉輪
       ctx.fillStyle = C.silver; r(10, 16, 8, 7);
-      ctx.fillStyle = C.white;  r(10, 16, 8, 1);
-      ctx.fillStyle = C.deep;   r(11, 18, 6, 1); // 溝槽
-      ctx.fillStyle = C.deep;   r(11, 21, 6, 1);
+      ctx.fillStyle = C.white; r(10, 16, 8, 1);
+      ctx.fillStyle = C.deep; r(11, 18, 6, 1); // 溝槽
+      ctx.fillStyle = C.deep; r(11, 21, 6, 1);
 
       // 3. 槍身框架
       ctx.fillStyle = C.silver; r(6, 16, 4, 7);
-      ctx.fillStyle = C.white;  r(6, 16, 4, 1);
+      ctx.fillStyle = C.white; r(6, 16, 4, 1);
 
       // 4. 擊錘
       ctx.fillStyle = C.shadow; r(4, 13, 2, 2);
-      ctx.fillStyle = C.deep;   r(5, 15, 2, 2);
+      ctx.fillStyle = C.deep; r(5, 15, 2, 2);
 
       // 5. 握柄（木製）
-      ctx.fillStyle = C.wood;     r(2, 23, 6, 8);
-      ctx.fillStyle = C.wood;     r(3, 31, 5, 2);
-      ctx.fillStyle = C.wood;     r(4, 33, 4, 1);
+      ctx.fillStyle = C.wood; r(2, 23, 6, 8);
+      ctx.fillStyle = C.wood; r(3, 31, 5, 2);
+      ctx.fillStyle = C.wood; r(4, 33, 4, 1);
       ctx.fillStyle = C.woodDark; r(2, 23, 1, 9); // 木紋
       ctx.fillStyle = C.woodDark; r(4, 27, 1, 1);
-      ctx.fillStyle = C.brass;    r(4, 28, 1, 1); // 飾釘
+      ctx.fillStyle = C.brass; r(4, 28, 1, 1); // 飾釘
 
       // 6. 護圈 + 板機
-      ctx.fillStyle = C.shadow;       r( 9, 23, 9, 1); // 護圈上緣
-      ctx.fillStyle = C.shadow;       r(17, 23, 1, 4); // 護圈前緣
-      ctx.fillStyle = C.shadow;       r(10, 27, 7, 1); // 護圈底緣
-      ctx.fillStyle = C.white;        r(11, 28, 5, 1); // 底部反光
-      ctx.fillStyle = C.black;        r(12, 23, 2, 1); // 板機根部陰影
+      ctx.fillStyle = C.shadow; r(9, 23, 9, 1); // 護圈上緣
+      ctx.fillStyle = C.shadow; r(17, 23, 1, 4); // 護圈前緣
+      ctx.fillStyle = C.shadow; r(10, 27, 7, 1); // 護圈底緣
+      ctx.fillStyle = C.white; r(11, 28, 5, 1); // 底部反光
+      ctx.fillStyle = C.black; r(12, 23, 2, 1); // 板機根部陰影
       ctx.fillStyle = C.triggerSteel; r(12, 24, 1, 2); // 板機主體
       ctx.fillStyle = C.triggerSteel; r(13, 25, 1, 1); // 板機鉤尖
-      ctx.fillStyle = C.shadow;       r(12, 24, 1, 1); // 板機高光
-      ctx.fillStyle = C.deep;         r(13, 24, 1, 1); // 板機內陰影
+      ctx.fillStyle = C.shadow; r(12, 24, 1, 1); // 板機高光
+      ctx.fillStyle = C.deep; r(13, 24, 1, 1); // 板機內陰影
 
       // 7. 槍管接縫
       ctx.fillStyle = C.black; r(18, 16, 1, 4);
@@ -269,9 +270,9 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       ctx.save();
       ctx.translate(15, 10);
       ctx.lineWidth = 2; ctx.strokeStyle = '#111';
-      ctx.fillStyle = '#333'; ctx.fillRect(0,-4,22,6); ctx.strokeRect(0,-4,22,6);
-      ctx.fillStyle = '#111'; ctx.fillRect(22,-2,6,3); ctx.fillRect(8,2,4,10);
-      ctx.beginPath(); ctx.moveTo(-2,2); ctx.lineTo(4,2); ctx.lineTo(2,10); ctx.lineTo(-4,10); ctx.fill();
+      ctx.fillStyle = '#333'; ctx.fillRect(0, -4, 22, 6); ctx.strokeRect(0, -4, 22, 6);
+      ctx.fillStyle = '#111'; ctx.fillRect(22, -2, 6, 3); ctx.fillRect(8, 2, 4, 10);
+      ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(4, 2); ctx.lineTo(2, 10); ctx.lineTo(-4, 10); ctx.fill();
       drawMuzzleFlash(ctx, 28, 0, player.lastAttackTime);
       ctx.restore();
     },
@@ -282,10 +283,10 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     attackInterval: 600,
     fire: (player, dmgMult) => {
       audioManager.playShoot(3);
-      const v    = angleVec(player.aimAngle);
+      const v = angleVec(player.aimAngle);
       const perp = { x: -v.y * 10, y: v.x * 10 };
       return [
-        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5,  perp.x,  perp.y),
+        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, perp.x, perp.y),
         makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, -perp.x, -perp.y),
       ];
     },
@@ -293,12 +294,12 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       ctx.save();
       ctx.translate(15, 10);
       ctx.lineWidth = 2; ctx.strokeStyle = '#111';
-      ctx.fillStyle = '#2c3e50'; ctx.fillRect(0,-6,28,5); ctx.strokeRect(0,-6,28,5); // 上管
-      ctx.fillStyle = '#2c3e50'; ctx.fillRect(0, 1,28,5); ctx.strokeRect(0, 1,28,5); // 下管
-      ctx.fillStyle = '#111'; ctx.fillRect(-10,-4,10,8); // 握把
-      ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(5,6); ctx.lineTo(3,14); ctx.lineTo(-2,14); ctx.fill();
+      ctx.fillStyle = '#2c3e50'; ctx.fillRect(0, -6, 28, 5); ctx.strokeRect(0, -6, 28, 5); // 上管
+      ctx.fillStyle = '#2c3e50'; ctx.fillRect(0, 1, 28, 5); ctx.strokeRect(0, 1, 28, 5); // 下管
+      ctx.fillStyle = '#111'; ctx.fillRect(-10, -4, 10, 8); // 握把
+      ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(5, 6); ctx.lineTo(3, 14); ctx.lineTo(-2, 14); ctx.fill();
       drawMuzzleFlash(ctx, 28, -4, player.lastAttackTime);
-      drawMuzzleFlash(ctx, 28,  4, player.lastAttackTime);
+      drawMuzzleFlash(ctx, 28, 4, player.lastAttackTime);
       ctx.restore();
     },
   },
@@ -308,13 +309,13 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     attackInterval: 600,
     fire: (player, dmgMult) => {
       audioManager.playShoot(4);
-      const v    = angleVec(player.aimAngle);
+      const v = angleVec(player.aimAngle);
       const perp = { x: -v.y, y: v.x };
       // 大子彈（中央前方）
       const front = makeBullet(player, dmgMult, v.x, v.y, 3, 2, 10, 8,
         v.x * 8, v.y * 8);
       // 兩顆小子彈（左右後方）
-      const left  = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
+      const left = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
         perp.x * 10 - v.x * 4, perp.y * 10 - v.y * 4);
       const right = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
         -perp.x * 10 - v.x * 4, -perp.y * 10 - v.y * 4);
@@ -325,15 +326,15 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       ctx.translate(15, 10);
       ctx.lineWidth = 2; ctx.strokeStyle = '#111';
       // 雙管
-      ctx.fillStyle = '#3e2723'; ctx.fillRect(0,-6,32,5); ctx.strokeRect(0,-6,32,5);
-      ctx.fillStyle = '#3e2723'; ctx.fillRect(0, 1,32,5); ctx.strokeRect(0, 1,32,5);
+      ctx.fillStyle = '#3e2723'; ctx.fillRect(0, -6, 32, 5); ctx.strokeRect(0, -6, 32, 5);
+      ctx.fillStyle = '#3e2723'; ctx.fillRect(0, 1, 32, 5); ctx.strokeRect(0, 1, 32, 5);
       // 槍管中段連接件
-      ctx.fillStyle = '#212121'; ctx.fillRect(20,-7,4,14);
+      ctx.fillStyle = '#212121'; ctx.fillRect(20, -7, 4, 14);
       // 握把 + 扳機
-      ctx.fillStyle = '#111'; ctx.fillRect(-12,-4,12,8);
-      ctx.beginPath(); ctx.moveTo(0,4); ctx.lineTo(6,4); ctx.lineTo(4,12); ctx.lineTo(-2,12); ctx.fill();
+      ctx.fillStyle = '#111'; ctx.fillRect(-12, -4, 12, 8);
+      ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(6, 4); ctx.lineTo(4, 12); ctx.lineTo(-2, 12); ctx.fill();
       drawMuzzleFlash(ctx, 32, -4, player.lastAttackTime);
-      drawMuzzleFlash(ctx, 32,  4, player.lastAttackTime);
+      drawMuzzleFlash(ctx, 32, 4, player.lastAttackTime);
       ctx.restore();
     },
   },
@@ -539,12 +540,12 @@ function _makeMissile(
     x: p.x, y: p.y,
     angle: p.aimAngle,
     damage: damage * dmgMult,
-    speed:     8,
+    speed: 8,
     turnSpeed: 0.005,   // rad/ms 軟追蹤
-    radius:    10,
-    isSmall:   false,
+    radius: 10,
+    isSmall: false,
     splitAfter,
-    groundFireRadius:   70,  // 跟龍捲風差不多大
+    groundFireRadius: 70,  // 跟龍捲風差不多大
     groundFireDuration: 3000,
   });
 }
@@ -562,31 +563,31 @@ function _drawMissileLauncher(
 
   // 精煉高對比調色盤
   const C = {
-    steelDark:  '#334155',   
-    steelMid:   '#64748b',    
-    steelLight: '#cbd5e1',  
-    steelHigh:  '#f1f5f9',   
-    bloodDeep:  '#991b1b',   
-    bloodMain:  '#ef4444',   
-    bloodGlow:  '#fca5a5',   
-    bloodHigh:  '#fee2e2',   
-    boneSolid:  '#f5f5f4',   
-    eyeRed:     '#ff0000',      
-    brass:      '#fbbf24',       
-    black:      '#0f172a',
-    white:      '#ffffff',
+    steelDark: '#334155',
+    steelMid: '#64748b',
+    steelLight: '#cbd5e1',
+    steelHigh: '#f1f5f9',
+    bloodDeep: '#991b1b',
+    bloodMain: '#ef4444',
+    bloodGlow: '#fca5a5',
+    bloodHigh: '#fee2e2',
+    boneSolid: '#f5f5f4',
+    eyeRed: '#ff0000',
+    brass: '#fbbf24',
+    black: '#0f172a',
+    white: '#ffffff',
   };
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
   // --- 1. 砲管主體 (Polished Barrel) ---
-  ctx.fillStyle = C.steelMid;   r(ox, oy, len, 8);
-  
+  ctx.fillStyle = C.steelMid; r(ox, oy, len, 8);
+
   // 頂部與底部光影
   ctx.fillStyle = C.steelLight; r(ox, oy, len, 2);
-  ctx.fillStyle = C.steelHigh;  r(ox + 2, oy, len - 4, 1);
-  ctx.fillStyle = C.steelDark;  r(ox, oy + 6, len, 2);
+  ctx.fillStyle = C.steelHigh; r(ox + 2, oy, len - 4, 1);
+  ctx.fillStyle = C.steelDark; r(ox, oy + 6, len, 2);
 
   // 機械細節：鉚釘與面板線
   ctx.fillStyle = C.black; r(ox + 8, oy, 1, 8);
@@ -600,14 +601,14 @@ function _drawMissileLauncher(
   const mw = 8;
   const mh = 10;
 
-  ctx.fillStyle = C.steelMid;   r(mx, my, mw, mh);
+  ctx.fillStyle = C.steelMid; r(mx, my, mw, mh);
   ctx.fillStyle = C.steelLight; r(mx, my, mw, 2);
-  ctx.fillStyle = C.steelHigh;  r(mx + 1, my, mw - 2, 1);
-  ctx.fillStyle = C.steelHigh;  r(mx + mw - 2, my + 1, 1, mh - 2);
+  ctx.fillStyle = C.steelHigh; r(mx + 1, my, mw - 2, 1);
+  ctx.fillStyle = C.steelHigh; r(mx + mw - 2, my + 1, 1, mh - 2);
 
-  ctx.fillStyle = C.bloodDeep;  r(mx + mw - 1, my + 1, 1, mh - 2);
-  ctx.fillStyle = C.bloodMain;  r(mx + 2, my + 3, mw - 2, 4);
-  ctx.fillStyle = C.bloodGlow;  r(mx + 4, my + 4, mw - 4, 2);
+  ctx.fillStyle = C.bloodDeep; r(mx + mw - 1, my + 1, 1, mh - 2);
+  ctx.fillStyle = C.bloodMain; r(mx + 2, my + 3, mw - 2, 4);
+  ctx.fillStyle = C.bloodGlow; r(mx + 4, my + 4, mw - 4, 2);
 
   // --- 3. 能量導管組件 (Energy System) ---
   ctx.fillStyle = C.steelDark; r(ox + 6, oy - 2, 4, 4); // 接口 A
@@ -616,19 +617,19 @@ function _drawMissileLauncher(
   ctx.fillStyle = C.bloodHigh; r(ox + 12, oy - 1, 4, 1);
 
   // --- 4. 戰術瞄準器 (Tactical Scope) ---
-  ctx.fillStyle = C.black;      r(ox + 14, oy - 11, 10, 11);
-  ctx.fillStyle = C.steelMid;   r(ox + 15, oy - 10, 8, 9);
-  ctx.fillStyle = C.bloodDeep;  r(ox + 16, oy - 9, 6, 7);
-  ctx.fillStyle = C.eyeRed;     r(ox + 17, oy - 8, 4, 5);
-  ctx.fillStyle = C.white;      r(ox + 17, oy - 8, 1, 1);
+  ctx.fillStyle = C.black; r(ox + 14, oy - 11, 10, 11);
+  ctx.fillStyle = C.steelMid; r(ox + 15, oy - 10, 8, 9);
+  ctx.fillStyle = C.bloodDeep; r(ox + 16, oy - 9, 6, 7);
+  ctx.fillStyle = C.eyeRed; r(ox + 17, oy - 8, 4, 5);
+  ctx.fillStyle = C.white; r(ox + 17, oy - 8, 1, 1);
 
   // --- 5. 握把與板機 (Ergo Grip) ---
-  ctx.fillStyle = C.black;     r(ox + 12, oy + 8, 5, 11);
+  ctx.fillStyle = C.black; r(ox + 12, oy + 8, 5, 11);
   ctx.fillStyle = C.steelDark; r(ox + 13, oy + 8, 3, 11);
   ctx.fillStyle = C.bloodMain; r(ox + 20, oy + 9, 1, 3); // 板機
 
   // --- 6. 後部平衡裝置 (Rear Stock) ---
-  ctx.fillStyle = C.steelMid;  r(ox - 6, oy - 1, 6, 11);
+  ctx.fillStyle = C.steelMid; r(ox - 6, oy - 1, 6, 11);
   ctx.fillStyle = C.steelHigh; r(ox - 6, oy - 1, 6, 1);
   ctx.fillStyle = C.steelDark; r(ox - 6, oy + 8, 6, 2);
 
@@ -690,73 +691,157 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
   },
 };
 
+function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, level: number): void {
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+
+  ctx.translate(14, 10);
+  ctx.scale(0.4, 0.4);
+  ctx.translate(-24, -65);
+
+  const t = Date.now() / 1000;
+  const pulse = (Math.sin(t * 8) + 1) / 2;
+  const lvlExt = (level - 5) * 5; // 隨等級延長的尺寸
+
+  const poly = (pts: number[], fill?: string | CanvasGradient, stroke?: string, lw?: number) => {
+    ctx.beginPath();
+    ctx.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    ctx.closePath();
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke && lw) { ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke(); }
+  };
+  const line = (x1: number, y1: number, x2: number, y2: number, c: string | CanvasGradient, lw: number) => {
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.stroke();
+  };
+
+  // 漸層定義
+  const armorWhite = ctx.createLinearGradient(0, 30, 0, 95);
+  armorWhite.addColorStop(0, '#ffffff');
+  armorWhite.addColorStop(1, '#d1d5db');
+
+  const frameDark = ctx.createLinearGradient(0, 30, 0, 95);
+  frameDark.addColorStop(0, '#475569');
+  frameDark.addColorStop(0.5, '#1e293b');
+  frameDark.addColorStop(1, '#0f172a');
+
+  const goldTrim = ctx.createLinearGradient(10, 0, 130 + lvlExt, 0);
+  goldTrim.addColorStop(0, '#92400e');
+  goldTrim.addColorStop(0.5, '#fbbf24');
+  goldTrim.addColorStop(1, '#92400e');
+
+  const steadyEnergy = ctx.createRadialGradient(48, 52, 0, 48, 52, 5);
+  steadyEnergy.addColorStop(0, '#ffffff');
+  steadyEnergy.addColorStop(0.4, '#38bdf8');
+  steadyEnergy.addColorStop(1, 'rgba(3,105,161,0)');
+
+  // 1. 戰術握把 (Grip)
+  poly([24, 58, 45, 58, 40, 94, 18, 94], armorWhite, '#000', 0.2); // 外殼
+  ctx.globalAlpha = 0.9;
+  poly([22, 64, 38, 64, 36, 90, 20, 90], frameDark); // 防滑區
+  ctx.globalAlpha = 1.0;
+  ctx.fillStyle = '#0f172a'; ctx.fillRect(16, 94, 26, 3); // 底座
+  ctx.beginPath(); ctx.arc(21, 95.5, 0.6, 0, Math.PI * 2); ctx.fillStyle = goldTrim; ctx.fill(); // 金飾點
+
+  // 2. 板機與護圈
+  ctx.beginPath(); ctx.moveTo(45, 58); ctx.bezierCurveTo(45, 80, 60, 80, 60, 65);
+  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2.5; ctx.stroke();
+  poly([48, 60, 46, 72, 50, 72, 52, 60], goldTrim);
+
+  // 3. 槍身主機匣 (Receiver)
+  poly([12, 42, 70, 42, 70, 64, 20, 64, 12, 56], frameDark, '#000', 0.3); // 下層架構
+  poly([15, 40, 65, 40, 65, 54, 18, 54, 15, 48], armorWhite, '#94a3b8', 0.2); // 上層裝甲
+  ctx.globalAlpha = 0.6;
+  line(25, 44, 55, 44, '#94a3b8', 0.3);
+  line(25, 48, 50, 48, '#94a3b8', 0.3);
+  ctx.globalAlpha = 1.0;
+
+  // 機械面板螺絲
+  ctx.fillStyle = '#334155';
+  [20, 24, 60].forEach(x => { ctx.beginPath(); ctx.arc(x, 42, 0.6, 0, Math.PI * 2); ctx.fill(); });
+
+  // 4. 後置擊錘 (Hammer)
+  ctx.beginPath(); ctx.moveTo(12, 48); ctx.bezierCurveTo(2, 48, -2, 38, 8, 34); ctx.lineTo(16, 42); ctx.closePath();
+  ctx.fillStyle = frameDark; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 0.4; ctx.stroke();
+  ctx.beginPath(); ctx.arc(8, 34, 2.5, 0, Math.PI * 2); ctx.fillStyle = goldTrim; ctx.fill();
+
+  // 5. 能源核心觀測窗 (穩定冰藍)
+  ctx.fillStyle = '#020617';
+  if ((ctx as any).roundRect) {
+    ctx.beginPath(); (ctx as any).roundRect(40, 46, 16, 12, 3); ctx.fill();
+  } else {
+    ctx.fillRect(40, 46, 16, 12);
+  }
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.5; ctx.stroke();
+
+  ctx.shadowColor = '#38bdf8'; ctx.shadowBlur = 8;
+  ctx.globalAlpha = 0.6 + pulse * 0.4;
+  ctx.beginPath(); ctx.arc(48, 52, 5, 0, Math.PI * 2); ctx.fillStyle = steadyEnergy; ctx.fill();
+  ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+
+  // 6. 統合式：強化槍管與三刃槍口
+  const blExt = lvlExt; // Blade extension
+  poly([70, 42, 95 + blExt, 42, 105 + blExt, 48, 105 + blExt, 58, 95 + blExt, 64, 70, 64], frameDark, '#000', 0.5); // 槍管護木
+  ctx.globalAlpha = 0.8; ctx.fillStyle = armorWhite; ctx.fillRect(75, 44, 15 + blExt * 0.5, 16); ctx.globalAlpha = 1.0;
+
+  // 上刃 A
+  poly([95 + blExt, 42, 125 + blExt, 28, 105 + blExt, 48, 100 + blExt, 46], armorWhite, '#94a3b8', 0.4);
+  ctx.lineCap = 'round'; line(100 + blExt, 44, 118 + blExt, 34, goldTrim, 0.8); ctx.lineCap = 'butt';
+
+  // 下刃 B
+  poly([95 + blExt, 64, 125 + blExt, 78, 105 + blExt, 58, 100 + blExt, 60], armorWhite, '#94a3b8', 0.4);
+  ctx.lineCap = 'round'; line(100 + blExt, 62, 118 + blExt, 70, goldTrim, 0.8); ctx.lineCap = 'butt';
+
+  // 中央導軌 C
+  poly([85, 53, 135 + blExt, 53, 110 + blExt, 57, 85, 57], '#94a3b8', '#1e293b', 0.4);
+  ctx.globalAlpha = 0.9; line(95, 53, 130 + blExt, 53, '#ffffff', 1.2); ctx.globalAlpha = 1.0;
+
+  // 穩定能量導流
+  ctx.globalAlpha = 0.2; line(65, 53, 120 + blExt, 53, '#7dd3fc', 1.0); ctx.globalAlpha = 1.0;
+  ctx.beginPath(); ctx.moveTo(70, 53); ctx.lineTo(110 + blExt, 53);
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.4; ctx.globalAlpha = 0.4;
+  ctx.setLineDash([3, 6]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1.0;
+
+  // 槍口放電共振火光 (在最前端開火)
+  drawMuzzleFlash(ctx, 135 + blExt, 53, player.lastAttackTime);
+
+  ctx.restore();
+}
+
+function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: number, paralyze: number) {
+  audioManager.playShoot(5); // 觸發電弧手槍發射音效
+  const speed = level >= 8 ? 20 : 16;
+  const vx = Math.cos(p.aimAngle) * speed;
+  const vy = Math.sin(p.aimAngle) * speed;
+  // ArcProjectile(ownerId, level, x, y, vx, vy, damage, jumps, paralyzeDuration)
+  game.arcProjectiles.push(new ArcProjectile(p.id, level, p.x, p.y, vx, vy, damage, jumps, paralyze));
+}
+
 const GUN_BRANCH_B: Record<string, IWeaponLevelDef> = {
   '5B': {
     attackInterval: 1800,
-    fire: (p, m) => {
-      audioManager.playShoot(5);
-      const v = angleVec(p.aimAngle);
-      return [makeBullet(p, m, v.x, v.y, 12, 5, 18, 10)];
-    },
-    drawWeapon(ctx, player) {
-      ctx.save(); ctx.translate(15,10);
-      ctx.fillStyle='#37474f'; ctx.fillRect(0,-4,48,6); ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.strokeRect(0,-4,48,6);
-      ctx.fillStyle='#546e7a'; ctx.fillRect(8,-8,8,3); // scope
-      ctx.fillStyle='#263238'; ctx.fillRect(-14,-3,14,6); ctx.fillRect(16,2,4,10);
-      drawMuzzleFlash(ctx, 48, -1, player.lastAttackTime);
-      ctx.restore();
-    },
+    fire: () => [],
+    fireDirect(game, p) { _fireArc(game, p, 5, 5, 3, 1000); },
+    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 5); },
   },
   '6B': {
     attackInterval: 1800,
-    fire: (p, m) => {
-      audioManager.playShoot(5);
-      const v = angleVec(p.aimAngle);
-      return [makeBullet(p, m, v.x, v.y, 16, 8, 20, 10)];
-    },
-    drawWeapon(ctx, player) {
-      ctx.save(); ctx.translate(15,10);
-      ctx.fillStyle='#263238'; ctx.fillRect(0,-4,54,6); ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.strokeRect(0,-4,54,6);
-      ctx.fillStyle='#455a64'; ctx.fillRect(10,-9,10,4);
-      ctx.fillStyle='#1c313a'; ctx.fillRect(-16,-4,16,8); ctx.fillRect(18,2,4,12);
-      drawMuzzleFlash(ctx, 54, -1, player.lastAttackTime);
-      ctx.restore();
-    },
+    fire: () => [],
+    fireDirect(game, p) { _fireArc(game, p, 6, 6, 5, 1200); },
+    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 6); },
   },
   '7B': {
-    attackInterval: 2000,
-    fire: (p, m) => {
-      audioManager.playShoot(5);
-      const v = angleVec(p.aimAngle);
-      return [makeBullet(p, m, v.x, v.y, 20, 10, 22, 12)];
-    },
-    drawWeapon(ctx, player) {
-      ctx.save(); ctx.translate(15,10);
-      ctx.fillStyle='#1a237e'; ctx.fillRect(0,-5,58,8); ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.strokeRect(0,-5,58,8);
-      ctx.shadowColor='#7c4dff'; ctx.shadowBlur=10; ctx.fillStyle='#7c4dff';
-      ctx.fillRect(58,-3,10,4);
-      ctx.shadowBlur=0; ctx.fillStyle='#311b92'; ctx.fillRect(-16,-4,16,8); ctx.fillRect(20,3,5,12);
-      drawMuzzleFlash(ctx, 68, -1, player.lastAttackTime);
-      ctx.restore();
-    },
+    attackInterval: 1800,
+    fire: () => [],
+    fireDirect(game, p) { _fireArc(game, p, 7, 7, 8, 1500); },
+    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 7); },
   },
   '8B': {
-    attackInterval: 2200,
-    fire: (p, m) => {
-      audioManager.playShoot(5);
-      const v = angleVec(p.aimAngle);
-      return [makeBullet(p, m, v.x, v.y, 28, Infinity, 25, 14)];
-    },
-    drawWeapon(ctx, player) {
-      ctx.save(); ctx.translate(15,10);
-      ctx.shadowColor='#7c4dff'; ctx.shadowBlur=20;
-      ctx.fillStyle='#1a237e'; ctx.fillRect(0,-5,64,8); ctx.strokeStyle='#311b92'; ctx.lineWidth=2; ctx.strokeRect(0,-5,64,8);
-      ctx.fillStyle='#7c4dff'; ctx.fillRect(50,-4,14,6);
-      ctx.fillStyle='#b39ddb'; ctx.fillRect(12,-9,12,4);
-      ctx.shadowBlur=0; ctx.fillStyle='#000028'; ctx.fillRect(-18,-5,18,10); ctx.fillRect(22,3,5,14);
-      drawMuzzleFlash(ctx, 64, -1, player.lastAttackTime);
-      ctx.restore();
-    },
+    attackInterval: 2000,
+    fire: () => [],
+    fireDirect(game, p) { _fireArc(game, p, 8, 8, 10, 2000); },
+    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 8); },
   },
 };
 
@@ -773,14 +858,14 @@ export const WEAPON_BRANCH_INFO: Record<'sword' | 'gun', Record<'A' | 'B', IWeap
   },
   gun: {
     A: { name: '連射流', emoji: '🔥', description: '子彈倍增，超高射速' },
-    B: { name: '狙擊流', emoji: '🎯', description: '無限穿透，精準爆發' },
+    B: { name: '電弧流', emoji: '⚡', description: '連鎖電弧，群體麻痺' },
   },
 };
 
 // ── 統一登錄表 ───────────────────────────────────────────────────────────────
 export const WEAPON_REGISTRY: Record<'sword' | 'gun', Record<number | string, IWeaponLevelDef>> = {
   sword: { ...SWORD_LEVELS, ...SWORD_BRANCH_A, ...SWORD_BRANCH_B },
-  gun:   { ...GUN_LEVELS,   ...GUN_BRANCH_A,   ...GUN_BRANCH_B   },
+  gun: { ...GUN_LEVELS, ...GUN_BRANCH_A, ...GUN_BRANCH_B },
 };
 
 // ── 武器等級鍵值（依玩家 weaponLevel + branch 計算）──────────────────────────

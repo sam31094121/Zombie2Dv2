@@ -23,6 +23,9 @@ import { MissileProjectile } from './entities/MissileProjectile';
 import { updateMissiles } from './systems/MissileSystem';
 import { drawMissiles } from './renderers/MissileRenderer';
 import { updateActiveEffects } from './systems/ActiveEffectSystem';
+import { ArcProjectile } from './entities/ArcProjectile';
+import { ArcSystem } from './modules/ArcSystem';
+import { drawArcProjectiles } from './renderers/ArcRenderer';
 import { drawSwordProjectiles } from './renderers/SwordRenderer';
 import { drawActiveEffects } from './renderers/EffectRenderer';
 import type { ActiveEffect } from './types';
@@ -33,6 +36,7 @@ export class Game {
   projectiles: Projectile[] = [];
   swordProjectiles: SwordProjectile[] = [];
   missiles: MissileProjectile[] = [];
+  arcProjectiles: ArcProjectile[] = [];
   items: Item[] = [];
   hitEffects: HitEffect[] = [];
   activeEffects: ActiveEffect[] = [];
@@ -121,6 +125,8 @@ export class Game {
     this.zombies = [];
     this.projectiles = [];
     this.swordProjectiles = [];
+    this.arcProjectiles = [];
+    this.missiles = [];
     this.items = [];
     this.hitEffects = [];
     this.activeEffects = [];
@@ -700,6 +706,9 @@ export class Game {
     // 更新燃燒導彈（Gun Branch A）
     updateMissiles(this.missiles, this, dt);
 
+    // 更新電弧槍（Gun Branch B）電漿彈與連鎖邏輯
+    ArcSystem.updateArcs(this.arcProjectiles, this, dt);
+
     // 更新場地效果（龍捲風 / 岩漿標記 / 地面火焰）並蒐集新的擊殺
     updateActiveEffects(this, dt);
 
@@ -1002,6 +1011,7 @@ export class Game {
       const specs = zombieDef.splitOnDeath(zombie.x, zombie.y);
       for (const spec of specs) {
         const child = new Zombie(spec.x, spec.y, spec.type);
+        child.id = ++this._zombieIdCounter;
         child.vx = spec.vx;
         child.vy = spec.vy;
         this.zombies.push(child);
@@ -1073,6 +1083,7 @@ export class Game {
     for (const proj of this.projectiles) proj.draw(ctx);
     drawActiveEffects(this.activeEffects, ctx);
     drawMissiles(this.missiles, ctx);
+    drawArcProjectiles(this.arcProjectiles, ctx);
     drawSwordProjectiles(this.swordProjectiles, ctx);
     for (const zombie of this.zombies) zombie.draw(ctx);
     for (const player of this.players) player.draw(ctx);
