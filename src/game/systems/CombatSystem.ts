@@ -114,7 +114,7 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
 
 export function handlePlayerAttacks(game: Game, player: Player): void {
   const wLv  = player.weaponLevels[player.weapon];
-  const wKey = getWeaponKey(wLv, player.weaponBranches[player.weapon]);
+  const wKey = getWeaponKey(player.weapon, wLv, player.weaponBranches[player.weapon]);
   const weaponDef = WEAPON_REGISTRY[player.weapon]?.[wKey];
   if (!weaponDef) return;
 
@@ -138,7 +138,8 @@ export function handlePlayerAttacks(game: Game, player: Player): void {
         for (const s of specs) {
           game.projectiles.push(new Projectile(
             s.ownerId, s.x, s.y, s.vx, s.vy,
-            s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level
+            s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level, false,
+            s.bulletType ?? 'blue_ellipse',
           ));
         }
       }

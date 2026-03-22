@@ -423,6 +423,154 @@ export function drawCyclone(
   ctx.restore();
 }
 
+// ── 地面火焰模組 ──────────────────────────────────────────────────────────────
+// 燃燒導彈命中後留下的 ground_fire ActiveEffect 視覺
+// 用戶設計 64×64，pivot = canvas(32,48)，對齊 game(0,0)（ox=-32, oy=-48）
+// x, y     : 火焰中心（世界座標）
+// radius   : 火焰範圍半徑（設計尺寸 = 32px；scale = radius/32）
+// progress : 0 = 剛產生, 1 = 即將消失
+// ─────────────────────────────────────────────────────────────────────────────
+
+
+export function drawGroundFire(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  progress: number,
+): void {
+  if (progress >= 1) return;
+
+  // 淡入（前 8%）淡出（後 15%）
+  const alpha =
+    progress < 0.08 ? progress / 0.08 :
+    progress > 0.85 ? (1 - progress) / 0.15 : 1;
+  if (alpha <= 0) return;
+
+  const f = Math.floor(Date.now() / 60); // 與用戶設計的 60ms interval 一致
+
+  const GF = {
+    lavaDeep:   '#7f1d1d',
+    lavaMid:    '#dc2626',
+    fireOrange: '#ff6600',
+    fireYellow: '#ffcc00',
+    fireWhite:  '#ffffff',
+  };
+
+  // 座標映射：canvas(32,48) → game(0,0)
+  const ox = -32, oy = -48;
+  const scale = radius / 32;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.imageSmoothingEnabled = false;
+
+  // --- 1. 翻騰熔岩池（橢圓 + 呼吸動畫 + 核心熱點）---
+  const drawLavaPool = (px: number, py: number, w: number, h: number, seed: number) => {
+    const pulse = Math.sin(f * 0.1 + seed) * 2;
+
+    ctx.fillStyle = GF.lavaDeep;
+    ctx.beginPath();
+    ctx.ellipse(px + ox, py + oy, w + pulse, h + pulse / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = GF.lavaMid;
+    ctx.beginPath();
+    ctx.ellipse(px + ox, py + oy, (w - 2) + pulse, (h - 2) + pulse / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = GF.fireOrange;
+    const hox = Math.cos(f * 0.05 + seed) * 3;
+    const hoy = Math.sin(f * 0.05 + seed) * 2;
+    ctx.beginPath();
+    ctx.ellipse(px + ox + hox, py + oy + hoy, w / 2, h / 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  drawLavaPool(32, 48, 18, 8, 101);
+  drawLavaPool(10, 55,  8, 4, 202);
+
+  // --- 2. 巨大火焰（二次貝茲曲線）---
+  const drawBigFlame = (px: number, py: number, seed: number, flameScale: number) => {
+    const fh = (Math.sin(f * 0.3 + seed) * 8) + 15 * flameScale;
+    const fw = 6 + Math.sin(f * 0.2 + seed) * 2;
+
+    ctx.fillStyle = GF.fireOrange;
+    ctx.beginPath();
+    ctx.moveTo(px + ox - fw, py + oy);
+    ctx.quadraticCurveTo(px + ox, py + oy - fh * 1.2, px + ox + fw, py + oy);
+    ctx.fill();
+
+    ctx.fillStyle = GF.fireYellow;
+    ctx.beginPath();
+    ctx.moveTo(px + ox - fw / 2, py + oy);
+    ctx.quadraticCurveTo(px + ox, py + oy - fh * 0.7, px + ox + fw / 2, py + oy);
+    ctx.fill();
+
+    ctx.fillStyle = GF.fireWhite;
+    ctx.fillRect(px + ox - 1, py + oy - 2, 2, 2);
+  };
+
+  drawBigFlame(25, 48,   1, 1.2);
+  drawBigFlame(38, 50,  50, 0.9);
+  drawBigFlame(12, 56, 100, 0.7);
+
+  ctx.restore();
+}
+
+// ── 槍口火光模組 ──────────────────────────────────────────────────────────────
+// 2-frame pixel-art muzzle flash（呼叫方的 canvas 空間中，槍管朝 +X 方向）
+// x, y          : 槍口尖端位置（呼叫方 canvas 座標）
+// lastAttackTime: player.lastAttackTime（Date.now() 時間戳）
+// Frame 1 (0–60ms)   : 4 層 bloom + 側噴 + 火花
+// Frame 2 (60–260ms) : 煙霧消散 + 餘燼（自動淡出）
+// ─────────────────────────────────────────────────────────────────────────────
+export function drawMuzzleFlash(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  lastAttackTime: number,
+): void {
+  const elapsed = Date.now() - lastAttackTime;
+  if (elapsed >= 260) return;
+
+  const r = (dx: number, dy: number, w: number, h: number) =>
+    ctx.fillRect(x + dx, y + dy, w, h);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  if (elapsed < 60) {
+    // ── Frame 1: 大爆閃 ──────────────────────────────────────────────────
+    ctx.fillStyle = '#cc0000'; r(-1, -4, 12,  9); // 外層紅焰
+    ctx.fillStyle = '#ff6600'; r( 0, -3, 10,  7); // 橘色主體
+    ctx.fillStyle = '#ffcc00'; r( 1, -2,  7,  5); // 黃色高溫核
+    ctx.fillStyle = '#ffffff'; r( 2, -1,  5,  3); // 白熱中心
+    ctx.fillStyle = '#ffffff'; r(-1,  0, 14,  1); // 中心貫穿亮線
+    // 側噴（上下各一道）
+    ctx.fillStyle = '#ff6600'; r(-1, -6,  4,  2);
+    ctx.fillStyle = '#ff6600'; r(-1,  5,  4,  2);
+    // 前端火花
+    ctx.fillStyle = '#ffffff'; r(11, -1,  2,  1);
+    ctx.fillStyle = '#ffcc00'; r(11,  1,  2,  1);
+    ctx.fillStyle = '#ffffff'; r(12,  0,  1,  1);
+  } else {
+    // ── Frame 2: 煙霧消散 ────────────────────────────────────────────────
+    const alpha = 1 - (elapsed - 60) / 200;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#4a4d5d'; r(-1, -3,  9,  7); // 深灰煙雲主體
+    ctx.fillStyle = '#4a4d5d'; r( 2, -5,  5, 11); // 縱向擴散
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.fillStyle = '#cc0000'; r( 1, -2,  5,  5); // 殘焰餘燼
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ff6600'; r( 6,  0,  3,  1); // 小火花拖尾
+  }
+
+  ctx.restore();
+}
+
 // ── 場地殘留效果繪圖（龍捲風 / 岩漿標記）────────────────────────────────────
 export function drawActiveEffects(effects: ActiveEffect[], ctx: CanvasRenderingContext2D): void {
   for (const effect of effects) {
@@ -462,6 +610,11 @@ export function drawActiveEffects(effects: ActiveEffect[], ctx: CanvasRenderingC
         // 中心熔岩核
         ctx.fillStyle = `rgba(255,${100+Math.floor(pulse*80)},0,0.95)`;
         ctx.beginPath(); ctx.arc(0, 0, 5 * pulse, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+
+      case 'ground_fire': {
+        drawGroundFire(ctx, effect.x, effect.y, effect.radius, 1 - p);
         break;
       }
 

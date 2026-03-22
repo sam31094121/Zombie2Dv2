@@ -1,85 +1,17 @@
 // ── ProjectileRenderer.ts ─────────────────────────────────────────────────────
 // 子彈繪圖邏輯（從 Projectile.ts 分離）
-// 新增彈種外觀：在 drawProjectile() 加 case，Projectile.ts 零修改
+// 新增彈種外觀：在 BulletDefinitions.ts 加 entry，此檔零修改
 // ─────────────────────────────────────────────────────────────────────────────
 import { Projectile } from '../Projectile';
+import { BULLET_REGISTRY } from './BulletDefinitions';
 
 export function drawProjectile(proj: Projectile, ctx: CanvasRenderingContext2D): void {
   ctx.save();
 
-  // Shadow
-  if (proj.type === 'bullet' || proj.type === 'zombie_spit') {
-    ctx.beginPath();
-    ctx.arc(proj.x + 4, proj.y + 6, proj.radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fill();
-    ctx.closePath();
-  }
-
   if (proj.type === 'bullet') {
-    const angle = Math.atan2(proj.vy, proj.vx);
-    ctx.translate(proj.x, proj.y);
-    ctx.rotate(angle);
-
-    if (proj.level === 1) {
-      // Lv.1: Old Pistol - Small yellow dot
-      ctx.beginPath();
-      ctx.arc(0, 0, 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffeb3b';
-      ctx.fill();
-      ctx.closePath();
-    } else if (proj.level === 2) {
-      // Lv.2: Double-barrel SMG - Blue bullet with trail
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 6, 3, 0, 0, Math.PI * 2);
-      ctx.fillStyle = '#00e5ff';
-      ctx.fill();
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.5)';
-      ctx.fillRect(-15, -2, 10, 4);
-    } else if (proj.level === 3) {
-      // Lv.3: Plasma Gun - Green plasma beam
-      ctx.shadowColor = '#00e676';
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.roundRect(-10, -2, 20, 4, 2);
-      ctx.fillStyle = '#b2ff59';
-      ctx.fill();
-      ctx.closePath();
-      ctx.shadowBlur = 0;
-    } else if (proj.level === 4) {
-      // Lv.4: Explosive Shotgun - Orange-red pellet
-      ctx.shadowColor = '#ff5722';
-      ctx.shadowBlur = 15;
-      ctx.beginPath();
-      ctx.arc(0, 0, 10, 0, Math.PI * 2);
-      ctx.fillStyle = '#ff9800';
-      ctx.fill();
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(255, 87, 34, 0.6)';
-      ctx.beginPath();
-      ctx.moveTo(-25, 0);
-      ctx.lineTo(0, -8);
-      ctx.lineTo(0, 8);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    } else if (proj.level === 5) {
-      // Lv.5: Spacetime Shotgun - Black sphere with spatial distortion
-      ctx.shadowColor = '#9c27b0';
-      ctx.shadowBlur = 15;
-      ctx.beginPath();
-      ctx.arc(0, 0, 12, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(156, 39, 176, 0.5)';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(0, 0, 8, 0, Math.PI * 2);
-      ctx.fillStyle = '#000000';
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    }
+    // 查登錄表，找不到就用預設 blue_ellipse
+    const def = BULLET_REGISTRY[proj.bulletType] ?? BULLET_REGISTRY['blue_ellipse'];
+    def.draw(ctx, proj);
   } else if (proj.type === 'slash') {
     const angle = Math.atan2(proj.vy, proj.vx);
     const progress = 1 - (proj.lifetime / proj.maxLifetime);

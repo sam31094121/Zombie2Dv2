@@ -18,13 +18,15 @@ export class Projectile {
   level: number;
   maxLifetime: number;
   isEnemy: boolean;
+  bulletType: string; // 子彈外觀模組鍵值，預設 'blue_ellipse'
 
   constructor(
     ownerId: number,
     x: number, y: number, vx: number, vy: number,
     damage: number, pierce: number, lifetime: number,
     type: 'bullet' | 'slash' | 'zombie_spit', radius: number, knockback: boolean = false,
-    level: number = 1, isEnemy: boolean = false
+    level: number = 1, isEnemy: boolean = false,
+    bulletType: string = 'blue_ellipse',
   ) {
     this.ownerId = ownerId;
     this.x = x;
@@ -40,6 +42,7 @@ export class Projectile {
     this.knockback = knockback;
     this.level = level;
     this.isEnemy = isEnemy;
+    this.bulletType = bulletType;
   }
 
   update(dt: number, obstacles: Obstacle[]) {

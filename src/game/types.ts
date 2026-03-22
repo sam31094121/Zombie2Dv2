@@ -19,7 +19,7 @@ export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' 
 
 // ── 場地殘留效果（龍捲風 / 岩漿標記）────────────────────────────────────────
 export interface ActiveEffect {
-  type: 'tornado' | 'lava_mark';
+  type: 'tornado' | 'lava_mark' | 'ground_fire';
   x: number;
   y: number;
   radius: number;
@@ -52,4 +52,5 @@ export interface ProjectileSpec {
   radius: number;
   knockback: boolean;
   level: number;
+  bulletType?: string; // 子彈外觀模組鍵值（對應 BULLET_REGISTRY）
 }

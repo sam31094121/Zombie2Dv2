@@ -34,7 +34,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
   ctx.save();
   ctx.rotate(angle);
   if (player.weaponSwitchTimer > 0) { ctx.shadowColor = 'white'; ctx.shadowBlur = 10; }
-  const wKey = getWeaponKey(player.weaponLevels[player.weapon], player.weaponBranches[player.weapon]);
+  const wKey = getWeaponKey(player.weapon, player.weaponLevels[player.weapon], player.weaponBranches[player.weapon]);
   WEAPON_REGISTRY[player.weapon]?.[wKey]?.drawWeapon(ctx, player);
   ctx.restore();
 

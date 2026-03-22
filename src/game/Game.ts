@@ -11,6 +11,7 @@ import { WaveManager } from './WaveManager';
 import { ZOMBIE_REGISTRY } from './entities/definitions/ZombieDefinitions';
 import { WEAPON_REGISTRY } from './entities/definitions/WeaponDefinitions';
 import { drawHitEffect, drawHealVFX, HitEffect } from './renderers/EffectRenderer';
+import { BULLET_REGISTRY } from './renderers/BulletDefinitions';
 import { resolveOverlaps } from './systems/PhysicsSystem';
 import { spawnZombie as _spawnZombie, spawnItemAt as _spawnItemAt, spawnItem as _spawnItem } from './systems/SpawnSystem';
 import { applyWaveMechanisms as _applyWaveMechanisms, drawWaveFilters as _drawWaveFilters } from './systems/WaveMechanicsSystem';
@@ -18,6 +19,9 @@ import { serializeState as _serializeState, applyNetworkState as _applyNetworkSt
 import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestZombie as _findNearestZombie, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
 import { SwordProjectile } from './entities/SwordProjectile';
 import { updateSwordProjectiles } from './systems/SwordSystem';
+import { MissileProjectile } from './entities/MissileProjectile';
+import { updateMissiles } from './systems/MissileSystem';
+import { drawMissiles } from './renderers/MissileRenderer';
 import { updateActiveEffects } from './systems/ActiveEffectSystem';
 import { drawSwordProjectiles } from './renderers/SwordRenderer';
 import { drawActiveEffects } from './renderers/EffectRenderer';
@@ -28,6 +32,7 @@ export class Game {
   zombies: Zombie[] = [];
   projectiles: Projectile[] = [];
   swordProjectiles: SwordProjectile[] = [];
+  missiles: MissileProjectile[] = [];
   items: Item[] = [];
   hitEffects: HitEffect[] = [];
   activeEffects: ActiveEffect[] = [];
@@ -692,7 +697,10 @@ export class Game {
     // Update sword projectiles (Branch A/B boomerang + embed)
     updateSwordProjectiles(this.swordProjectiles, this, dt);
 
-    // 更新場地效果（龍捲風 / 岩漿標記）並蒐集新的擊殺
+    // 更新燃燒導彈（Gun Branch A）
+    updateMissiles(this.missiles, this, dt);
+
+    // 更新場地效果（龍捲風 / 岩漿標記 / 地面火焰）並蒐集新的擊殺
     updateActiveEffects(this, dt);
 
     // 處理劍系 + 場地效果擊殺（SwordSystem / ActiveEffectSystem 蒐集的死亡殭屍）
@@ -848,38 +856,10 @@ export class Game {
             }
           }
 
-          // Hit effects
+          // Hit effects — 由 BulletDefinitions / 未來 SlashDefinitions 的 onHit 決定
           if (proj.type === 'bullet') {
-            if (proj.level === 1) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'grey_sparks', lifetime: 200, maxLifetime: 200 });
-            } else if (proj.level === 2) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'blue_circle', lifetime: 300, maxLifetime: 300 });
-              zombie.vx += Math.cos(Math.random() * Math.PI * 2) * 2; // Shake
-              zombie.vy += Math.sin(Math.random() * Math.PI * 2) * 2;
-            } else if (proj.level === 3) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'green_electricity', lifetime: 400, maxLifetime: 400 });
-              zombie.paralysisTimer = 500;
-            } else if (proj.level === 4) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'orange_explosion', lifetime: 300, maxLifetime: 300 });
-            } else if (proj.level === 5) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'black_hole', lifetime: 600, maxLifetime: 600 });
-              if (zombie.type === 'big') zombie.leanBackTimer = 300;
-            }
-          } else if (proj.type === 'slash') {
-            if (proj.level === 1) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'purple_particles', lifetime: 300, maxLifetime: 300 });
-            } else if (proj.level === 2) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'white_cross', lifetime: 200, maxLifetime: 200 });
-            } else if (proj.level === 3) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'ice_shatter', lifetime: 400, maxLifetime: 400 });
-              zombie.slowTimer = 1000;
-            } else if (proj.level === 4) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'red_blood', lifetime: 400, maxLifetime: 400 });
-            } else if (proj.level === 5) {
-              this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'golden_shatter', lifetime: 500, maxLifetime: 500 });
-              zombie.flashWhiteTimer = 200;
-              if (zombie.type === 'big') zombie.leanBackTimer = 300;
-            }
+            const bulletDef = BULLET_REGISTRY[proj.bulletType] ?? BULLET_REGISTRY['blue_ellipse'];
+            bulletDef.onHit?.({ zombie, pushEffect: e => this.hitEffects.push(e) });
           }
 
           if (zombie.type === 'big') {
@@ -1092,6 +1072,7 @@ export class Game {
     }
     for (const proj of this.projectiles) proj.draw(ctx);
     drawActiveEffects(this.activeEffects, ctx);
+    drawMissiles(this.missiles, ctx);
     drawSwordProjectiles(this.swordProjectiles, ctx);
     for (const zombie of this.zombies) zombie.draw(ctx);
     for (const player of this.players) player.draw(ctx);
