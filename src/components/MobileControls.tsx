@@ -1,8 +1,10 @@
 // ── MobileControls.tsx ────────────────────────────────────────────────────────
-// 統一手機搖桿模組：follow-touch，點哪裡搖桿就出現在哪裡
-// 未觸碰時在底部中央顯示靜止提示；雙人模式左右各一個
+// 統一手機搖桿模組（高效能重構版）
+// 1. 繞過 React setState，使用 DOM Ref 直接控制 (解決觸控掉幀 / 偵測遺失)
+// 2. 加入動態基座漂移 (Dynamic Base Drift) 解決拖曳死區問題
+// 3. 攔截系統事件冒泡 (e.stopPropagation) 解決底層干擾
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 const OUTER_RADIUS = 56;
 const INNER_RADIUS = 22;
@@ -20,7 +22,7 @@ const DEFAULT_JOY = (): JoystickState => ({
   active: false, touchId: -1, baseX: 0, baseY: 0, stickX: 0, stickY: 0,
 });
 
-interface MobileControlsProps {
+export interface MobileControlsProps {
   playerCount: 1 | 2;
   onMove: (playerIndex: number, input: { x: number; y: number } | null) => void;
 }
@@ -50,13 +52,39 @@ function IdleHint({ color }: { color: string }) {
   );
 }
 
-export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
+// ── 核心搖桿管理 Hook（分離邏輯與處理，專門負責輸入更新）────────────────────────
+function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onMove']) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const joysticksRef = useRef<JoystickState[]>([DEFAULT_JOY(), DEFAULT_JOY()]);
+  const joysRef      = useRef<JoystickState[]>([DEFAULT_JOY(), DEFAULT_JOY()]);
   const onMoveRef    = useRef(onMove);
-  onMoveRef.current  = onMove;
+  
+  // DOM Refs (直接操作視覺，不觸發 render)
+  const baseRefs  = useRef<(HTMLDivElement | null)[]>([null, null]);
+  const stickRefs = useRef<(HTMLDivElement | null)[]>([null, null]);
+  const hintRefs  = useRef<(HTMLDivElement | null)[]>([null, null]);
 
-  const [, forceRender] = useState(0);
+  onMoveRef.current = onMove;
+
+  // 更新單一搖桿的 DOM 視覺 (60fps 高效能直接更新)
+  const updateDOM = (p: number, joy: JoystickState) => {
+    const base  = baseRefs.current[p];
+    const stick = stickRefs.current[p];
+    const hint  = hintRefs.current[p];
+    
+    if (!base || !stick || !hint) return;
+
+    if (joy.active) {
+      hint.style.display = 'none';
+      base.style.display = 'block';
+      base.style.left = `${joy.baseX - OUTER_RADIUS}px`;
+      base.style.top  = `${joy.baseY - OUTER_RADIUS}px`;
+      stick.style.transform = `translate(${joy.stickX}px, ${joy.stickY}px)`;
+    } else {
+      hint.style.display = 'block';
+      base.style.display = 'none';
+      stick.style.transform = `translate(0px, 0px)`;
+    }
+  };
 
   useEffect(() => {
     const el = containerRef.current;
@@ -69,13 +97,16 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
 
     const onTouchStart = (e: TouchEvent) => {
       e.preventDefault();
+      e.stopPropagation(); // 攔截冒泡，防止底層 Game.ts 或 GameCanvas 誤判！
+      
       const rect = el.getBoundingClientRect();
-      const joys = joysticksRef.current;
+      const joys = joysRef.current;
 
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         const relX = t.clientX - rect.left;
         const p = getPlayerIndex(relX);
+        
         if (!joys[p].active) {
           joys[p] = {
             active:  true,
@@ -85,27 +116,51 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
             stickX:  0,
             stickY:  0,
           };
+          updateDOM(p, joys[p]);
         }
       }
-      forceRender(n => n + 1);
     };
 
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
+      e.stopPropagation(); // 攔截冒泡
+      
       const rect = el.getBoundingClientRect();
-      const joys = joysticksRef.current;
+      const joys = joysRef.current;
 
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         for (let p = 0; p < joys.length; p++) {
           if (joys[p].active && joys[p].touchId === t.identifier) {
-            const dx      = (t.clientX - rect.left) - joys[p].baseX;
-            const dy      = (t.clientY - rect.top)  - joys[p].baseY;
-            const dist    = Math.hypot(dx, dy);
-            const clamped = Math.min(dist, OUTER_RADIUS);
-            const angle   = Math.atan2(dy, dx);
+            
+            const relX = t.clientX - rect.left;
+            const relY = t.clientY - rect.top;
+            
+            let dx = relX - joys[p].baseX;
+            let dy = relY - joys[p].baseY;
+            const dist = Math.hypot(dx, dy);
+
+            // 動態基座漂移 (Dynamic Base Drift) - 防止玩家滑出死區
+            if (dist > OUTER_RADIUS) {
+              const angle = Math.atan2(dy, dx);
+              // 把基座拉向手指方向，確保手指永遠在搖桿絕對邊界
+              joys[p].baseX = relX - Math.cos(angle) * OUTER_RADIUS;
+              joys[p].baseY = relY - Math.sin(angle) * OUTER_RADIUS;
+              // 依據新基座重新計算距離
+              dx = relX - joys[p].baseX;
+              dy = relY - joys[p].baseY;
+            }
+
+            const finalDist = Math.hypot(dx, dy);
+            const clamped   = Math.min(finalDist, OUTER_RADIUS);
+            const angle     = Math.atan2(dy, dx);
+            
             joys[p].stickX = Math.cos(angle) * clamped;
             joys[p].stickY = Math.sin(angle) * clamped;
+            
+            // 繞過 React state 立即變更視覺
+            updateDOM(p, joys[p]);
+
             onMoveRef.current(p, {
               x: Math.cos(angle) * (clamped / OUTER_RADIUS),
               y: Math.sin(angle) * (clamped / OUTER_RADIUS),
@@ -113,62 +168,77 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
           }
         }
       }
-      forceRender(n => n + 1);
     };
 
     const onTouchEnd = (e: TouchEvent) => {
       e.preventDefault();
-      const joys = joysticksRef.current;
+      e.stopPropagation();
+      const joys = joysRef.current;
 
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         for (let p = 0; p < joys.length; p++) {
           if (joys[p].active && joys[p].touchId === t.identifier) {
             joys[p] = DEFAULT_JOY();
+            updateDOM(p, joys[p]);
             onMoveRef.current(p, null);
           }
         }
       }
-      forceRender(n => n + 1);
     };
 
-    // ── 滑鼠事件（PC 測試用）─────────────────────────────────
+    // ── 滑鼠事件（保持相同的原生更新邏輯，支援 PC 端測試） ──
     const onMouseDown = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
       const relX = e.clientX - rect.left;
       const p = getPlayerIndex(relX);
-      const joys = joysticksRef.current;
+      const joys = joysRef.current;
+      
       if (!joys[p].active) {
         joys[p] = { active: true, touchId: -99 - p, baseX: relX, baseY: e.clientY - rect.top, stickX: 0, stickY: 0 };
+        updateDOM(p, joys[p]);
       }
-      forceRender(n => n + 1);
     };
+    
     const onMouseMove = (e: MouseEvent) => {
       const rect = el.getBoundingClientRect();
-      const joys = joysticksRef.current;
+      const joys = joysRef.current;
+      
       for (let p = 0; p < joys.length; p++) {
         if (joys[p].active && joys[p].touchId === -99 - p) {
-          const dx = (e.clientX - rect.left) - joys[p].baseX;
-          const dy = (e.clientY - rect.top)  - joys[p].baseY;
-          const dist = Math.hypot(dx, dy);
-          const clamped = Math.min(dist, OUTER_RADIUS);
+          const relX = e.clientX - rect.left;
+          const relY = e.clientY - rect.top;
+          let dx = relX - joys[p].baseX;
+          let dy = relY - joys[p].baseY;
+          
+          if (Math.hypot(dx, dy) > OUTER_RADIUS) {
+            const angle = Math.atan2(dy, dx);
+            joys[p].baseX = relX - Math.cos(angle) * OUTER_RADIUS;
+            joys[p].baseY = relY - Math.sin(angle) * OUTER_RADIUS;
+            dx = relX - joys[p].baseX;
+            dy = relY - joys[p].baseY;
+          }
+
+          const clamped = Math.min(Math.hypot(dx, dy), OUTER_RADIUS);
           const angle   = Math.atan2(dy, dx);
           joys[p].stickX = Math.cos(angle) * clamped;
           joys[p].stickY = Math.sin(angle) * clamped;
+          
+          updateDOM(p, joys[p]);
           onMoveRef.current(p, { x: Math.cos(angle) * (clamped / OUTER_RADIUS), y: Math.sin(angle) * (clamped / OUTER_RADIUS) });
-          forceRender(n => n + 1);
         }
       }
     };
+    
     const onMouseUp = () => {
-      const joys = joysticksRef.current;
+      const joys = joysRef.current;
       for (let p = 0; p < joys.length; p++) {
         if (joys[p].active && joys[p].touchId < -1) {
           joys[p] = DEFAULT_JOY();
+          updateDOM(p, joys[p]);
           onMoveRef.current(p, null);
         }
       }
-      forceRender(n => n + 1);
     };
 
     el.addEventListener('touchstart',  onTouchStart, { passive: false });
@@ -178,6 +248,10 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
     el.addEventListener('mousedown',   onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup',   onMouseUp);
+
+    // 第一幀先關閉所有顯示
+    updateDOM(0, DEFAULT_JOY());
+    updateDOM(1, DEFAULT_JOY());
 
     return () => {
       el.removeEventListener('touchstart',  onTouchStart);
@@ -190,10 +264,17 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
     };
   }, [playerCount]);
 
-  const joys = joysticksRef.current;
-  const colors = ['rgba(52,152,219,0.55)', 'rgba(231,76,60,0.55)'];
+  return { containerRef, baseRefs, stickRefs, hintRefs };
+}
 
-  // 靜止提示位置：底部中央，雙人各在自己那半邊的中央
+// ── 渲染層 ───────────────────────────────────────────────────────────────────
+export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
+  // 將所有核心邏輯交還給管理 Hook 處理
+  const { containerRef, baseRefs, stickRefs, hintRefs } = useJoystickManager(playerCount, onMove);
+  
+  const colors = ['rgba(52,152,219,0.55)', 'rgba(231,76,60,0.55)'];
+  const fillColors = ['rgba(52,152,219,0.75)', 'rgba(231,76,60,0.75)'];
+
   const hintPositions = playerCount === 1
     ? [{ left: '50%', bottom: '48px', transform: 'translateX(-50%)' }]
     : [
@@ -201,62 +282,64 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
         { left: '75%', bottom: '48px', transform: 'translateX(-50%)' },
       ];
 
+  // 預先產生兩種 JoyStick 的原生結構，讓 Hook 控制透明度/顯示，避免 React 重繪
+  const renderJoysticks = () => {
+    return Array.from({ length: 2 }).map((_, i) => (
+      <div key={`joy-group-${i}`}>
+        {/* 靜止提示 */}
+        <div
+          ref={el => { hintRefs.current[i] = el; }}
+          style={{ position: 'absolute', display: i < playerCount ? 'block' : 'none', ...(hintPositions[i] || {}) }}
+        >
+          <IdleHint color={colors[i]} />
+        </div>
+
+        {/* 動態搖桿 (預設隱藏) */}
+        <div
+          ref={el => { baseRefs.current[i] = el; }}
+          style={{
+            position:      'absolute',
+            display:       'none',
+            width:         OUTER_RADIUS * 2,
+            height:        OUTER_RADIUS * 2,
+            pointerEvents: 'none',
+          }}
+        >
+          {/* 外環 */}
+          <div style={{
+            position:     'absolute',
+            inset:        0,
+            borderRadius: '50%',
+            border:       '2px solid rgba(255,255,255,0.3)',
+            background:   'rgba(255,255,255,0.06)',
+          }} />
+          {/* 搖桿小球 */}
+          <div
+            ref={el => { stickRefs.current[i] = el; }}
+            style={{
+              position:     'absolute',
+              left:         OUTER_RADIUS - INNER_RADIUS, // 自動置中
+              top:          OUTER_RADIUS - INNER_RADIUS,
+              width:        INNER_RADIUS * 2,
+              height:       INNER_RADIUS * 2,
+              borderRadius: '50%',
+              background:   fillColors[i],
+              border:       '2px solid rgba(255,255,255,0.5)',
+              willChange:   'transform', // 啟用 GPU 加速提升效能
+            }}
+          />
+        </div>
+      </div>
+    ));
+  };
+
   return (
     <div
       ref={containerRef}
       className="absolute inset-0 z-20"
       style={{ touchAction: 'none' }}
     >
-      {/* 靜止提示（未觸碰時顯示） */}
-      {hintPositions.map((pos, i) => (
-        !joys[i]?.active && (
-          <div key={`hint-${i}`} style={{ position: 'absolute', ...pos }}>
-            <IdleHint color={colors[i]} />
-          </div>
-        )
-      ))}
-
-      {/* 觸碰時的動態搖桿 */}
-      {joys.map((joy, i) => {
-        if (!joy.active) return null;
-        const fillColor = i === 0
-          ? 'rgba(52,152,219,0.75)'
-          : 'rgba(231,76,60,0.75)';
-
-        return (
-          <div
-            key={`joy-${i}`}
-            style={{
-              position:      'absolute',
-              left:          joy.baseX - OUTER_RADIUS,
-              top:           joy.baseY - OUTER_RADIUS,
-              width:         OUTER_RADIUS * 2,
-              height:        OUTER_RADIUS * 2,
-              pointerEvents: 'none',
-            }}
-          >
-            {/* 外環 */}
-            <div style={{
-              position:     'absolute',
-              inset:        0,
-              borderRadius: '50%',
-              border:       '2px solid rgba(255,255,255,0.3)',
-              background:   'rgba(255,255,255,0.06)',
-            }} />
-            {/* 搖桿球 */}
-            <div style={{
-              position:     'absolute',
-              left:         OUTER_RADIUS + joy.stickX - INNER_RADIUS,
-              top:          OUTER_RADIUS + joy.stickY - INNER_RADIUS,
-              width:        INNER_RADIUS * 2,
-              height:       INNER_RADIUS * 2,
-              borderRadius: '50%',
-              background:   fillColor,
-              border:       '2px solid rgba(255,255,255,0.5)',
-            }} />
-          </div>
-        );
-      })}
+      {renderJoysticks()}
     </div>
   );
 }
