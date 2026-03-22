@@ -5,6 +5,7 @@
 import type { Game } from '../Game';
 import type { ActiveEffect } from '../types';
 import { audioManager } from '../AudioManager';
+import { spawnZombieAt } from './SpawnSystem';
 
 // 龍捲風吸引力強度（px/ms²），乘以 dt 後加到速度
 // 設定偏保守：不大於 2 * 正常殭屍移速（~1.5 px/ms），讓碰撞系統自行解決重疊
@@ -60,6 +61,13 @@ export function updateActiveEffects(game: Game, dt: number): void {
     // ── lava_mark 到期爆炸 ────────────────────────────────────────────────────
     if (effect.type === 'lava_mark' && effect.lifetime <= 0) {
       _explodeLava(game, effect);
+    }
+    
+    // ── spawn_warning 到期生成殭屍 ──────────────────────────────────────────────
+    if (effect.type === 'spawn_warning' && effect.lifetime <= 0) {
+      if (effect.zombieType) {
+        spawnZombieAt(game, effect.x, effect.y, effect.zombieType as any);
+      }
     }
   }
 

@@ -20,15 +20,23 @@ export const WAVES: Wave[] = [
 
 export class WaveManager {
   currentWave: number = 1;
-  timer: number = 30;
+  timer: number = 20;
   isResting: boolean = false;
   isInfinite: boolean = false;
   difficultyMultiplier: number = 1.0;
   activeMechanics: string[] = [];
   infiniteTimer: number = 0;
   waveIntroTimer: number = 0;
+  mode: 'endless' | 'arena' = 'endless';
+
+  constructor(mode: 'endless' | 'arena' = 'endless') {
+    this.mode = mode;
+    this.timer = this.mode === 'arena' ? 20 : 30;
+  }
 
   update(dt: number) {
+    if (this.isResting && this.mode === 'arena') return; // Arena mode rest state is fully managed manually (Shop Phase)
+
     this.timer -= dt / 1000;
     if (this.waveIntroTimer > 0) {
       this.waveIntroTimer -= dt;
@@ -44,17 +52,22 @@ export class WaveManager {
     }
 
     if (this.timer <= 0) {
-      if (this.isResting) {
-        this.startCombat();
+      if (this.mode === 'arena') {
+        this.timer = 0;
+        this.isResting = true; // Wait for external signal to proceed
       } else {
-        this.startRest();
+        if (this.isResting) {
+          this.startCombat();
+        } else {
+          this.startRest();
+        }
       }
     }
   }
 
   startCombat() {
     this.isResting = false;
-    this.timer = 30;
+    this.timer = this.mode === 'arena' ? Math.min(50, 20 + this.currentWave * 2) : 30;
     this.waveIntroTimer = 3000; // 3 seconds intro
     if (!this.isInfinite) {
       if (this.currentWave < 9) {

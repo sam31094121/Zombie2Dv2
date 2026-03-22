@@ -12,16 +12,38 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
   ctx.translate(item.x, item.y + bobOffset);
 
   if (item.type === 'energy_orb') {
-    const baseColor = item.color || '#00bcd4';
-    const gradient = ctx.createRadialGradient(0,0,0,0,0,item.radius*2);
-    gradient.addColorStop(0, 'white'); gradient.addColorStop(0.2, baseColor); gradient.addColorStop(1, 'transparent');
-    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0,0,item.radius*2.5,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = 'white'; ctx.beginPath(); ctx.arc(0,0,item.radius*0.4,0,Math.PI*2); ctx.fill();
-    for(let i=0;i<3;i++){
-      const a=time*2+(i*Math.PI*2/3);
-      const px=Math.cos(a)*item.radius*1.2; const py=Math.sin(a)*item.radius*1.2;
-      ctx.fillStyle=baseColor; ctx.beginPath(); ctx.arc(px,py,2,0,Math.PI*2); ctx.fill();
+    const baseColor = item.color || '#fbbf24';
+    
+    // Hand-drawn sketch style coin
+    ctx.fillStyle = baseColor;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 2;
+    
+    ctx.beginPath();
+    for (let i = 0; i <= 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        // Deterministic irregular edge based on spawnTime
+        const wobble = Math.sin(i * 15.3 + item.spawnTime) * 0.15;
+        const r = item.radius * (0.95 + wobble);
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
     }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner symbol "Z"
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.font = `bold ${Math.floor(item.radius * 1.2)}px Courier`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Z', 0, 0);
+
+    // Gleam
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.beginPath();
+    ctx.arc(-item.radius * 0.35, -item.radius * 0.35, item.radius * 0.15, 0, Math.PI * 2);
+    ctx.fill();
   } else {
     // Shadow
     ctx.beginPath(); ctx.ellipse(0, 15-bobOffset, item.radius, item.radius*0.4, 0, 0, Math.PI*2);

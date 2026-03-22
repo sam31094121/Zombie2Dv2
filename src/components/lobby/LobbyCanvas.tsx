@@ -15,7 +15,7 @@ import { QuestPanel }      from './panels/QuestPanel';
 interface Props {
   playerColor?: string;
   platform?: 'pc' | 'mobile' | null;
-  onStartGame: (difficulty: 'normal' | 'hard' | 'infinite') => void;
+  onStartGame: (difficulty: 'normal' | 'hard' | 'infinite', mode: 'endless' | 'arena') => void;
 }
 
 export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: Props) {
@@ -99,8 +99,9 @@ export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: 
       )}
 
       {/* NPC 面板 */}
-      {openPanel === 'portal'     && <PortalPanel     onStart={onStartGame}      onClose={() => closePanel('portal')}     />}
-      {openPanel === 'blacksmith' && <BlacksmithPanel                             onClose={() => closePanel('blacksmith')} />}
+      {openPanel === 'portal'       && <PortalPanel     onStart={(diff) => onStartGame(diff, 'endless')} onClose={() => closePanel('portal')}     />}
+      {openPanel === 'arena_portal' && <PortalPanel     onStart={(diff) => onStartGame(diff, 'arena')}   onClose={() => closePanel('arena_portal')} />}
+      {openPanel === 'blacksmith'   && <BlacksmithPanel                                                  onClose={() => closePanel('blacksmith')} />}
       {openPanel === 'merchant'   && <MerchantPanel                               onClose={() => closePanel('merchant')}   />}
       {openPanel === 'gacha'      && <GachaPanel                                  onClose={() => closePanel('gacha')}      />}
       {openPanel === 'questboard' && <QuestPanel                                  onClose={() => closePanel('questboard')} />}

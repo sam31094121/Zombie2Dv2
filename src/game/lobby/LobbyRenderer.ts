@@ -56,6 +56,21 @@ export function drawLobby(scene: LobbyScene, ctx: CanvasRenderingContext2D) {
       ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = '#00e5ff'; ctx.fillText('🌀', 0, 1);
 
+    } else if (npc.id === 'arena_portal') {
+      // 競技場傳送門：狂暴火環
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * TWO_PI - t * 1.5;
+        const r = 26 + Math.sin(t * 3 + i) * 4;
+        ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 4, 0, TWO_PI);
+        ctx.fillStyle = i % 2 === 0 ? '#ff3d00' : '#ffa000'; ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(0, 0, 20, 0, TWO_PI);
+      ctx.fillStyle = '#220000';
+      ctx.shadowColor = '#ff3d00'; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
+      // 中心符文
+      ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ff3d00'; ctx.fillText('⚔️', 0, 1);
+
     } else if (npc.id === 'blacksmith') {
       // 鐵匠：方形身體 + 大錘
       ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = npc.color; ctx.lineWidth = 2;

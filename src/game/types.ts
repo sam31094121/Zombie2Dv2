@@ -17,9 +17,11 @@ export type ObstacleType =
 
 export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' | 'butcher';
 
+export type GameMode = 'endless' | 'arena';
+
 // ── 場地殘留效果（龍捲風 / 岩漿標記）────────────────────────────────────────
 export interface ActiveEffect {
-  type: 'tornado' | 'lava_mark' | 'ground_fire';
+  type: 'tornado' | 'lava_mark' | 'ground_fire' | 'spawn_warning';
   x: number;
   y: number;
   radius: number;
@@ -38,6 +40,9 @@ export interface ActiveEffect {
   targetZombieId?: number;
   explodeRadius?: number;
   explodeDamage?: number;
+
+  // spawn_warning 專用
+  zombieType?: import('./Zombie').ZombieType;
 }
 
 // 子彈建立規格（WeaponDefinitions.fire() 的回傳型別）

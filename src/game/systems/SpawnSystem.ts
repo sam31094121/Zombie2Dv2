@@ -36,6 +36,27 @@ export function spawnZombie(game: Game): void {
   else if (rand < comp.big + comp.slime + comp.spitter) type = 'spitter';
   else type = 'normal';
 
+  if (game.mode === 'arena') {
+    x = Math.random() * game.arenaWidth;
+    y = Math.random() * game.arenaHeight;
+    // 競技場模式：產生警告光圈延遲生成
+    game.activeEffects.push({
+      type: 'spawn_warning',
+      x, y,
+      radius: 30,
+      lifetime: 800,
+      maxLifetime: 800,
+      damage: 0, tickInterval: 800, tickTimer: 800,
+      ownerId: 0, level: 1,
+      zombieType: type
+    });
+    return;
+  }
+
+  spawnZombieAt(game, x, y, type);
+}
+
+export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' | 'big' | 'slime' | 'spitter'): void {
   const zombie = new Zombie(x, y, type);
   zombie.id = ++game._zombieIdCounter;
 

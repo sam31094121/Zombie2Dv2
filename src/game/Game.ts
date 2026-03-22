@@ -1,7 +1,7 @@
 import { CONSTANTS } from './Constants';
 import { Player } from './Player';
 import { Zombie, ZombieType } from './Zombie';
-import { ObstacleType } from './types';
+import { ObstacleType, GameMode } from './types';
 import { Projectile } from './Projectile';
 import { Item, ItemType } from './Item';
 import { MapManager } from './map/MapManager';
@@ -57,6 +57,10 @@ export class Game {
   onGameOver: (time: number, kills: number) => void;
   onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void;
   waveManager: WaveManager;
+  mode: GameMode = 'endless';
+  arenaWidth: number = 1500;
+  arenaHeight: number = 1500;
+  baggedMaterials: number = 0;
 
   // 網路多人模式
   networkMode: boolean = false;
@@ -106,11 +110,12 @@ export class Game {
   private readonly _SNAP_DELAY_MS = 50;
   readonly _SNAP_BUF_MAX = 24;
 
-  constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void) {
+  constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void, mode: GameMode = 'endless') {
     this.onGameOver = onGameOver;
     this.onUpdateUI = onUpdateUI;
     this.mapManager = new MapManager();
-    this.waveManager = new WaveManager();
+    this.mode = mode;
+    this.waveManager = new WaveManager(mode);
     this.init(playerCount);
   }
 
@@ -299,6 +304,32 @@ export class Game {
     player.pendingLevelUp = false;
   }
 
+  // ── Arena Mode Logic ────────────────────────────────────────────────────────
+  clearEntitiesForShop() {
+    let uncollected = 0;
+    for (const item of this.items) {
+      if (item.type === 'energy_orb') {
+        uncollected += (item.value || 1);
+      }
+    }
+    this.baggedMaterials = Math.floor(uncollected * 0.5); // 50% risk mechanics
+
+    this.zombies = [];
+    this.projectiles = [];
+    this.swordProjectiles = [];
+    this.arcProjectiles = [];
+    this.missiles = [];
+    this.hitEffects = [];
+    this.activeEffects = [];
+    this.items = [];
+  }
+
+  nextArenaWave() {
+    if (this.mode !== 'arena') return;
+    this.waveManager.currentWave++;
+    this.waveManager.startCombat(); // resets timer and isResting
+  }
+
   // 取得需要升級選擇的玩家（回傳第一個等待中的）
   get upgradePendingPlayer(): import('./Player').Player | null {
     return this.players.find(p => p.pendingLevelUp) ?? null;
@@ -481,6 +512,13 @@ export class Game {
       return;
     }
 
+    // --- ARENA MODE WAVE END FREEZE ---
+    if (this.mode === 'arena' && this.waveManager.isResting) {
+      if (this.zombies.length > 0) this.clearEntitiesForShop();
+      this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
+      return; // Freeze all physics and game objects during Shop Phase
+    }
+
     const isIntro = this.waveManager.waveIntroTimer > 0;
 
     // Apply Wave Mechanisms
@@ -541,6 +579,15 @@ export class Game {
       this.camera.x += (cx - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
       this.camera.y += (cy - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
       
+      if (this.mode === 'arena') {
+        const minCamX = 0;
+        const minCamY = 0;
+        const maxCamX = Math.max(0, this.arenaWidth - CONSTANTS.CANVAS_WIDTH);
+        const maxCamY = Math.max(0, this.arenaHeight - CONSTANTS.CANVAS_HEIGHT);
+        this.camera.x = Math.max(minCamX, Math.min(maxCamX, this.camera.x));
+        this.camera.y = Math.max(minCamY, Math.min(maxCamY, this.camera.y));
+      }
+
       // Update map chunks based on camera center
       this.mapManager.update(cx, cy);
     }
@@ -698,6 +745,24 @@ export class Game {
 
     resolveOverlaps(this.zombies, this.players);
 
+    // ── Arena Mode Boundaries ──
+    if (this.mode === 'arena') {
+      const margin = 20;
+      for (const p of this.players) {
+        if (p.hp <= 0) continue;
+        if (p.x < margin) p.x = margin;
+        if (p.x > this.arenaWidth - margin) p.x = this.arenaWidth - margin;
+        if (p.y < margin) p.y = margin;
+        if (p.y > this.arenaHeight - margin) p.y = this.arenaHeight - margin;
+      }
+      for (const z of this.zombies) {
+        if (z.x < z.radius) z.x = z.radius;
+        if (z.x > this.arenaWidth - z.radius) z.x = this.arenaWidth - z.radius;
+        if (z.y < z.radius) z.y = z.radius;
+        if (z.y > this.arenaHeight - z.radius) z.y = this.arenaHeight - z.radius;
+      }
+    }
+
     this.handleObstacleInteractions(dt);
 
     // Update sword projectiles (Branch A/B boomerang + embed)
@@ -723,6 +788,12 @@ export class Game {
       const proj = this.projectiles[i];
       const obstacles = this.mapManager.getNearbyObstacles(proj.x, proj.y);
       proj.update(dt, obstacles);
+
+      if (this.mode === 'arena') {
+        if (proj.x < 0 || proj.x > this.arenaWidth || proj.y < 0 || proj.y > this.arenaHeight) {
+          proj.lifetime = 0;
+        }
+      }
 
       // Projectile-Obstacle collision (for destructible obstacles and monolith)
       for (const obs of obstacles) {
@@ -942,6 +1013,7 @@ export class Game {
             player.shield = true;
           } else if (item.type === 'energy_orb') {
             player.addXp(item.value || 1);
+            player.materials += (item.value || 1);
           }
           
           this.items.splice(i, 1);
@@ -995,6 +1067,11 @@ export class Game {
       const ox = (Math.random() - 0.5) * 20;
       const oy = (Math.random() - 0.5) * 20;
       this.items.push(new Item(zombie.x + ox, zombie.y + oy, 'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor));
+    }
+
+    if (this.mode === 'arena' && this.baggedMaterials > 0) {
+      this.items.push(new Item(zombie.x, zombie.y, 'energy_orb', 15000, this.baggedMaterials, '#fbbf24'));
+      this.baggedMaterials = 0;
     }
 
     // 爆裂死亡特效
@@ -1058,6 +1135,14 @@ export class Game {
       isInfinite: this.waveManager.isInfinite,
       activeMechanics: this.waveManager.activeMechanics
     });
+
+    if (this.mode === 'arena') {
+      ctx.strokeStyle = '#ff3d00';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(0, 0, this.arenaWidth, this.arenaHeight);
+      ctx.fillStyle = 'rgba(255, 61, 0, 0.05)';
+      ctx.fillRect(0, 0, this.arenaWidth, this.arenaHeight);
+    }
 
     // Draw slime trails
     for (const trail of this.slimeTrails) {

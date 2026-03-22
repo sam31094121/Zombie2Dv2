@@ -15,6 +15,7 @@ export class Player {
   level: number = 1;           // 玩家等級（XP 升級，無上限）
   prestigeLevel: number = 0;
   xp: number = 0;
+  materials: number = 0;
   maxXp: number = 20;
   overdriveXpThreshold: number = 250;
 

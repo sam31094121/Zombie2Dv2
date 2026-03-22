@@ -679,6 +679,30 @@ export function drawActiveEffects(effects: ActiveEffect[], ctx: CanvasRenderingC
         break;
       }
 
+      case 'spawn_warning': {
+        const spin = (Date.now() / 300) % (Math.PI * 2);
+        ctx.globalAlpha = Math.min(1, Math.max(0.2, p * 1.5));
+        ctx.translate(effect.x, effect.y);
+        ctx.rotate(spin);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2 + (1 - p) * 2.5; 
+        
+        ctx.beginPath();
+        for (let i = 0; i <= 12; i++) {
+          const a = (i / 12) * Math.PI * 2;
+          const r = effect.radius + (Math.random() - 0.5) * 5;
+          if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+          else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(-effect.radius + 5, 0); ctx.lineTo(effect.radius - 5, 0);
+        ctx.moveTo(0, -effect.radius + 5); ctx.lineTo(0, effect.radius - 5);
+        ctx.stroke();
+        break;
+      }
+
     }
     ctx.restore();
   }

@@ -15,19 +15,20 @@ import { WaveDisplay } from './hud/WaveDisplay';
 import { TestModePanel } from './debug/TestModePanel';
 import { UpgradePanel, UpgradeCard } from './UpgradePanel';
 import { LobbyCanvas } from './lobby/LobbyCanvas';
+import { ShopPanel } from './arena/ShopPanel';
 
 const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
 export const GameUI: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'gameover'>('start');
+  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
   const [p2State, setP2State] = useState<Player | null>(null);
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const gameRef = useRef<Game | null>(null);
-  const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'gameover'>('start');
+  const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
 
   // ── 線上模式狀態 ──────────────────────────────────────────
   const [selectionStep, setSelectionStep] = useState<'platform' | 'players' | 'online'>('platform');
@@ -101,6 +102,12 @@ export const GameUI: React.FC = () => {
 
   // ── HUD 更新 callback（共用）──────────────────────────────
   const makeOnUpdate = () => (p1: Player | null, p2: Player | null, waveManager: any) => {
+    if (gameRef.current?.mode === 'arena' && waveManager.isResting) {
+      if (gameStateRef.current !== 'shopping') {
+        setGameState('shopping');
+      }
+    }
+
     if (++uiFrameRef.current % 6 !== 0) return;
     setP1State(p1 ? { ...p1 } as Player : null);
     setP2State(p2 ? { ...p2 } as Player : null);
@@ -112,8 +119,8 @@ export const GameUI: React.FC = () => {
   };
 
   // ── 本地遊戲開始 ──────────────────────────────────────────
-  // 從大廳傳送門觸發，帶入難度
-  const startGame = (count: number, _difficulty: 'normal' | 'hard' | 'infinite' = 'normal') => {
+  // 从大厅传门触发，带入难度和模式
+  const startGame = (count: number, _difficulty: 'normal' | 'hard' | 'infinite' = 'normal', mode: 'endless' | 'arena' = 'endless') => {
     setPlayerCount(count);
     audioManager.init();
     audioManager.resume();
@@ -129,6 +136,7 @@ export const GameUI: React.FC = () => {
       count,
       (time, kills) => { setGameStats({ time, kills }); setGameState('gameover'); audioManager.stopBGM(); },
       makeOnUpdate(),
+      mode
     );
 
     setGameState('playing');
@@ -300,6 +308,31 @@ export const GameUI: React.FC = () => {
     }
   };
 
+  const handleNextArenaWave = () => {
+    if (gameRef.current) {
+      gameRef.current.nextArenaWave();
+      setGameState('playing');
+    }
+  };
+
+  const handleBuyUpgrade = (key: string, cost: number) => {
+    if (gameRef.current && p1State) {
+      const p = gameRef.current.players.find(p => p.id === p1State.id);
+      if (p && p.materials >= cost) {
+        p.materials -= cost;
+        if (key !== 'reroll') {
+          if (key === 'damage') p.damageMultiplier += 0.15;
+          if (key === 'haste') p.attackSpeedMultiplier += 0.15;
+          if (key === 'agility') p.speed += p.speed * 0.10;
+          if (key === 'vitality') { p.maxHp += 25; p.hp = Math.min(p.hp + 25, p.maxHp); }
+          if (key === 'magnet') p.pickupRadiusMultiplier += 0.5;
+          if (key === 'recovery') p.hp = Math.min(p.hp + 30, p.maxHp);
+        }
+        setP1State({ ...p } as Player);
+      }
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (gameRef.current) gameRef.current.destroy();
@@ -334,7 +367,7 @@ export const GameUI: React.FC = () => {
             <LobbyCanvas
               playerColor="#4fc3f7"
               platform={platform}
-              onStartGame={(diff) => startGame(playerCount, diff)}
+              onStartGame={(diff, mode) => startGame(playerCount, diff, mode)}
             />
           </div>
         )}
@@ -365,7 +398,7 @@ export const GameUI: React.FC = () => {
             networkRef={networkRef}
             playerCount={playerCount}
             formatTime={formatTime}
-            onPlayAgain={() => startGame(playerCount)}
+            onPlayAgain={() => startGame(playerCount, 'normal', gameRef.current?.mode || 'endless')}
             onMainMenu={handleMainMenu}
             onReadyRematch={handleReadyRematch}
           />
@@ -400,6 +433,16 @@ export const GameUI: React.FC = () => {
             />
           );
         })()}
+
+        {/* ── 商店面板 (Arena Mode) ────────────────────────────── */}
+        {gameState === 'shopping' && p1State && (
+          <ShopPanel 
+            player={p1State} 
+            wave={waveState?.wave || 1} 
+            onBuyUpgrade={handleBuyUpgrade}
+            onNextWave={handleNextArenaWave}
+          />
+        )}
 
         {/* ── 測試面板 ─────────────────────────────────────────── */}
         {gameState === 'playing' && <TestModePanel gameRef={gameRef} />}

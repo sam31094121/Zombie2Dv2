@@ -1,5 +1,5 @@
 // ── LobbyNPC.ts ───────────────────────────────────────────────────────────────
-export type NPCType = 'portal' | 'blacksmith' | 'merchant' | 'gacha' | 'questboard';
+export type NPCType = 'portal' | 'arena_portal' | 'blacksmith' | 'merchant' | 'gacha' | 'questboard';
 
 export interface LobbyNPC {
   id: NPCType;
@@ -14,9 +14,10 @@ export interface LobbyNPC {
 }
 
 export const LOBBY_NPCS: LobbyNPC[] = [
-  { id: 'portal',     x: 400, y: 520, label: '傳送門',  emoji: '🌀', color: '#00e5ff', interactRadius: 70, interactDuration: 1500, progress: 0 },
-  { id: 'blacksmith', x: 160, y: 340, label: '鐵匠',    emoji: '⚒️', color: '#ff8a65', interactRadius: 65, interactDuration: 1500, progress: 0 },
-  { id: 'merchant',   x: 640, y: 340, label: '商人',    emoji: '💰', color: '#aed581', interactRadius: 65, interactDuration: 1500, progress: 0 },
-  { id: 'gacha',      x: 640, y: 160, label: '抽獎機',  emoji: '🎰', color: '#ce93d8', interactRadius: 65, interactDuration: 1500, progress: 0 },
-  { id: 'questboard', x: 160, y: 160, label: '任務板',  emoji: '🗿', color: '#90a4ae', interactRadius: 65, interactDuration: 1500, progress: 0 },
+  { id: 'portal',       x: 400, y: 520, label: '無盡邊境',  emoji: '🌀', color: '#00e5ff', interactRadius: 70, interactDuration: 1500, progress: 0 },
+  { id: 'arena_portal', x: 400, y: 160, label: '競技場',    emoji: '⚔️', color: '#ff3d00', interactRadius: 70, interactDuration: 1500, progress: 0 },
+  { id: 'blacksmith',   x: 160, y: 340, label: '鐵匠',      emoji: '⚒️', color: '#ff8a65', interactRadius: 65, interactDuration: 1500, progress: 0 },
+  { id: 'merchant',     x: 640, y: 340, label: '商人',      emoji: '💰', color: '#aed581', interactRadius: 65, interactDuration: 1500, progress: 0 },
+  { id: 'gacha',        x: 640, y: 160, label: '抽獎機',    emoji: '🎰', color: '#ce93d8', interactRadius: 65, interactDuration: 1500, progress: 0 },
+  { id: 'questboard',   x: 160, y: 160, label: '任務板',    emoji: '🗿', color: '#90a4ae', interactRadius: 65, interactDuration: 1500, progress: 0 },
 ];
