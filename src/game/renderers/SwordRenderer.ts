@@ -9,12 +9,82 @@ import { SwordProjectile } from '../entities/SwordProjectile';
 
 const TWO_PI = Math.PI * 2;
 
+// 武士刀刀尖流光殘影：在刀尖世界座標畫出發光紫點，隨時間縮小淡出
+// 刀尖本地座標 (18, 4) × scale(1.5) = (27, 6)
+const KATANA_TIP_LX = 27;
+const KATANA_TIP_LY = 6;
+
+// 武士刀刀尖雷射流光：整條軌跡一筆畫完 + 漸層，無任何顆粒感
+function _drawKatanaTrail(
+  trail: { x: number; y: number; angle: number; t: number }[],
+  ctx: CanvasRenderingContext2D,
+): void {
+  if (trail.length < 2) return;
+  const now = Date.now();
+
+  // 計算每個點的刀尖世界座標（過期的直接略過）
+  const tips: { x: number; y: number }[] = [];
+  for (const pt of trail) {
+    if (now - pt.t > 500) continue;
+    tips.push({
+      x: pt.x + Math.cos(pt.angle) * KATANA_TIP_LX - Math.sin(pt.angle) * KATANA_TIP_LY,
+      y: pt.y + Math.sin(pt.angle) * KATANA_TIP_LX + Math.cos(pt.angle) * KATANA_TIP_LY,
+    });
+  }
+  if (tips.length < 2) return;
+
+  const tail = tips[0];
+  const head = tips[tips.length - 1];
+
+  ctx.save();
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  // ── 整條路徑只建立一次 ──────────────────────────────────────────
+  const buildPath = () => {
+    ctx.beginPath();
+    ctx.moveTo(tail.x, tail.y);
+    for (let i = 1; i < tips.length; i++) ctx.lineTo(tips[i].x, tips[i].y);
+  };
+
+  // ── 外層暈染：從透明尾巴 → 深紫刀尖 ───────────────────────────
+  const glow = ctx.createLinearGradient(tail.x, tail.y, head.x, head.y);
+  glow.addColorStop(0,   'rgba(109, 40, 217, 0)');
+  glow.addColorStop(0.4, 'rgba(139, 92, 246, 0.4)');
+  glow.addColorStop(1,   'rgba(167, 139, 250, 0.8)');
+  ctx.strokeStyle = glow;
+  ctx.lineWidth   = 7;
+  ctx.shadowBlur  = 16;
+  ctx.shadowColor = '#7C3AED';
+  buildPath();
+  ctx.stroke();
+
+  // ── 內層亮芯：細白紫線，讓中心最亮 ────────────────────────────
+  const core = ctx.createLinearGradient(tail.x, tail.y, head.x, head.y);
+  core.addColorStop(0, 'rgba(237, 233, 254, 0)');
+  core.addColorStop(1, 'rgba(237, 233, 254, 0.95)');
+  ctx.strokeStyle = core;
+  ctx.lineWidth   = 1.5;
+  ctx.shadowBlur  = 6;
+  ctx.shadowColor = '#C084FC';
+  buildPath();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 export function drawSwordProjectiles(
   swords: SwordProjectile[],
   ctx: CanvasRenderingContext2D,
 ): void {
   for (const sword of swords) {
     if (sword.isDone) continue;
+
+    // ── 武士刀 Hamon 殘影（丟出與回程都有）──
+    if (sword.branch === 'base' && sword.level === 4 && sword.trail.length > 0) {
+      _drawKatanaTrail(sword.trail, ctx);
+    }
+
     ctx.save();
     ctx.translate(sword.x, sword.y);
 
@@ -362,16 +432,30 @@ export function drawBlackSteelKatanaShape(ctx: CanvasRenderingContext2D): void {
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  // ── 銀色斜斬紋（Hamon）──
-  ctx.strokeStyle = '#CBD5E1';
+  // ── 紫色流光刃紋（Hamon）──
+  // 同樣三條斜線，亮度依序脈動，製造「流光從護手流向刀尖」效果
+  const hamonNow = Date.now() / 500;
+  const hamonLines: [number, number, number, number][] = [
+    [ 0, 0,  2, 2],
+    [ 6, 1,  8, 3],
+    [12, 2, 14, 4],
+  ];
+  ctx.save();
   ctx.lineWidth = 1;
-  ctx.globalAlpha = 0.5;
-  ctx.beginPath();
-  ctx.moveTo( 0, 0); ctx.lineTo( 2, 2);
-  ctx.moveTo( 6, 1); ctx.lineTo( 8, 3);
-  ctx.moveTo(12, 2); ctx.lineTo(14, 4);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  ctx.lineCap = 'round';
+  hamonLines.forEach(([x1, y1, x2, y2], i) => {
+    const phase = (hamonNow + i / 3) % 1;
+    const alpha = 0.25 + Math.sin(phase * Math.PI * 2) * 0.35 + 0.35;
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur  = 6;
+    ctx.shadowColor = '#7C3AED';
+    ctx.strokeStyle = '#C084FC';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  });
+  ctx.restore();
 
   // ── 裝飾性刀鍔（Tsuba）圓形 ──
   ctx.fillStyle = '#18181B';
@@ -382,7 +466,7 @@ export function drawBlackSteelKatanaShape(ctx: CanvasRenderingContext2D): void {
   ctx.beginPath(); ctx.arc(-6, 0, 1.5, 0, TWO_PI); ctx.fill();
 
   // ── 菱格紋柄（Tsuka）──
-  ctx.fillStyle = '#09090B';
+  ctx.fillStyle = '#7F1D1D';
   ctx.fillRect(-20, -1.5, 12, 3);
   ctx.fillStyle = '#3F3F46';
   for (const cx of [-11, -15, -19]) {
@@ -405,7 +489,7 @@ export function drawBlackSteelKatanaShape(ctx: CanvasRenderingContext2D): void {
 // 5 層金屬刀面（亮面→中軸→陰影）+ 皮革握柄 + 配重柄尾，全長約 42px
 // ─────────────────────────────────────────────────────────────────────────────
 export function drawSoldierDirkShape(ctx: CanvasRenderingContext2D): void {
-  ctx.scale(1.55, 2.0); // 60×10px — 軍用短劍
+  ctx.scale(1.55, 1.4); // 60×7px — 軍用短劍（細身）
   // ── 最左側斜角（外緣）──
   ctx.fillStyle = '#94A3B8';
   ctx.beginPath();
@@ -467,72 +551,60 @@ export function drawSoldierDirkShape(ctx: CanvasRenderingContext2D): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 生鏽鐵刃（Rusty Pitted Dirk）── Lv2，從 SVG 44×44 轉換，90° CCW
-// 雙刃不對稱缺角＋腐蝕鏽斑，全長約 42px（x:-21 ~ x:18）
+// 生鏽鐵刃（Rusty Battle Dirk）── Lv2，戰損崩口＋鏽蝕質感
+// 刀尖朝右（+x），全長約 43px（x:-15 ~ x:28）
 // ─────────────────────────────────────────────────────────────────────────────
 export function drawRustyDirkShape(ctx: CanvasRenderingContext2D): void {
-  ctx.scale(1.4, 1.8); // 55×9px — 殘破匕首
-  // ── 左刃（不對稱缺角）──
-  ctx.fillStyle = '#64748B';
-  ctx.beginPath();
-  ctx.moveTo(17, -2); ctx.lineTo(17, -1); ctx.lineTo(13, -1);
-  ctx.lineTo(12, -2); ctx.lineTo(10, -2); ctx.lineTo( 9, -1);
-  ctx.lineTo(-5, -1); ctx.lineTo(-5, -2); ctx.lineTo(10, -2);
-  ctx.lineTo(11, -3); ctx.lineTo(12, -3); ctx.lineTo(12, -2);
-  ctx.closePath(); ctx.fill();
+  ctx.scale(1.4, 1.8); // 60×5px（刀刃）— 殘破匕首
 
-  // ── 右刃（鋸齒崩裂）──
-  ctx.fillStyle = '#64748B';
-  ctx.beginPath();
-  ctx.moveTo(17,  1); ctx.lineTo(17,  2); ctx.lineTo( 8,  2);
-  ctx.lineTo( 7,  1); ctx.lineTo( 5,  1); ctx.lineTo( 4,  2);
-  ctx.lineTo( 0,  2); ctx.lineTo(-1,  1); ctx.lineTo(-5,  1);
-  ctx.lineTo( 0,  1); ctx.lineTo( 1,  0); ctx.lineTo( 3,  0);
-  ctx.lineTo( 4,  1); ctx.lineTo( 8,  1); ctx.lineTo( 9,  0);
-  ctx.lineTo(17,  0);
-  ctx.closePath(); ctx.fill();
+  // ── 刀背（上緣陰影）──
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(0, -1, 28, 3);
 
-  // ── 刀身中軸陰影 ──
-  ctx.fillStyle = '#334155';
-  ctx.beginPath();
-  ctx.moveTo(18, -1); ctx.lineTo(18,  1); ctx.lineTo( 8,  1);
-  ctx.lineTo( 7,  0); ctx.lineTo(-5,  0); ctx.lineTo(-5, -1);
-  ctx.closePath(); ctx.fill();
+  // ── 刀面中間 ──
+  ctx.fillStyle = '#94A3B8';
+  ctx.fillRect(0,  0, 26, 2);
+  ctx.fillRect(26, 0,  2, 1); // 刀尖延伸
 
-  // ── 鏽斑：頂端 ──
-  ctx.fillStyle = '#B45309'; ctx.fillRect(15, -1, 1, 1);
-  ctx.fillStyle = '#78350F'; ctx.fillRect(14,  0, 1, 1);
+  // ── 刃口高光 ──
+  ctx.fillStyle = '#CBD5E1';
+  ctx.fillRect( 0, 1, 22, 1);
+  ctx.fillRect(22, 1,  4, 1);
+  ctx.fillRect(26, 0,  2, 1);
 
-  // ── 鏽斑：中部腐蝕斑 ──
-  ctx.fillStyle = 'rgba(180,83,9,0.8)';
-  ctx.beginPath();
-  ctx.moveTo(9, -2); ctx.lineTo(9, 0); ctx.lineTo(8, 0); ctx.lineTo(8,  1);
-  ctx.lineTo(6,  1); ctx.lineTo(6,-1); ctx.lineTo(7,-1); ctx.lineTo(7, -2);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#451A03';              ctx.fillRect( 7, -1, 1, 1);
-  ctx.fillStyle = 'rgba(249,115,22,0.4)'; ctx.fillRect( 6,  0, 1, 1);
+  // ── 戰損崩口（clearRect 挖空）──
+  ctx.clearRect( 8, 1, 2, 1); // 崩裂 1
+  ctx.clearRect(18, 1, 1, 1); // 崩裂 2
+  ctx.clearRect(24, 0, 1, 1); // 近刀尖受損
 
-  // ── 鏽斑：刃口散點 ──
-  ctx.fillStyle = '#B45309';              ctx.fillRect( 0,  1, 1, 1);
-  ctx.fillStyle = '#78350F';              ctx.fillRect(10, -3, 1, 1);
-  ctx.fillStyle = 'rgba(180,83,9,0.6)';  ctx.fillRect(-4,  0, 1, 2);
+  // ── 鏽跡：刀背腐蝕 ──
+  ctx.fillStyle = '#78350F';
+  ctx.fillRect( 5, -1, 3, 1);
+  ctx.fillRect(15, -1, 4, 1);
+  ctx.fillRect(23, -1, 2, 1);
 
-  // ── 護手（暗鐵）──
-  ctx.fillStyle = '#1E293B'; ctx.fillRect(-7, -6, 2, 12);
-  ctx.fillStyle = 'rgba(69,26,3,0.4)'; ctx.fillRect(-6, -4, 1, 3);
+  // ── 鏽跡：氧化亮橘 ──
+  ctx.fillStyle = '#B45309';
+  ctx.fillRect( 6, 0, 1, 1);
+  ctx.fillRect(17, 0, 2, 1);
+  ctx.fillRect( 9, 1, 1, 1); // 填補崩口邊緣
 
-  // ── 鬆動木柄 ──
-  ctx.fillStyle = '#5D4037'; ctx.fillRect(-19, -2, 10, 4);
-  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(-9, -2, 1, 4); // 分離縫
-  ctx.strokeStyle = '#271709'; ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(-11, -2); ctx.lineTo(-11, 2);
-  ctx.moveTo(-15, -2); ctx.lineTo(-15, 2);
-  ctx.stroke();
+  // ── 護手（暗金屬，有結構感）──
+  ctx.fillStyle = '#1E293B'; ctx.fillRect(-2, -4, 3, 9); // 底色
+  ctx.fillStyle = '#334155'; ctx.fillRect(-2, -4, 1, 9); // 亮面
+  ctx.fillStyle = '#0F172A'; ctx.fillRect(-2, -1, 3, 3); // 護手中心
 
-  // ── 柄尾（戰損）──
-  ctx.fillStyle = '#334155'; ctx.fillRect(-21, -3, 2, 6);
-  ctx.fillStyle = '#B45309'; ctx.fillRect(-21, -2, 1, 1);
+  // ── 木質握柄 ──
+  ctx.fillStyle = '#451A03'; ctx.fillRect(-12, -1, 10, 3); // 深木色
+  ctx.fillStyle = '#78350F'; ctx.fillRect(-11,  0,  8, 1); // 亮木紋
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(-9, -1, 1, 3); // 纏繞皮帶 1
+  ctx.fillRect(-6, -1, 1, 3); // 纏繞皮帶 2
+
+  // ── 柄尾 ──
+  ctx.fillStyle = '#334155'; ctx.fillRect(-15, -2, 3, 5);
+  ctx.fillStyle = '#475569'; ctx.fillRect(-15, -2, 1, 5); // 亮面
+  ctx.fillStyle = '#B45309'; ctx.fillRect(-14,  0, 1, 1); // 柄尾鏽斑
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

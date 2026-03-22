@@ -42,11 +42,25 @@ export function updateSwordProjectiles(
 // ─────────────────────────────────────────────────────────────────────────────
 // going_out
 // ─────────────────────────────────────────────────────────────────────────────
+function _recordTrail(sword: SwordProjectile): void {
+  if (sword.branch !== 'base' || sword.level !== 4) return;
+  const now = Date.now();
+  const last = sword.trail[sword.trail.length - 1];
+  // 每移動 3px 才記錄一次，避免過密
+  if (!last || Math.hypot(sword.x - last.x, sword.y - last.y) >= 1) {
+    sword.trail.push({ x: sword.x, y: sword.y, angle: sword.angle, t: now });
+  }
+  // 只保留 800ms 內的軌跡
+  const cutoff = now - 800;
+  while (sword.trail.length > 0 && sword.trail[0].t < cutoff) sword.trail.shift();
+}
+
 function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
   const { config } = sword;
 
   sword.x += Math.cos(sword.angle) * config.speed * dt;
   sword.y += Math.sin(sword.angle) * config.speed * dt;
+  _recordTrail(sword);
 
   for (const z of game.zombies) {
     const dist = Math.hypot(z.x - sword.x, z.y - sword.y);
@@ -138,6 +152,7 @@ function _returning(sword: SwordProjectile, game: Game, dt: number): void {
     // 刀保持原始角度（刀尖朝前飛回）
     sword.x += (dx / dist) * returnSpeed * dt;
     sword.y += (dy / dist) * returnSpeed * dt;
+    _recordTrail(sword);
     return;
   }
 
