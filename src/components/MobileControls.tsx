@@ -80,7 +80,7 @@ function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onM
       base.style.top  = `${joy.baseY - OUTER_RADIUS}px`;
       stick.style.transform = `translate(${joy.stickX}px, ${joy.stickY}px)`;
     } else {
-      hint.style.display = 'block';
+      hint.style.display = p < playerCount ? 'block' : 'none';
       base.style.display = 'none';
       stick.style.transform = `translate(0px, 0px)`;
     }
