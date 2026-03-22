@@ -555,68 +555,85 @@ function _drawMissileLauncher(
   ctx: CanvasRenderingContext2D,
   player: Player,
 ): void {
-  const ox = 10, oy = 28, len = 40;
+  const ox = 10, oy = 28, len = 38; // 縮短一點點主砲管，為強化砲口騰出空間
   const dx = -14, dy = -32; // 坐標偏移：user + offset = game
   const r = (x: number, y: number, w: number, h: number) =>
     ctx.fillRect(x + dx, y + dy, w, h);
 
-  const M = {
-    steelDark:  '#1e293b', steelMid:  '#475569',
-    steelLight: '#94a3b8', steelHigh: '#f1f5f9',
-    bloodDeep:  '#7f1d1d', bloodMain: '#dc2626',
-    bloodGlow:  '#f87171', bloodHigh: '#fecaca',
-    boneSolid:  '#e7e5e4', eyeRed:    '#ff0000',
-    black:      '#0a0a0a',
+  // 精煉高對比調色盤
+  const C = {
+    steelDark:  '#334155',   
+    steelMid:   '#64748b',    
+    steelLight: '#cbd5e1',  
+    steelHigh:  '#f1f5f9',   
+    bloodDeep:  '#991b1b',   
+    bloodMain:  '#ef4444',   
+    bloodGlow:  '#fca5a5',   
+    bloodHigh:  '#fee2e2',   
+    boneSolid:  '#f5f5f4',   
+    eyeRed:     '#ff0000',      
+    brass:      '#fbbf24',       
+    black:      '#0f172a',
+    white:      '#ffffff',
   };
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
-  // 1. 砲管
-  ctx.fillStyle = M.steelMid;   r(ox,   oy,    len, 8);
-  ctx.fillStyle = M.steelLight; r(ox,   oy,    len, 2);
-  ctx.fillStyle = M.steelHigh;  r(ox+5, oy,    len-10, 1);
-  ctx.fillStyle = M.steelDark;  r(ox,   oy+6,  len, 2);
+  // --- 1. 砲管主體 (Polished Barrel) ---
+  ctx.fillStyle = C.steelMid;   r(ox, oy, len, 8);
+  
+  // 頂部與底部光影
+  ctx.fillStyle = C.steelLight; r(ox, oy, len, 2);
+  ctx.fillStyle = C.steelHigh;  r(ox + 2, oy, len - 4, 1);
+  ctx.fillStyle = C.steelDark;  r(ox, oy + 6, len, 2);
 
-  // 2. 能量導管（血色血脈）
-  ctx.fillStyle = M.bloodDeep; r(ox+8,  oy-2, 22, 2);
-  ctx.fillStyle = M.bloodMain; r(ox+8,  oy-1, 22, 1);
-  ctx.fillStyle = M.bloodGlow; r(ox+12, oy-1, 10, 1);
-  ctx.fillStyle = M.bloodMain; r(ox+4,  oy+3, 12, 1);
-  ctx.fillStyle = M.bloodMain; r(ox+22, oy+4, 14, 1);
-  ctx.fillStyle = M.bloodGlow; r(ox+6,  oy+3,  3, 1);
+  // 機械細節：鉚釘與面板線
+  ctx.fillStyle = C.black; r(ox + 8, oy, 1, 8);
+  ctx.fillStyle = C.black; r(ox + 25, oy, 1, 8);
+  ctx.fillStyle = C.brass; r(ox + 10, oy + 1, 1, 1);
+  ctx.fillStyle = C.brass; r(ox + 10, oy + 6, 1, 1);
 
-  // 3. 魔型砲口
-  ctx.fillStyle = M.black;      r(ox+len,   oy-3,  6, 14);
-  ctx.fillStyle = M.steelLight; r(ox+len,   oy-3,  6,  1);
-  ctx.fillStyle = M.steelLight; r(ox+len,   oy+10, 6,  1);
-  ctx.fillStyle = M.boneSolid;  r(ox+len+2, oy-5,  2,  3); // 上牙
-  ctx.fillStyle = M.boneSolid;  r(ox+len+2, oy+10, 2,  3); // 下牙
-  ctx.fillStyle = M.steelHigh;  r(ox+len+2, oy-5,  1,  1); // 牙齒高光
+  // --- 2. 流暢強化砲口 (Smooth Reinforced Muzzle) ---
+  const mx = ox + len;
+  const my = oy - 1;
+  const mw = 8;
+  const mh = 10;
 
-  // 4. 晶體瞄準器
-  ctx.fillStyle = M.black;      r(ox+14, oy-10, 10, 10);
-  ctx.fillStyle = M.steelMid;   r(ox+15, oy-9,   8,  8);
-  ctx.fillStyle = M.bloodDeep;  r(ox+16, oy-8,   6,  6);
-  ctx.fillStyle = M.eyeRed;     r(ox+17, oy-7,   4,  4);
-  ctx.fillStyle = M.bloodHigh;  r(ox+17, oy-7,   2,  2); // 晶體折射光
+  ctx.fillStyle = C.steelMid;   r(mx, my, mw, mh);
+  ctx.fillStyle = C.steelLight; r(mx, my, mw, 2);
+  ctx.fillStyle = C.steelHigh;  r(mx + 1, my, mw - 2, 1);
+  ctx.fillStyle = C.steelHigh;  r(mx + mw - 2, my + 1, 1, mh - 2);
 
-  // 5. 握把
-  ctx.fillStyle = M.black;      r(ox+12, oy+8,  4, 10);
-  ctx.fillStyle = M.steelDark;  r(ox+13, oy+8,  2, 10);
-  ctx.fillStyle = M.bloodMain;  r(ox+13, oy+10, 2,  1); // 防滑條
-  ctx.fillStyle = M.bloodMain;  r(ox+13, oy+13, 2,  1);
+  ctx.fillStyle = C.bloodDeep;  r(mx + mw - 1, my + 1, 1, mh - 2);
+  ctx.fillStyle = C.bloodMain;  r(mx + 2, my + 3, mw - 2, 4);
+  ctx.fillStyle = C.bloodGlow;  r(mx + 4, my + 4, mw - 4, 2);
 
-  // 6. 後噴口
-  ctx.fillStyle = M.black;      r(ox-4, oy-1, 6, 10);
-  ctx.fillStyle = M.steelLight; r(ox-4, oy-1, 6,  1);
+  // --- 3. 能量導管組件 (Energy System) ---
+  ctx.fillStyle = C.steelDark; r(ox + 6, oy - 2, 4, 4); // 接口 A
+  ctx.fillStyle = C.bloodDeep; r(ox + 7, oy - 2, 22, 2);
+  ctx.fillStyle = C.bloodMain; r(ox + 7, oy - 1, 20, 1);
+  ctx.fillStyle = C.bloodHigh; r(ox + 12, oy - 1, 4, 1);
 
-  // 7. 砲口環境光粒子
-  ctx.fillStyle = M.bloodGlow;  r(ox+len+8, oy+2, 1, 1);
-  r(ox+len+6, oy+8, 1, 1);
+  // --- 4. 戰術瞄準器 (Tactical Scope) ---
+  ctx.fillStyle = C.black;      r(ox + 14, oy - 11, 10, 11);
+  ctx.fillStyle = C.steelMid;   r(ox + 15, oy - 10, 8, 9);
+  ctx.fillStyle = C.bloodDeep;  r(ox + 16, oy - 9, 6, 7);
+  ctx.fillStyle = C.eyeRed;     r(ox + 17, oy - 8, 4, 5);
+  ctx.fillStyle = C.white;      r(ox + 17, oy - 8, 1, 1);
 
-  // 槍口火光（砲口中心：game x=42, y=0）
-  drawMuzzleFlash(ctx, ox + len + 6 + dx, oy + 4 + dy, player.lastAttackTime);
+  // --- 5. 握把與板機 (Ergo Grip) ---
+  ctx.fillStyle = C.black;     r(ox + 12, oy + 8, 5, 11);
+  ctx.fillStyle = C.steelDark; r(ox + 13, oy + 8, 3, 11);
+  ctx.fillStyle = C.bloodMain; r(ox + 20, oy + 9, 1, 3); // 板機
+
+  // --- 6. 後部平衡裝置 (Rear Stock) ---
+  ctx.fillStyle = C.steelMid;  r(ox - 6, oy - 1, 6, 11);
+  ctx.fillStyle = C.steelHigh; r(ox - 6, oy - 1, 6, 1);
+  ctx.fillStyle = C.steelDark; r(ox - 6, oy + 8, 6, 2);
+
+  // 槍口火光（對齊新砲口）
+  drawMuzzleFlash(ctx, mx + mw + dx, oy + 4 + dy, player.lastAttackTime);
 
   ctx.restore();
 }
