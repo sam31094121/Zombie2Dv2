@@ -170,7 +170,6 @@ function _returning(sword: SwordProjectile, game: Game, dt: number): void {
         sword.hitZombieIds.add(z.id);
         z.hp -= config.damage * config.dmgMult;
         _queueKill(game, z, sword.ownerId, sword.level);
-        _knockbackFrom(sword.x, sword.y, z, 26);
         audioManager.playHit();
         game.hitEffects.push({ x: z.x, y: z.y, type: 'purple_particles', lifetime: 300, maxLifetime: 300 });
       }

@@ -6,6 +6,10 @@ import type { Game } from '../Game';
 import type { ActiveEffect } from '../types';
 import { audioManager } from '../AudioManager';
 
+// 龍捲風吸引力強度（px/ms²），乘以 dt 後加到速度
+// 設定偏保守：不大於 2 * 正常殭屍移速（~1.5 px/ms），讓碰撞系統自行解決重疊
+const TORNADO_PULL = 0.012; // 邊緣最大值；距離越近越強
+
 export function updateActiveEffects(game: Game, dt: number): void {
   for (const effect of game.activeEffects) {
     effect.lifetime -= dt;
@@ -16,6 +20,24 @@ export function updateActiveEffects(game: Game, dt: number): void {
       if (target) {
         effect.x = target.x;
         effect.y = target.y;
+      }
+    }
+
+    // ── tornado：每幀吸引範圍內殭屍 ──────────────────────────────────────────
+    if (effect.type === 'tornado') {
+      for (const zombie of game.zombies) {
+        const dx   = effect.x - zombie.x;
+        const dy   = effect.y - zombie.y;
+        const dist = Math.hypot(dx, dy);
+        // 只吸引半徑內、且距離大於自身半徑（避免極近距離爆速）的殭屍
+        const pullRange = effect.radius + zombie.radius; // 與傷害 tick 相同範圍
+        if (dist > zombie.radius && dist < pullRange) {
+          // 線性衰減：邊緣弱，近中心強；單幀速度增量上限 0.5px/ms
+          const ratio  = 1 - dist / pullRange;
+          const dv     = Math.min(TORNADO_PULL * ratio * dt, 0.5);
+          zombie.vx += (dx / dist) * dv;
+          zombie.vy += (dy / dist) * dv;
+        }
       }
     }
 
@@ -72,6 +94,12 @@ function _explodeLava(game: Game, effect: ActiveEffect): void {
   }
 
   audioManager.playSlash(5);
-  game.hitEffects.push({ x: effect.x, y: effect.y, type: 'orange_explosion', lifetime: 600, maxLifetime: 600 });
+  game.hitEffects.push({
+    x: effect.x, y: effect.y,
+    type: 'pixel_explosion',
+    lifetime: 650, maxLifetime: 650,
+    startTime: Date.now(),
+    radius: Math.min((effect.explodeRadius ?? 100) * 0.5, 70),
+  });
   game.shakeTimer = 200;
 }
