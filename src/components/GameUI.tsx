@@ -359,6 +359,7 @@ export const GameUI: React.FC = () => {
           width={dimensions.width}
           height={dimensions.height}
           className="bg-neutral-900 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-neutral-800 w-full h-full object-cover"
+          style={{ touchAction: gameState === 'playing' ? 'none' : 'auto' }}
         />
 
         {/* ── 大廳 ────────────────────────────────────────────── */}
@@ -435,11 +436,10 @@ export const GameUI: React.FC = () => {
         })()}
 
         {/* ── 商店面板 (Arena Mode) ────────────────────────────── */}
-        {gameState === 'shopping' && p1State && (
-          <ShopPanel 
-            player={p1State} 
-            wave={waveState?.wave || 1} 
-            onBuyUpgrade={handleBuyUpgrade}
+        {gameState === 'shopping' && gameRef.current?.players[0] && (
+          <ShopPanel
+            player={gameRef.current.players[0]}
+            wave={waveState?.wave || 1}
             onNextWave={handleNextArenaWave}
           />
         )}
@@ -449,7 +449,8 @@ export const GameUI: React.FC = () => {
 
         {/* ── HUD ─────────────────────────────────────────────── */}
         {gameState === 'playing' && waveState && (
-          <div className={`absolute inset-0 p-2 sm:p-6 flex flex-col pointer-events-none z-10 transition-colors duration-500 ${waveState.wave >= 10 ? 'bg-black/90' : ''}`}>
+          <div className={`absolute inset-0 pointer-events-none z-10 transition-colors duration-500 ${waveState.wave >= 10 ? 'bg-black/90' : ''}`}
+            style={{ padding: 'max(8px, env(safe-area-inset-top, 8px)) max(8px, env(safe-area-inset-right, 8px)) max(8px, env(safe-area-inset-bottom, 8px)) max(8px, env(safe-area-inset-left, 8px))' }}>
             <div className="relative flex justify-center items-start w-full">
               {p1State && <P1Card p1State={p1State} p1RespawnCountdown={p1RespawnCountdown} />}
               <WaveDisplay wave={waveState.wave} isResting={waveState.isResting} timer={waveState.timer} />

@@ -6,8 +6,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useRef, useEffect } from 'react';
 
-const OUTER_RADIUS = 56;
-const INNER_RADIUS = 22;
+const OUTER_RADIUS = 68; // 放大搖桿外環便於大螢幕手機操作
+const INNER_RADIUS = 28; // 放大搖桿核心球
 
 interface JoystickState {
   active: boolean;
@@ -276,10 +276,10 @@ export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
   const fillColors = ['rgba(52,152,219,0.75)', 'rgba(231,76,60,0.75)'];
 
   const hintPositions = playerCount === 1
-    ? [{ left: '50%', bottom: '48px', transform: 'translateX(-50%)' }]
+    ? [{ left: '50%', bottom: '72px', transform: 'translateX(-50%)' }]
     : [
-        { left: '25%', bottom: '48px', transform: 'translateX(-50%)' },
-        { left: '75%', bottom: '48px', transform: 'translateX(-50%)' },
+        { left: '25%', bottom: '72px', transform: 'translateX(-50%)' },
+        { left: '75%', bottom: '72px', transform: 'translateX(-50%)' },
       ];
 
   // 預先產生兩種 JoyStick 的原生結構，讓 Hook 控制透明度/顯示，避免 React 重繪

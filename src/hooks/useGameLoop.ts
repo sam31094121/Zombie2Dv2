@@ -37,7 +37,7 @@ export function useGameLoop(opts: UseGameLoopOptions) {
   const gameLoopRef = useRef<(time: number) => void>();
 
   gameLoopRef.current = (time: number) => {
-    if (gameStateRef.current !== 'playing') return;
+    if (gameStateRef.current !== 'playing' && gameStateRef.current !== 'shopping') return;
     const rawDt = time - lastTimeRef.current;
     lastTimeRef.current = time;
     // 背景分頁恢復保護 — dt 超過 250ms 觸發 HardSync
@@ -146,7 +146,7 @@ export function useGameLoop(opts: UseGameLoopOptions) {
       }
     }
 
-    if (gameStateRef.current === 'playing' && !gameRef.current?.isGameOver) {
+    if ((gameStateRef.current === 'playing' || gameStateRef.current === 'shopping') && !gameRef.current?.isGameOver) {
       requestRef.current = requestAnimationFrame(gameLoopRef.current!);
     }
   };

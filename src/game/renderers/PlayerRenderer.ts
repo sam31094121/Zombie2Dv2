@@ -31,12 +31,35 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
   ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill(); ctx.closePath();
 
   // ── 武器（委派給 WeaponDefinitions registry）─────────────────────────────
-  ctx.save();
-  ctx.rotate(angle);
-  if (player.weaponSwitchTimer > 0) { ctx.shadowColor = 'white'; ctx.shadowBlur = 10; }
-  const wKey = getWeaponKey(player.weapon, player.weaponLevels[player.weapon], player.weaponBranches[player.weapon]);
-  WEAPON_REGISTRY[player.weapon]?.[wKey]?.drawWeapon(ctx, player);
-  ctx.restore();
+  if (player.isFloatingWeapons && player.weapons && player.weapons.length > 0) {
+    player.weapons.forEach((slot, i) => {
+      const wKey = getWeaponKey(slot.type, slot.level, null);
+      const weaponDef = WEAPON_REGISTRY[slot.type]?.[wKey];
+      if (weaponDef) {
+        ctx.save();
+        const time = Date.now();
+        const offsetAngle = (i / player.weapons.length) * Math.PI * 2;
+        const bob = Math.sin(time / 300 + i) * 6; // 更大一點的呼吸感
+        
+        ctx.translate(Math.cos(offsetAngle) * 38, Math.sin(offsetAngle) * 38 + bob);
+        ctx.rotate(slot.aimAngle ?? angle); // 依據武器獨立雷達角度旋轉，若無則依賴玩家視角
+        
+        const colors = ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'];
+        ctx.shadowColor = colors[Math.min(slot.level - 1, 3)];
+        ctx.shadowBlur = 10;
+        
+        weaponDef.drawWeapon(ctx, player);
+        ctx.restore();
+      }
+    });
+  } else {
+    ctx.save();
+    ctx.rotate(angle);
+    if (player.weaponSwitchTimer > 0) { ctx.shadowColor = 'white'; ctx.shadowBlur = 10; }
+    const wKey = getWeaponKey(player.weapon, player.weaponLevels[player.weapon], player.weaponBranches[player.weapon]);
+    WEAPON_REGISTRY[player.weapon]?.[wKey]?.drawWeapon(ctx, player);
+    ctx.restore();
+  }
 
   // Hands
   ctx.save();
@@ -71,10 +94,14 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
 
   // Level indicator
   ctx.fillStyle = 'white'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
-  const wLv    = player.weaponLevels[player.weapon];
-  const branch = player.weaponBranches[player.weapon];
-  const branchTag = branch ? `[${branch}]` : '';
-  let levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
-  ctx.fillStyle = branch === 'A' ? '#4fc3f7' : branch === 'B' ? '#ff8a65' : 'white';
-  ctx.fillText(levelText, player.x, player.y - 30);
+  if (player.isFloatingWeapons) {
+    ctx.fillText(`Lv.${player.level}`, player.x, player.y - 30);
+  } else {
+    const wLv    = player.weaponLevels[player.weapon];
+    const branch = player.weaponBranches[player.weapon];
+    const branchTag = branch ? `[${branch}]` : '';
+    let levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
+    ctx.fillStyle = branch === 'A' ? '#4fc3f7' : branch === 'B' ? '#ff8a65' : 'white';
+    ctx.fillText(levelText, player.x, player.y - 30);
+  }
 }

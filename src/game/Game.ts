@@ -61,6 +61,7 @@ export class Game {
   arenaWidth: number = 1500;
   arenaHeight: number = 1500;
   baggedMaterials: number = 0;
+  private _arenaWaveStartLevel: number = 1;
 
   // 網路多人模式
   networkMode: boolean = false;
@@ -122,10 +123,14 @@ export class Game {
   init(playerCount: number) {
     this.players = [];
     if (playerCount >= 1) {
-      this.players.push(new Player(1, 400, 300, '#3498db'));
+      const p1 = new Player(1, 400, 300, '#3498db');
+      if (this.mode === 'arena') p1.isFloatingWeapons = true;
+      this.players.push(p1);
     }
     if (playerCount >= 2) {
-      this.players.push(new Player(2, 450, 300, '#e74c3c'));
+      const p2 = new Player(2, 450, 300, '#e74c3c');
+      if (this.mode === 'arena') p2.isFloatingWeapons = true;
+      this.players.push(p2);
     }
     this.zombies = [];
     this.projectiles = [];
@@ -314,6 +319,14 @@ export class Game {
     }
     this.baggedMaterials = Math.floor(uncollected * 0.5); // 50% risk mechanics
 
+    // ── 競技場素質點數結算：每波固定 1 點 + 本波升級次數 ──
+    const arenaPlayer = this.players[0];
+    if (arenaPlayer && this.mode === 'arena') {
+      const levelsGained = Math.max(0, arenaPlayer.level - this._arenaWaveStartLevel);
+      arenaPlayer.arenaStatPoints += 1 + levelsGained;
+      arenaPlayer.pendingLevelUp = false; // 競技場不使用升級 UI，直接清除
+    }
+
     this.zombies = [];
     this.projectiles = [];
     this.swordProjectiles = [];
@@ -321,17 +334,23 @@ export class Game {
     this.missiles = [];
     this.hitEffects = [];
     this.activeEffects = [];
+    this.slimeTrails = []; // explicitly clear these
     this.items = [];
+    this.pendingSwordKills.clear();
   }
 
   nextArenaWave() {
     if (this.mode !== 'arena') return;
-    this.waveManager.currentWave++;
-    this.waveManager.startCombat(); // resets timer and isResting
+    this._arenaWaveStartLevel = this.players[0]?.level ?? 1; // 記錄波次開始等級
+    this.waveManager.startCombat();
+    this._shopCleared = false;
   }
+
+  private _shopCleared: boolean = false;
 
   // 取得需要升級選擇的玩家（回傳第一個等待中的）
   get upgradePendingPlayer(): import('./Player').Player | null {
+    if (this.mode === 'arena') return null; // 競技場模式禁用升級介面
     return this.players.find(p => p.pendingLevelUp) ?? null;
   }
 
@@ -514,7 +533,10 @@ export class Game {
 
     // --- ARENA MODE WAVE END FREEZE ---
     if (this.mode === 'arena' && this.waveManager.isResting) {
-      if (this.zombies.length > 0) this.clearEntitiesForShop();
+      if (!this._shopCleared) {
+        this.clearEntitiesForShop();
+        this._shopCleared = true;
+      }
       this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
       return; // Freeze all physics and game objects during Shop Phase
     }

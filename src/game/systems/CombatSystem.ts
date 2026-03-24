@@ -7,6 +7,7 @@ import { Player } from '../Player';
 import { Obstacle } from '../map/Obstacle';
 import { Item } from '../Item';
 import { Projectile } from '../Projectile';
+import { SwordProjectile } from '../entities/SwordProjectile';
 import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
 
 export function handleObstacleInteractions(game: Game, dt: number): void {
@@ -113,49 +114,94 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
 }
 
 export function handlePlayerAttacks(game: Game, player: Player): void {
-  const wLv  = player.weaponLevels[player.weapon];
-  const wKey = getWeaponKey(player.weapon, wLv, player.weaponBranches[player.weapon]);
-  const weaponDef = WEAPON_REGISTRY[player.weapon]?.[wKey];
-  if (!weaponDef) return;
+  const activeWeapons = player.isFloatingWeapons 
+    ? player.weapons 
+    : [{ id: 'main', type: player.weapon, level: player.weaponLevels[player.weapon] || 1, lastAttackTime: player.lastAttackTime, branch: player.weaponBranches[player.weapon] }];
 
-  // 劍系：刀在飛行中時不允許再丟（安全保護，正常情況由回程時機自然控制）
-  if (player.weapon === 'sword' && (player as any)._swordOut) return;
+  const now = Date.now();
+  const dmgMult = player.damageMultiplier * (player.isAtAltar ? 1.4 : 1);
 
-  const attackInterval = weaponDef.attackInterval / player.attackSpeedMultiplier;
+  // 劍系：只有裝備 1 把「主武器」時阻擋（無盡模式）
+  // 競技場模式允許劍氣齊發，不受 _swordOut 阻擋
+  if (!player.isFloatingWeapons && player.weapon === 'sword' && (player as any)._swordOut) return;
 
-  if (Date.now() - player.lastAttackTime > attackInterval) {
-    player.lastAttackTime = Date.now();
+  for (let i = 0; i < activeWeapons.length; i++) {
+    const slot = activeWeapons[i];
+    const wType = slot.type;
+    const wLv = slot.level;
+    const wBranch = (slot as any).branch || null;
 
-    const dmgMult = player.damageMultiplier * (player.isAtAltar ? 1.4 : 1);
+    const wKey = getWeaponKey(wType, wLv, wBranch);
+    const weaponDef = WEAPON_REGISTRY[wType]?.[wKey];
+    if (!weaponDef) continue;
 
-    const fireOnce = () => {
-      if (player.hp <= 0) return;
-      if (weaponDef.fireDirect) {
-        // Branch weapons (Sword A/B): delegate to direct handler
-        weaponDef.fireDirect(game, player, dmgMult);
-      } else {
-        const specs = weaponDef.fire(player, dmgMult);
-        for (const s of specs) {
-          game.projectiles.push(new Projectile(
-            s.ownerId, s.x, s.y, s.vx, s.vy,
-            s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level, false,
-            s.bulletType ?? 'blue_ellipse',
-          ));
+    const attackInterval = weaponDef.attackInterval / player.attackSpeedMultiplier;
+
+    if (now - slot.lastAttackTime > attackInterval) {
+      slot.lastAttackTime = now;
+      if (!player.isFloatingWeapons) player.lastAttackTime = now;
+
+      const fireOnce = () => {
+        if (player.hp <= 0) return;
+
+        let origin: {x: number, y: number, aimAngle: number} | undefined = undefined;
+        if (player.isFloatingWeapons) {
+          const offsetAngle = (i / player.weapons.length) * Math.PI * 2;
+          const bob = Math.sin(now / 300 + i) * 6; // 更大一點的呼吸感
+          const bx = player.x + Math.cos(offsetAngle) * 38;
+          const by = player.y + Math.sin(offsetAngle) * 38 + bob;
+          
+          let wAim = player.aimAngle;
+          // 獨立索敵雷達：以武器自身為中心，尋找最近且存活的敵人 (雷達距離給大一點 600px)
+          const nearest = findNearestZombie(game, bx, by, 600);
+          if (nearest && nearest.hp > 0) {
+            wAim = Math.atan2(nearest.y - by, nearest.x - bx);
+          }
+          slot.aimAngle = wAim;
+          origin = { x: bx, y: by, aimAngle: wAim };
         }
+
+        if (weaponDef.fireDirect) {
+          // 直接操作 game（包含刀劍、A/B 分支武器）
+          weaponDef.fireDirect(game, player, dmgMult, origin);
+        } else {
+          // 產生子彈規格
+          const specs = weaponDef.fire(player, dmgMult, origin);
+          for (const s of specs) {
+            // 修正 Sword Level 5 回傳 ProjectileSpec 時被塞入普通子彈的問題
+            if (s.type === 'slash') {
+               // 建立模擬的 SwordConfig 塞回真實的 SwordProjectiles
+               game.swordProjectiles.push(new SwordProjectile({
+                 branch: 'base', level: s.level, ownerId: s.ownerId,
+                 x: s.x, y: s.y, angle: origin?.aimAngle ?? player.aimAngle, dmgMult,
+                 passRadius: 12, damage: Math.floor(s.damage / dmgMult),
+                 speed: 0.42, maxRange: 200, attackInterval: weaponDef.attackInterval,
+                 spinRadius: 0, spinDamage: 0, spinDuration: 0, spinTickMs: 0,
+                 embedDuration: 0, explodeDamage: 0, explodeRadius: 0,
+               }));
+            } else {
+               game.projectiles.push(new Projectile(
+                s.ownerId, s.x, s.y, s.vx, s.vy,
+                s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level, false,
+                s.bulletType ?? 'blue_ellipse',
+               ));
+            }
+          }
+        }
+      };
+
+      fireOnce();
+
+      if (weaponDef.burstCount && weaponDef.burstCount > 1) {
+        let fired = 1;
+        const burstInterval = setInterval(() => {
+          if (fired >= (weaponDef.burstCount ?? 1) || player.hp <= 0) {
+            clearInterval(burstInterval); return;
+          }
+          fireOnce();
+          fired++;
+        }, weaponDef.burstDelay ?? 150);
       }
-    };
-
-    fireOnce();
-
-    if (weaponDef.burstCount && weaponDef.burstCount > 1) {
-      let fired = 1;
-      const burstInterval = setInterval(() => {
-        if (fired >= (weaponDef.burstCount ?? 1) || player.hp <= 0) {
-          clearInterval(burstInterval); return;
-        }
-        fireOnce();
-        fired++;
-      }, weaponDef.burstDelay ?? 150);
     }
   }
 }
@@ -164,6 +210,7 @@ export function findNearestZombie(game: Game, x: number, y: number, maxDist: num
   let nearest = null;
   let minDist = maxDist;
   for (const zombie of game.zombies) {
+    if (zombie.hp <= 0) continue;
     const dist = Math.hypot(zombie.x - x, zombie.y - y);
     if (dist < minDist) {
       minDist = dist;

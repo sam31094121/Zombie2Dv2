@@ -3,6 +3,20 @@ import { Obstacle } from './map/Obstacle';
 import { WEAPON_REGISTRY } from './entities/definitions/WeaponDefinitions';
 import { drawPlayer } from './renderers/PlayerRenderer';
 
+export interface WeaponSlot {
+  id: string;
+  type: 'sword' | 'gun';
+  level: number;
+  branch: 'A' | 'B' | null;
+  lastAttackTime: number;
+  aimAngle?: number; // 獨立索敵的當前鎖定角度
+}
+
+export interface OwnedItem {
+  id: string;    // 唯一實例 ID（React key 用）
+  defId: string; // ITEM_REGISTRY 的鍵值
+}
+
 export class Player {
   id: number;
   x: number;
@@ -24,10 +38,27 @@ export class Player {
   weaponBranches: Record<'sword' | 'gun', 'A' | 'B' | null> = { sword: null, gun: null };
   pendingLevelUp: boolean = false;   // true 時遊戲暫停顯示升級選擇
 
-  // Prestige Stats
+  // ── 競技場模式：6 把浮游武器 ──────────────────────────────────────────────
+  isFloatingWeapons: boolean = false;
+  weapons: WeaponSlot[] = [];
+
+  // ── 基礎倍率（Prestige / 全局加成）──────────────────────────────────────
   damageMultiplier: number = 1.0;
   attackSpeedMultiplier: number = 1.0;
   pickupRadiusMultiplier: number = 1.0;
+
+  // ── 競技場素質（Phase 1 選擇，模組化於 StatDefinitions.ts）───────────────
+  armor: number = 0;               // 每點減少 1 點傷害
+  knockback: number = 0;           // 擊退距離加成
+  regenPerSecond: number = 0;      // 每秒回復 HP
+  critChance: number = 0;          // 暴擊機率（0.0 ~ 1.0）
+  gunDamageBonus: number = 0;      // 槍類傷害平加（配件）
+  swordDamageBonus: number = 0;    // 劍類傷害平加（配件）
+  statLevels: Record<string, number> = {};   // 各素質已升等數
+  arenaStatPoints: number = 0;     // 可用素質點數（進商店時結算）
+
+  // ── 競技場配件背包（Phase 2 購買，模組化於 ItemDefinitions.ts）────────────
+  ownedItems: OwnedItem[] = [];
 
   kills: number = 0;
   lastMoveDir: { x: number, y: number } = { x: 1, y: 0 };
@@ -52,6 +83,13 @@ export class Player {
     this.y = y;
     this.color = color;
     this.weapon = Math.random() > 0.5 ? 'sword' : 'gun';
+    this.weapons = [{
+      id: Math.random().toString(36).substr(2, 9),
+      type: this.weapon,
+      level: 1,
+      branch: null,
+      lastAttackTime: 0
+    }];
   }
 
   addXp(amount: number) {
@@ -68,7 +106,7 @@ export class Player {
   applyRandomOverdriveUpgrade() {
     const upgrades = ['power', 'haste', 'agility', 'vitality', 'magnet'];
     const choice = upgrades[Math.floor(Math.random() * upgrades.length)];
-    
+
     switch (choice) {
       case 'power':
         this.damageMultiplier += 0.10;
@@ -124,7 +162,7 @@ export class Player {
       currentSpeed *= 1.5;
       this.speedBoostTimer -= dt;
     }
-    
+
     if (this.weaponSwitchTimer > 0) {
       this.weaponSwitchTimer -= dt;
     }
@@ -141,13 +179,19 @@ export class Player {
       }
     }
 
+    // 被動再生（regenPerSecond 素質/配件加成）
+    if (this.regenPerSecond > 0 && this.hp < this.maxHp) {
+      this.hp += this.regenPerSecond * (dt / 1000);
+      this.hp = Math.min(this.hp, this.maxHp);
+    }
+
     // Healing
     if (Date.now() - this.lastDamageTime > CONSTANTS.HEAL_DELAY && this.hp < this.maxHp) {
       this.hp += CONSTANTS.HEAL_RATE * (dt / 1000);
       this.hp = Math.min(this.hp, this.maxHp);
       this.isRegenerating = true;
     } else {
-      this.isRegenerating = false;
+      this.isRegenerating = this.regenPerSecond > 0 && this.hp < this.maxHp;
     }
   }
 

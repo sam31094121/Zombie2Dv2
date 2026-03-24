@@ -25,10 +25,10 @@ export interface IWeaponLevelDef {
 
   // 產生這次攻擊的所有子彈規格
   // dmgMult = player.damageMultiplier × altar boost（由 caller 計算）
-  fire(player: Player, dmgMult: number): ProjectileSpec[];
+  fire(player: Player, dmgMult: number, origin?: {x: number, y: number, aimAngle: number}): ProjectileSpec[];
 
   // 進階攻擊（Branch A/B 劍系使用）：直接操作 game，fire() 回傳空陣列
-  fireDirect?: (game: Game, player: Player, dmgMult: number) => void;
+  fireDirect?: (game: Game, player: Player, dmgMult: number, origin?: {x: number, y: number, aimAngle: number}) => void;
 
   // 繪製武器（ctx 已由 caller 做 rotate(aimAngle)）
   // 函式內自己 save/restore
@@ -38,10 +38,13 @@ export interface IWeaponLevelDef {
 // ═══════════════════════════════════════════════════════════════════════════
 // SWORD 攻擊函式
 // ═══════════════════════════════════════════════════════════════════════════
-function makeSwordSpec(player: Player, dmgMult: number, radius: number, damage: number): ProjectileSpec {
-  const dir = { x: Math.cos(player.aimAngle), y: Math.sin(player.aimAngle) };
+function makeSwordSpec(player: Player, dmgMult: number, radius: number, damage: number, origin?: {x: number, y: number, aimAngle: number}): ProjectileSpec {
+  const angle = origin?.aimAngle ?? player.aimAngle;
+  const dir = { x: Math.cos(angle), y: Math.sin(angle) };
   return {
-    ownerId: player.id, x: player.x, y: player.y,
+    ownerId: player.id, 
+    x: origin?.x ?? player.x, 
+    y: origin?.y ?? player.y,
     vx: dir.x, vy: dir.y,
     damage: damage * dmgMult,
     pierce: Infinity, lifetime: 250,
@@ -58,9 +61,12 @@ function makeBullet(
   damage: number, pierce: number, speed: number, radius: number,
   ox = 0, oy = 0,
   bulletType = 'blue_ellipse',
+  origin?: {x: number, y: number, aimAngle: number}
 ): ProjectileSpec {
   return {
-    ownerId: player.id, x: player.x + ox, y: player.y + oy,
+    ownerId: player.id, 
+    x: (origin?.x ?? player.x) + ox, 
+    y: (origin?.y ?? player.y) + oy,
     vx: vx * speed, vy: vy * speed,
     damage: damage * dmgMult,
     pierce, lifetime: 2000,
@@ -96,7 +102,7 @@ function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: num
 }
 
 // ── 飛刀 fireDirect 參數（base branch）──────────────────────────────────────
-function _mkBase(level: number, p: Player, dmgMult: number): SwordConfig {
+function _mkBase(level: number, p: Player, dmgMult: number, origin?: {x: number, y: number, aimAngle: number}): SwordConfig {
   // maxRange 隨等級微增；damage = 等級數；冷卻統一 800ms
   const ranges = [160, 180, 200, 220];
   const speed = 0.42;
@@ -104,7 +110,10 @@ function _mkBase(level: number, p: Player, dmgMult: number): SwordConfig {
   const attackInterval = 800;
   return {
     branch: 'base', level, ownerId: p.id,
-    x: p.x, y: p.y, angle: p.aimAngle, dmgMult,
+    x: origin?.x ?? p.x, 
+    y: origin?.y ?? p.y, 
+    angle: origin?.aimAngle ?? p.aimAngle, 
+    dmgMult,
     passRadius: 12,
     damage: level,          // Lv1=1, Lv2=2, Lv3=3, Lv4=4
     speed, maxRange, attackInterval,
@@ -121,10 +130,10 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
   1: {
     attackInterval: 800,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playSlash(1);
-      (p as any)._swordOut = true;
-      game.swordProjectiles.push(new SwordProjectile(_mkBase(1, p, m)));
+      if (!p.isFloatingWeapons) (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(1, p, m, origin)));
     },
     drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 1); },
   },
@@ -132,10 +141,10 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
   2: {
     attackInterval: 800,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playSlash(2);
-      (p as any)._swordOut = true;
-      game.swordProjectiles.push(new SwordProjectile(_mkBase(2, p, m)));
+      if (!p.isFloatingWeapons) (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(2, p, m, origin)));
     },
     drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 2); },
   },
@@ -143,10 +152,10 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
   3: {
     attackInterval: 800,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playSlash(3);
-      (p as any)._swordOut = true;
-      game.swordProjectiles.push(new SwordProjectile(_mkBase(3, p, m)));
+      if (!p.isFloatingWeapons) (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(3, p, m, origin)));
     },
     drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 3); },
   },
@@ -154,19 +163,19 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
   4: {
     attackInterval: 800,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playSlash(4);
-      (p as any)._swordOut = true;
-      game.swordProjectiles.push(new SwordProjectile(_mkBase(4, p, m)));
+      if (!p.isFloatingWeapons) (p as any)._swordOut = true;
+      game.swordProjectiles.push(new SwordProjectile(_mkBase(4, p, m, origin)));
     },
     drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 4); },
   },
 
   5: {
     attackInterval: 1500,
-    fire: (player, dmgMult) => {
+    fire: (player, dmgMult, origin) => {
       audioManager.playSlash(5);
-      return [makeSwordSpec(player, dmgMult, 300, 5)];
+      return [makeSwordSpec(player, dmgMult, 300, 5, origin)];
     },
     drawWeapon(ctx, player) {
       ctx.save();
@@ -190,10 +199,11 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
   // Lv1：左輪手槍（單發直射）
   1: {
     attackInterval: 800,
-    fire: (player, dmgMult) => {
+    fire: (player, dmgMult, origin) => {
       audioManager.playShoot(1);
-      const v = angleVec(player.aimAngle);
-      return [makeBullet(player, dmgMult, v.x, v.y, 1, 1, 6, 5)];
+      const angle = origin?.aimAngle ?? player.aimAngle;
+      const v = angleVec(angle);
+      return [makeBullet(player, dmgMult, v.x, v.y, 1, 1, 6, 5, 0, 0, 'blue_ellipse', origin)];
     },
     drawWeapon(ctx, player) {
       ctx.save();
@@ -261,10 +271,11 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
   // Lv2：單發直射（更高傷害）
   2: {
     attackInterval: 605,
-    fire: (player, dmgMult) => {
+    fire: (player, dmgMult, origin) => {
       audioManager.playShoot(2);
-      const v = angleVec(player.aimAngle);
-      return [makeBullet(player, dmgMult, v.x, v.y, 2, 1, 8, 6)];
+      const angle = origin?.aimAngle ?? player.aimAngle;
+      const v = angleVec(angle);
+      return [makeBullet(player, dmgMult, v.x, v.y, 2, 1, 8, 6, 0, 0, 'blue_ellipse', origin)];
     },
     drawWeapon(ctx, player) {
       ctx.save();
@@ -281,13 +292,14 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
   // Lv3：左右雙管齊發
   3: {
     attackInterval: 600,
-    fire: (player, dmgMult) => {
+    fire: (player, dmgMult, origin) => {
       audioManager.playShoot(3);
-      const v = angleVec(player.aimAngle);
+      const angle = origin?.aimAngle ?? player.aimAngle;
+      const v = angleVec(angle);
       const perp = { x: -v.y * 10, y: v.x * 10 };
       return [
-        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, perp.x, perp.y),
-        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, -perp.x, -perp.y),
+        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, perp.x, perp.y, 'blue_ellipse', origin),
+        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, -perp.x, -perp.y, 'blue_ellipse', origin),
       ];
     },
     drawWeapon(ctx, player) {
@@ -307,18 +319,19 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
   // Lv4：前大後小三角陣型（1 大 + 2 小）
   4: {
     attackInterval: 600,
-    fire: (player, dmgMult) => {
+    fire: (player, dmgMult, origin) => {
       audioManager.playShoot(4);
-      const v = angleVec(player.aimAngle);
+      const angle = origin?.aimAngle ?? player.aimAngle;
+      const v = angleVec(angle);
       const perp = { x: -v.y, y: v.x };
       // 大子彈（中央前方）
       const front = makeBullet(player, dmgMult, v.x, v.y, 3, 2, 10, 8,
-        v.x * 8, v.y * 8);
+        v.x * 8, v.y * 8, 'blue_ellipse', origin);
       // 兩顆小子彈（左右後方）
       const left = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
-        perp.x * 10 - v.x * 4, perp.y * 10 - v.y * 4);
+        perp.x * 10 - v.x * 4, perp.y * 10 - v.y * 4, 'blue_ellipse', origin);
       const right = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
-        -perp.x * 10 - v.x * 4, -perp.y * 10 - v.y * 4);
+        -perp.x * 10 - v.x * 4, -perp.y * 10 - v.y * 4, 'blue_ellipse', origin);
       return [front, left, right];
     },
     drawWeapon(ctx, player) {
@@ -534,11 +547,13 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
 function _makeMissile(
   p: Player, dmgMult: number,
   damage: number, splitAfter: number,
+  origin?: {x: number, y: number, aimAngle: number}
 ): MissileProjectile {
   return new MissileProjectile({
     ownerId: p.id,
-    x: p.x, y: p.y,
-    angle: p.aimAngle,
+    x: origin?.x ?? p.x, 
+    y: origin?.y ?? p.y,
+    angle: origin?.aimAngle ?? p.aimAngle,
     damage: damage * dmgMult,
     speed: 8,
     turnSpeed: 0.005,   // rad/ms 軟追蹤
@@ -644,9 +659,9 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
   '5A': {
     attackInterval: 1200,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playShoot(4);
-      game.missiles.push(_makeMissile(p, m, 5, 0));
+      game.missiles.push(_makeMissile(p, m, 5, 0, origin));
     },
     drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
   },
@@ -657,9 +672,9 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     burstCount: 2,
     burstDelay: 220,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playShoot(4);
-      game.missiles.push(_makeMissile(p, m, 6, 0));
+      game.missiles.push(_makeMissile(p, m, 6, 0, origin));
     },
     drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
   },
@@ -670,9 +685,9 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     burstCount: 3,
     burstDelay: 200,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playShoot(5);
-      game.missiles.push(_makeMissile(p, m, 7, 0));
+      game.missiles.push(_makeMissile(p, m, 7, 0, origin));
     },
     drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
   },
@@ -683,9 +698,9 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     burstCount: 3,
     burstDelay: 200,
     fire: () => [],
-    fireDirect(game, p, m) {
+    fireDirect(game, p, m, origin) {
       audioManager.playShoot(5);
-      game.missiles.push(_makeMissile(p, m, 8, 300)); // splitAfter=300ms
+      game.missiles.push(_makeMissile(p, m, 8, 300, origin)); // splitAfter=300ms
     },
     drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
   },
@@ -809,38 +824,41 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
   ctx.restore();
 }
 
-function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: number, paralyze: number) {
+function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: number, paralyze: number, origin?: {x: number, y: number, aimAngle: number}) {
   audioManager.playShoot(5); // 觸發電弧手槍發射音效
   const speed = level >= 8 ? 20 : 16;
-  const vx = Math.cos(p.aimAngle) * speed;
-  const vy = Math.sin(p.aimAngle) * speed;
+  const angle = origin?.aimAngle ?? p.aimAngle;
+  const vx = Math.cos(angle) * speed;
+  const vy = Math.sin(angle) * speed;
   // ArcProjectile(ownerId, level, x, y, vx, vy, damage, jumps, paralyzeDuration)
-  game.arcProjectiles.push(new ArcProjectile(p.id, level, p.x, p.y, vx, vy, damage, jumps, paralyze));
+  const ox = origin?.x ?? p.x;
+  const oy = origin?.y ?? p.y;
+  game.arcProjectiles.push(new ArcProjectile(p.id, level, ox, oy, vx, vy, damage, jumps, paralyze));
 }
 
 const GUN_BRANCH_B: Record<string, IWeaponLevelDef> = {
   '5B': {
     attackInterval: 1800,
     fire: () => [],
-    fireDirect(game, p) { _fireArc(game, p, 5, 5, 3, 1000); },
+    fireDirect(game, p, m, origin) { _fireArc(game, p, 5, 5, 3, 1000, origin); },
     drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 5); },
   },
   '6B': {
     attackInterval: 1800,
     fire: () => [],
-    fireDirect(game, p) { _fireArc(game, p, 6, 6, 5, 1200); },
+    fireDirect(game, p, m, origin) { _fireArc(game, p, 6, 6, 5, 1200, origin); },
     drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 6); },
   },
   '7B': {
     attackInterval: 1800,
     fire: () => [],
-    fireDirect(game, p) { _fireArc(game, p, 7, 7, 8, 1500); },
+    fireDirect(game, p, m, origin) { _fireArc(game, p, 7, 7, 8, 1500, origin); },
     drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 7); },
   },
   '8B': {
     attackInterval: 2000,
     fire: () => [],
-    fireDirect(game, p) { _fireArc(game, p, 8, 8, 10, 2000); },
+    fireDirect(game, p, m, origin) { _fireArc(game, p, 8, 8, 10, 2000, origin); },
     drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 8); },
   },
 };
