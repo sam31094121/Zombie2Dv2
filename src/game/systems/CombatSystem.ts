@@ -140,11 +140,19 @@ export function handlePlayerAttacks(game: Game, player: Player, dt: number = 16)
     const attackRange = weaponDef.attackRange ?? (wType === 'sword' ? 150 : 300);
 
     if (player.isFloatingWeapons) {
-      // ── 浮空武器：每幀平滑旋轉瞄準最近怪物，進入射程才開火 ──────────────
-      const offsetAngle = (i / player.weapons.length) * Math.PI * 2;
+      // ── 浮空武器：使用與 PlayerRenderer 相同的固定 6 槽位佈局 ──
+      const SLOT_POSITIONS = [
+        {  rx:  44, ry:   0 }, // 0: 右中 (1)
+        {  rx: -44, ry:   0 }, // 1: 左中 (2)
+        {  rx: -44, ry: -26 }, // 2: 左上 (3)
+        {  rx:  44, ry: -26 }, // 3: 右上 (4)
+        {  rx: -44, ry:  26 }, // 4: 左下 (5)
+        {  rx:  44, ry:  26 }, // 5: 右下 (6)
+      ];
+      const slotPos = SLOT_POSITIONS[i % SLOT_POSITIONS.length];
       const bob = Math.sin(now / 300 + i) * 6;
-      const bx = player.x + Math.cos(offsetAngle) * 38;
-      const by = player.y + Math.sin(offsetAngle) * 38 + bob;
+      const bx = player.x + slotPos.rx;
+      const by = player.y + slotPos.ry + bob;
 
       // 1. 瞄準（大雷達範圍 700px，無距離限制，始終旋轉朝向最近怪物）
       const aimTarget = findNearestZombie(game, bx, by, 700);

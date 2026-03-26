@@ -1154,7 +1154,7 @@ export class Game {
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
 
     // ── 碎裂噴發 (Gibbing) ─────────────────────────────────────────────────
-    const burstAngle = hitAngle !== undefined ? hitAngle + Math.PI : Math.random() * Math.PI * 2;
+    const burstAngle = hitAngle !== undefined ? hitAngle : Math.random() * Math.PI * 2;
     const gibCount = 3 + Math.floor(Math.random() * 3); // 3~5 顆肉塊
     for (let g = 0; g < gibCount; g++) {
       // 在受擊反方向的扇形範圍 (±40°) 內散射

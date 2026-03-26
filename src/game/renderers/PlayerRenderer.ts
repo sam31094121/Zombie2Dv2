@@ -43,12 +43,12 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
         // ── 6 把武器固定槽位：右 3 左 3，垂直等距排列 ──
         // 槽位索引：0=右上, 1=右中, 2=右下, 3=左上, 4=左中, 5=左下
         const SLOT_POSITIONS = [
-          {  rx:  44, ry: -26 }, // 0: 右上
-          {  rx:  44, ry:   0 }, // 1: 右中
-          {  rx:  44, ry:  26 }, // 2: 右下
-          {  rx: -44, ry: -26 }, // 3: 左上
-          {  rx: -44, ry:   0 }, // 4: 左中
-          {  rx: -44, ry:  26 }, // 5: 左下
+          {  rx:  44, ry:   0 }, // 0: 右中 (1)
+          {  rx: -44, ry:   0 }, // 1: 左中 (2)
+          {  rx: -44, ry: -26 }, // 2: 左上 (3)
+          {  rx:  44, ry: -26 }, // 3: 右上 (4)
+          {  rx: -44, ry:  26 }, // 4: 左下 (5)
+          {  rx:  44, ry:  26 }, // 5: 右下 (6)
         ];
 
         const slotPos = SLOT_POSITIONS[i % SLOT_POSITIONS.length];

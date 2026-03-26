@@ -243,41 +243,54 @@ export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D):
       break;
     }
     case 'gib_blood': {
-      // 物理驅動的耠筆風格肉塊碎片
+      // 物理驅動的擬真肉塊碎片：具備濕潤光澤與不規則形狀
       const p = effect.lifetime / effect.maxLifetime;
-      const sz = effect.size ?? 5;
-      const rot = effect.rotation ?? 0;
+      const sz = (effect.size ?? 5) * 1.2;
+      const rot = (effect.rotation ?? 0) + (1 - p) * 4;
+      
       ctx.save();
       ctx.translate(effect.x, effect.y);
-      ctx.rotate(rot + (1 - p) * 3); // 碎片飛行時旋轉
-      ctx.globalAlpha = Math.min(1, p * 2.5); // 尾端快速淡出
+      ctx.rotate(rot);
+      ctx.globalAlpha = Math.min(1, p * 3);
 
-      // ── 手繪蠠筆感: 用多個不規則圖層疊加 ──
-      // 底層：暗紅粗糙形狀
-      const baseR = 100 + Math.floor(sz * 12);
-      const baseG = 15 + Math.floor(sz * 5);
-      ctx.fillStyle = `rgb(${baseR}, ${baseG}, 10)`;
+      // 1. 底層肉質陰影 (Irregular Base)
+      ctx.fillStyle = '#4c0505';
       ctx.beginPath();
-      for (let a = 0; a < 7; a++) {
-        const ang = (a / 7) * Math.PI * 2;
-        const wobble = 0.7 + Math.sin(ang * 3 + rot) * 0.35;
-        ctx.lineTo(Math.cos(ang) * sz * 1.4 * wobble, Math.sin(ang) * sz * 0.8 * wobble);
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        const dist = sz * (0.8 + Math.sin(ang * 3 + effect.x) * 0.3);
+        ctx.lineTo(Math.cos(ang) * dist, Math.sin(ang) * dist);
       }
       ctx.closePath();
       ctx.fill();
 
-      // 中層：鮮紅框線（手繪筆觸感）
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = `rgba(180, 30, 20, ${p * 0.8})`;
-      ctx.stroke();
-
-      // 高光層：小個光點模擬濕潤血滴
-      ctx.fillStyle = `rgba(220, 80, 50, ${p * 0.7})`;
+      // 2. 主體肉色 (Meaty Part with Gradient)
+      const grad = ctx.createRadialGradient(-sz * 0.3, -sz * 0.3, 0, 0, 0, sz);
+      grad.addColorStop(0, '#af1a1a'); // 核心鮮紅
+      grad.addColorStop(0.7, '#7f0a0a'); // 邊緣深紅
+      grad.addColorStop(1, '#4c0505'); // 接縫處暗紅
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.ellipse(-sz * 0.2, -sz * 0.15, sz * 0.5, sz * 0.3, 0.3, 0, Math.PI * 2);
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2;
+        const dist = sz * 0.85 * (0.9 + Math.cos(ang * 2 + effect.y) * 0.2);
+        ctx.lineTo(Math.cos(ang) * dist, Math.sin(ang) * dist);
+      }
+      ctx.closePath();
       ctx.fill();
 
-      ctx.globalAlpha = 1;
+      // 3. 表面光澤 (Glossy Highlights)
+      // 模擬濕潤、有反光的表面
+      ctx.fillStyle = `rgba(255, 180, 180, ${p * 0.45})`;
+      ctx.beginPath();
+      ctx.ellipse(-sz * 0.35, -sz * 0.3, sz * 0.4, sz * 0.2, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = `rgba(255, 255, 255, ${p * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(-sz * 0.45, -sz * 0.35, sz * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.restore();
       break;
     }

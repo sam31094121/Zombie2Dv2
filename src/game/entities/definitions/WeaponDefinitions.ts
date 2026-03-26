@@ -68,10 +68,17 @@ function makeBullet(
   const maxRange = 280;
   const lifetime = (maxRange / speed) * (1000 / 60);
 
+  const angle = origin?.aimAngle ?? player.aimAngle;
+  // 將槍口偏移 (ox, oy) 進行旋轉，與武器指向對齊
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const rotatedOx = ox * cos - oy * sin;
+  const rotatedOy = ox * sin + oy * cos;
+
   return {
     ownerId: player.id, 
-    x: (origin?.x ?? player.x) + ox, 
-    y: (origin?.y ?? player.y) + oy,
+    x: (origin?.x ?? player.x) + rotatedOx, 
+    y: (origin?.y ?? player.y) + rotatedOy,
     vx: vx * speed, vy: vy * speed,
     damage: damage * dmgMult,
     pierce, lifetime,
@@ -85,8 +92,8 @@ function angleVec(a: number) { return { x: Math.cos(a), y: Math.sin(a) }; }
 // ═══════════════════════════════════════════════════════════════════════════
 // SWORD DRAW HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
-function swordSwingOffset(player: Player): number {
-  const t = Date.now() - player.lastAttackTime;
+function swordSwingOffset(player: Player, slot?: import('../../Player').WeaponSlot): number {
+  const t = Date.now() - (slot?.lastAttackTime ?? player.lastAttackTime);
   const dur = 200;
   return t < dur ? -Math.PI / 2 + (t / dur) * Math.PI : -Math.PI / 4;
 }
@@ -94,11 +101,12 @@ function swordSwingOffset(player: Player): number {
 // ── 突刺刺刀 drawWeapon 輔助（玩家手持時的外觀）──────────────────────────────
 // 刀丟出去時（_swordOut = true）：顯示空拳，不顯示刀
 // 刀回到手上時：顯示刀
-function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: number = 2): void {
-  if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
+function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: number = 2, slot?: import('../../Player').WeaponSlot): void {
+  // 浮空武器不使用玩家全域 _swordOut 狀態（避免多把武器互相干擾導致黑拳）
+  if (!slot && (player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   ctx.save();
   ctx.translate(14, 8);
-  ctx.rotate(swordSwingOffset(player));
+  ctx.rotate(swordSwingOffset(player, slot));
   if (level === 1) drawWoodenStakeShape(ctx);
   else if (level === 2) drawRustyDirkShape(ctx);
   else if (level === 3) drawSoldierDirkShape(ctx);
@@ -187,7 +195,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       audioManager.playShoot(1);
       const angle = origin?.aimAngle ?? player.aimAngle;
       const v = angleVec(angle);
-      return [makeBullet(player, dmgMult, v.x, v.y, 1, 1, 6, 5, 0, 0, 'blue_ellipse', origin)];
+      return [makeBullet(player, dmgMult, v.x, v.y, 1, 1, 6, 5, 25, -2, 'blue_ellipse', origin)];
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
@@ -259,7 +267,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       audioManager.playShoot(2);
       const angle = origin?.aimAngle ?? player.aimAngle;
       const v = angleVec(angle);
-      return [makeBullet(player, dmgMult, v.x, v.y, 2, 1, 8, 6, 0, 0, 'blue_ellipse', origin)];
+      return [makeBullet(player, dmgMult, v.x, v.y, 2, 1, 8, 6, 28, 0, 'blue_ellipse', origin)];
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
@@ -288,8 +296,8 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       const v = angleVec(angle);
       const perp = { x: -v.y * 10, y: v.x * 10 };
       return [
-        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, perp.x, perp.y, 'blue_ellipse', origin),
-        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, -perp.x, -perp.y, 'blue_ellipse', origin),
+        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, 28, -5, 'blue_ellipse', origin),
+        makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, 28, 5, 'blue_ellipse', origin),
       ];
     },
     drawWeapon(ctx, player, slot) {
@@ -320,14 +328,14 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       const angle = origin?.aimAngle ?? player.aimAngle;
       const v = angleVec(angle);
       const perp = { x: -v.y, y: v.x };
-      // 大子彈（中央前方）
+      // 大子彈（槍口中央）
       const front = makeBullet(player, dmgMult, v.x, v.y, 3, 2, 10, 8,
-        v.x * 8, v.y * 8, 'blue_ellipse', origin);
-      // 兩顆小子彈（左右後方）
+        32, 0, 'blue_ellipse', origin);
+      // 兩顆小子彈（雙槍管槍口）
       const left = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
-        perp.x * 10 - v.x * 4, perp.y * 10 - v.y * 4, 'blue_ellipse', origin);
+        32, -5, 'blue_ellipse', origin);
       const right = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
-        -perp.x * 10 - v.x * 4, -perp.y * 10 - v.y * 4, 'blue_ellipse', origin);
+        32, 5, 'blue_ellipse', origin);
       return [front, left, right];
     },
     drawWeapon(ctx, player, slot) {
@@ -415,22 +423,22 @@ function _drawEmptyFist(ctx: CanvasRenderingContext2D): void {
 }
 
 // ── Branch A/B 手持輔助（呼叫 SwordRenderer 的共用 shape）───────────────────
-function _drawHeldBranchA(ctx: CanvasRenderingContext2D, player: Player): void {
-  if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
+function _drawHeldBranchA(ctx: CanvasRenderingContext2D, player: Player, slot?: import('../../Player').WeaponSlot): void {
+  if (!slot && (player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   const colors = getBranchColors('A', player.weaponLevels[player.weapon]);
   ctx.save();
   ctx.translate(14, 8);
-  ctx.rotate(swordSwingOffset(player));
+  ctx.rotate(swordSwingOffset(player, slot));
   drawBranchAShape(ctx, colors);
   ctx.restore();
 }
 
-function _drawHeldBranchB(ctx: CanvasRenderingContext2D, player: Player): void {
-  if ((player as any)._swordOut) { _drawEmptyFist(ctx); return; }
+function _drawHeldBranchB(ctx: CanvasRenderingContext2D, player: Player, slot?: import('../../Player').WeaponSlot): void {
+  if (!slot && (player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   const colors = getBranchColors('B', player.weaponLevels[player.weapon]);
   ctx.save();
   ctx.translate(14, 8);
-  ctx.rotate(swordSwingOffset(player));
+  ctx.rotate(swordSwingOffset(player, slot));
   drawBranchBShape(ctx, colors);
   ctx.restore();
 }
@@ -470,7 +478,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(7, p, m, 0.45, 240, 90, 5, 2000, 260, 1600, 5)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchA(ctx, p, slot); },
   },
   '8A': {
     attackInterval: 1500,
@@ -482,7 +490,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(8, p, m, 0.5, 260, 100, 6, 2200, 240, 1500, 5.5)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchA(ctx, p, slot); },
   },
 };
 
@@ -500,7 +508,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(5, p, m, 0.4, 280, 8, 400, 25, 120, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchB(ctx, p, slot); },
   },
   '6B': {
     attackInterval: 2000,
@@ -512,7 +520,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(6, p, m, 0.45, 300, 10, 350, 35, 140, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchB(ctx, p, slot); },
   },
   '7B': {
     attackInterval: 2000,
@@ -524,7 +532,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(7, p, m, 0.5, 320, 12, 300, 48, 160, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchB(ctx, p, slot); },
   },
   '8B': {
     attackInterval: 2000,
@@ -536,7 +544,7 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
         makeSwordConfigB(8, p, m, 0.55, 350, 15, 280, 65, 180, 2000)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchB(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchB(ctx, p, slot); },
   },
 };
 
@@ -553,13 +561,22 @@ function _makeMissile(
   const maxRange = 280;
   const lifetime = (maxRange / speed) * (1000 / 60);
 
+  const angle = origin?.aimAngle ?? p.aimAngle;
+  // 導彈發射口偏移 (計算自 _drawMissileLauncher 的 MuzzleFlash 位置)
+  const mx = 29;
+  const my = -6;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const rotatedOx = mx * cos - my * sin;
+  const rotatedOy = mx * sin + my * cos;
+
   const proj = new MissileProjectile({
     ownerId: p.id,
-    x: origin?.x ?? p.x, 
-    y: origin?.y ?? p.y,
-    angle: origin?.aimAngle ?? p.aimAngle,
-    damage: damage * dmgMult,
+    x: (origin?.x ?? p.x) + rotatedOx,
+    y: (origin?.y ?? p.y) + rotatedOy,
+    angle,
     speed,
+    damage: damage * dmgMult,
     turnSpeed: 0.005,   // rad/ms 軟追蹤
     radius: 10,
     isSmall: false,
@@ -832,15 +849,22 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
   ctx.restore();
 }
 
-function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: number, paralyze: number, origin?: {x: number, y: number, aimAngle: number}) {
+function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: number, paralyze: number, origin?: {x: number, y: number, aimAngle: number, muzzleOffset?: {x: number, y: number}}) {
   audioManager.playShoot(5); // 觸發電弧手槍發射音效
   const speed = level >= 8 ? 20 : 16;
   const angle = origin?.aimAngle ?? p.aimAngle;
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed;
-  // ArcProjectile(ownerId, level, x, y, vx, vy, damage, jumps, paralyzeDuration)
-  const ox = origin?.x ?? p.x;
-  const oy = origin?.y ?? p.y;
+  
+  let ox = origin?.x ?? p.x;
+  let oy = origin?.y ?? p.y;
+
+  if (origin?.muzzleOffset) {
+    const rotatedOffsetX = origin.muzzleOffset.x * Math.cos(angle) - origin.muzzleOffset.y * Math.sin(angle);
+    const rotatedOffsetY = origin.muzzleOffset.x * Math.sin(angle) + origin.muzzleOffset.y * Math.cos(angle);
+    ox += rotatedOffsetX;
+    oy += rotatedOffsetY;
+  }
   
   const lifetime = (280 / speed) * (1000 / 60);
   const proj = new ArcProjectile(p.id, level, ox, oy, vx, vy, damage, jumps, paralyze);
