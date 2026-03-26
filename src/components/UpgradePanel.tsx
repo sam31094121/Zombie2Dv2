@@ -123,27 +123,31 @@ export function UpgradePanel({ player, onSelect }: Props) {
       </div>
 
       {/* 3 張卡片 */}
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full max-w-sm sm:max-w-none px-4 sm:px-0">
         {options.map((card, i) => {
           const c = cardContent(card);
           return (
             <button
               key={i}
               onClick={() => onSelect(card)}
-              className="w-44 p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 hover:scale-105 hover:brightness-110 active:scale-95 flex flex-col items-center gap-2 select-none"
+              className="w-full sm:w-44 p-3 sm:p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 hover:scale-105 hover:brightness-110 active:scale-95 flex flex-row sm:flex-col items-center gap-3 sm:gap-2 select-none touch-manipulation text-left sm:text-center"
               style={{
                 background: 'rgba(20,20,30,0.95)',
                 borderColor: c.color,
                 boxShadow: `0 0 18px ${c.color}55`,
               }}
             >
-              <div className="text-4xl">{c.emoji}</div>
-              <div className="text-white font-black text-sm text-center leading-tight">{c.title}</div>
-              <div className="text-xs font-bold px-2 py-0.5 rounded-full"
-                   style={{ background: c.color + '33', color: c.color }}>
-                {c.subtitle}
+              <div className="text-3xl sm:text-4xl shrink-0">{c.emoji}</div>
+              <div className="flex flex-col items-start sm:items-center flex-1">
+                <div className="flex sm:flex-col items-center sm:items-center gap-2 sm:gap-0 w-full mb-1 sm:mb-0">
+                  <div className="text-white font-black text-sm leading-tight">{c.title}</div>
+                  <div className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full mt-0 sm:mt-1 ml-auto sm:ml-0"
+                       style={{ background: c.color + '33', color: c.color }}>
+                    {c.subtitle}
+                  </div>
+                </div>
+                <div className="text-gray-400 text-[10px] sm:text-xs leading-snug">{c.desc}</div>
               </div>
-              <div className="text-gray-400 text-xs text-center leading-snug mt-1">{c.desc}</div>
             </button>
           );
         })}

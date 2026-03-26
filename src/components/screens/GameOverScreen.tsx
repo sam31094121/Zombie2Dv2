@@ -19,9 +19,9 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
   gameStats, isOnlineMode, readyState, readyRef, networkRef,
   formatTime, onPlayAgain, onMainMenu, onReadyRematch,
 }) => (
-  <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center rounded-xl text-white z-10 overflow-y-auto p-4">
-    <div className="max-w-md w-full flex flex-col items-center my-auto py-8">
-      <h1 className="text-5xl md:text-6xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-800 tracking-tighter drop-shadow-lg text-center">遊戲結束</h1>
+  <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center rounded-xl text-white z-10 overflow-y-auto p-4" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+    <div className="max-w-md w-full flex flex-col items-center my-auto py-4 sm:py-8">
+      <h1 className="text-4xl sm:text-5xl md:text-6xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-800 tracking-tighter drop-shadow-lg text-center">遊戲結束</h1>
       <div className="bg-neutral-900/80 p-6 md:p-8 rounded-3xl border border-neutral-800 shadow-2xl mb-8 flex flex-col gap-4 w-full text-center">
         <div className="text-xl text-neutral-300 font-medium">存活時間</div>
         <div className="text-3xl font-mono text-yellow-400 font-bold">{formatTime(gameStats.time)}</div>

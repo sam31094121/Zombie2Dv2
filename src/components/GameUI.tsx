@@ -21,6 +21,7 @@ const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
 export const GameUI: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
@@ -95,7 +96,14 @@ export const GameUI: React.FC = () => {
     };
     updateDimensions();
     window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener('resize', updateDimensions);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
   }, []);
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
@@ -361,6 +369,30 @@ export const GameUI: React.FC = () => {
           className="bg-neutral-900 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-neutral-800 w-full h-full object-cover"
           style={{ touchAction: gameState === 'playing' ? 'none' : 'auto' }}
         />
+
+        {/* ── 全螢幕按鈕 ────────────────────────────────────────── */}
+        <button
+          onClick={() => {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+            else document.exitFullscreen();
+          }}
+          className="absolute z-[100] w-10 h-10 flex items-center justify-center bg-black/40 hover:bg-black/80 text-white rounded-full border border-white/20 backdrop-blur-md shadow-lg transition-all touch-manipulation"
+          style={{ 
+            top: 'calc(max(8px, env(safe-area-inset-top, 8px)) + 8px)', 
+            right: 'calc(max(8px, env(safe-area-inset-right, 8px)) + 8px)'
+          }}
+          title={isFullscreen ? '離開全螢幕' : '進入全螢幕'}
+        >
+          {isFullscreen ? (
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-3.75 3.75M15 9h4.5M15 9V4.5M15 9l3.75-3.75M15 15h4.5M15 15v4.5m0-4.5l3.75 3.75" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+            </svg>
+          )}
+        </button>
 
         {/* ── 大廳 ────────────────────────────────────────────── */}
         {gameState === 'lobby' && (
