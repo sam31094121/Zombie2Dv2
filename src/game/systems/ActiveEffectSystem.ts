@@ -52,7 +52,8 @@ export function updateActiveEffects(game: Game, dt: number): void {
           zombie.hp -= effect.damage;
           zombie.flashWhiteTimer = 80;
           if (zombie.hp <= 0 && !game.pendingSwordKills.has(zombie)) {
-            game.pendingSwordKills.set(zombie, { ownerId: effect.ownerId, level: effect.level });
+            const angle = Math.atan2(zombie.y - effect.y, zombie.x - effect.x);
+            game.pendingSwordKills.set(zombie, { ownerId: effect.ownerId, level: effect.level, hitAngle: angle });
           }
         }
       }
@@ -96,7 +97,8 @@ function _explodeLava(game: Game, effect: ActiveEffect): void {
       zombie.vx += (dx / d) * 26 * ratio;
       zombie.vy += (dy / d) * 26 * ratio;
       if (zombie.hp <= 0 && !game.pendingSwordKills.has(zombie)) {
-        game.pendingSwordKills.set(zombie, { ownerId: effect.ownerId, level: effect.level });
+        const angle = Math.atan2(zombie.y - effect.y, zombie.x - effect.x);
+        game.pendingSwordKills.set(zombie, { ownerId: effect.ownerId, level: effect.level, hitAngle: angle });
       }
     }
   }

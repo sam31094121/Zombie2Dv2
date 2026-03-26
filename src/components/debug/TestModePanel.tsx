@@ -631,6 +631,11 @@ export function TestModePanel({ gameRef }: Props) {
              active={g()?.debugHpLocked ?? false} className="w-full">
           {g()?.debugHpLocked ? '🔓 鎖血：開' : '🔒 鎖血：關'}
         </Btn>
+        <Btn onClick={() => g()?.debugToggleInfiniteCoins()}
+             color={g()?.debugInfiniteCoins ? 'yellow' : 'gray'}
+             active={g()?.debugInfiniteCoins ?? false} className="w-full">
+          {g()?.debugInfiniteCoins ? '∞ 無限金幣：開' : '💰 無限金幣：關'}
+        </Btn>
         <div className="grid grid-cols-2 gap-1 mt-1">
           <Btn onClick={() => g()?.debugClearSlime()} color="gray">🧹 黏液</Btn>
           <Btn onClick={() => { if (g()) g()!.hitEffects = []; }} color="gray">🧹 特效</Btn>

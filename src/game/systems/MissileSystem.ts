@@ -72,7 +72,7 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
         z.hp -= m.damage;
         z.flashWhiteTimer = 100;
         if (z.hp <= 0 && !game.pendingSwordKills.has(z)) {
-          game.pendingSwordKills.set(z, { ownerId: m.ownerId, level: 5 });
+          game.pendingSwordKills.set(z, { ownerId: m.ownerId, level: 5, hitAngle: Math.atan2(m.vy, m.vx) });
         }
         _onImpact(m, game, z);
         hit = true;

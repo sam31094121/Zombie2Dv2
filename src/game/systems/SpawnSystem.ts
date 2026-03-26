@@ -72,9 +72,8 @@ export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' |
     zombie.hp = 3 * mult;
     zombie.speed *= mult;
   } else {
-    const gameTime = Date.now() - game.startTime;
-    const baseHp = gameTime > 60000 ? 2 : 1;
-    zombie.hp = baseHp * mult;
+    // 骷髏怪（normal）：永遠 1 滴血，最弱小兵，不參與波次血量縮放
+    zombie.hp = 1;
     zombie.speed *= mult;
   }
   zombie.maxHp = zombie.hp;

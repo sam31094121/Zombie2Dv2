@@ -20,6 +20,7 @@ import { ArcProjectile } from '../ArcProjectile';
 // ── 武器等級定義介面 ─────────────────────────────────────────────────────────
 export interface IWeaponLevelDef {
   readonly attackInterval: number;   // ms 攻擊間隔
+  readonly attackRange?: number;     // px 攻擊射程（以武器中心為原點）；未設定用預設：sword=150, gun=300
   readonly burstCount?: number;      // 連發次數（只有 gun lv5 = 2）
   readonly burstDelay?: number;      // 連發間隔 ms
 
@@ -32,7 +33,7 @@ export interface IWeaponLevelDef {
 
   // 繪製武器（ctx 已由 caller 做 rotate(aimAngle)）
   // 函式內自己 save/restore
-  drawWeapon(ctx: CanvasRenderingContext2D, player: Player): void;
+  drawWeapon(ctx: CanvasRenderingContext2D, player: Player, slot?: import('../../Player').WeaponSlot): void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -63,13 +64,17 @@ function makeBullet(
   bulletType = 'blue_ellipse',
   origin?: {x: number, y: number, aimAngle: number}
 ): ProjectileSpec {
+  // 動態計算子彈在 280px 處消失所需的時間 (假設基準 60 FPS: 16.66ms per tick)
+  const maxRange = 280;
+  const lifetime = (maxRange / speed) * (1000 / 60);
+
   return {
     ownerId: player.id, 
     x: (origin?.x ?? player.x) + ox, 
     y: (origin?.y ?? player.y) + oy,
     vx: vx * speed, vy: vy * speed,
     damage: damage * dmgMult,
-    pierce, lifetime: 2000,
+    pierce, lifetime,
     type: 'bullet', radius, knockback: false, level: player.level,
     bulletType,
   };
@@ -135,7 +140,7 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
       if (!p.isFloatingWeapons) (p as any)._swordOut = true;
       game.swordProjectiles.push(new SwordProjectile(_mkBase(1, p, m, origin)));
     },
-    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 1); },
+    drawWeapon(ctx, p, slot) { drawHeldKnife(ctx, p, 1, slot); },
   },
 
   2: {
@@ -146,7 +151,7 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
       if (!p.isFloatingWeapons) (p as any)._swordOut = true;
       game.swordProjectiles.push(new SwordProjectile(_mkBase(2, p, m, origin)));
     },
-    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 2); },
+    drawWeapon(ctx, p, slot) { drawHeldKnife(ctx, p, 2, slot); },
   },
 
   3: {
@@ -157,7 +162,7 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
       if (!p.isFloatingWeapons) (p as any)._swordOut = true;
       game.swordProjectiles.push(new SwordProjectile(_mkBase(3, p, m, origin)));
     },
-    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 3); },
+    drawWeapon(ctx, p, slot) { drawHeldKnife(ctx, p, 3, slot); },
   },
 
   4: {
@@ -168,30 +173,9 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
       if (!p.isFloatingWeapons) (p as any)._swordOut = true;
       game.swordProjectiles.push(new SwordProjectile(_mkBase(4, p, m, origin)));
     },
-    drawWeapon(ctx, p) { drawHeldKnife(ctx, p, 4); },
+    drawWeapon(ctx, p, slot) { drawHeldKnife(ctx, p, 4, slot); },
   },
 
-  5: {
-    attackInterval: 1500,
-    fire: (player, dmgMult, origin) => {
-      audioManager.playSlash(5);
-      return [makeSwordSpec(player, dmgMult, 300, 5, origin)];
-    },
-    drawWeapon(ctx, player) {
-      ctx.save();
-      ctx.translate(15, 10);
-      ctx.rotate(swordSwingOffset(player));
-      ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 15;
-      ctx.fillStyle = '#e0ffff';
-      ctx.beginPath(); ctx.moveTo(2, -4); ctx.lineTo(45, -2); ctx.lineTo(55, 0); ctx.lineTo(45, 2); ctx.lineTo(2, 4); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.moveTo(4, -1); ctx.lineTo(40, 0); ctx.lineTo(4, 1); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#212121'; ctx.fillRect(-10, -5, 12, 10);
-      ctx.fillStyle = '#00e5ff'; ctx.fillRect(-6, -3, 4, 6);
-      ctx.restore();
-    },
-  },
 };
 
 export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
@@ -205,7 +189,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       const v = angleVec(angle);
       return [makeBullet(player, dmgMult, v.x, v.y, 1, 1, 6, 5, 0, 0, 'blue_ellipse', origin)];
     },
-    drawWeapon(ctx, player) {
+    drawWeapon(ctx, player, slot) {
       ctx.save();
       // 原始設計 44×44，offset (-14, -22) 將握柄對齊玩家手部，槍管朝右
       const ox = -14, oy = -22;
@@ -262,7 +246,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       ctx.fillStyle = C.black; r(18, 16, 1, 4);
 
       // 8. 槍口火光（模組化 2-frame flash）
-      drawMuzzleFlash(ctx, 25, -5, player.lastAttackTime);
+      drawMuzzleFlash(ctx, 25, -5, slot?.lastAttackTime ?? player.lastAttackTime);
 
       ctx.restore();
     },
@@ -277,14 +261,20 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       const v = angleVec(angle);
       return [makeBullet(player, dmgMult, v.x, v.y, 2, 1, 8, 6, 0, 0, 'blue_ellipse', origin)];
     },
-    drawWeapon(ctx, player) {
+    drawWeapon(ctx, player, slot) {
       ctx.save();
-      ctx.translate(15, 10);
-      ctx.lineWidth = 2; ctx.strokeStyle = '#111';
-      ctx.fillStyle = '#333'; ctx.fillRect(0, -4, 22, 6); ctx.strokeRect(0, -4, 22, 6);
-      ctx.fillStyle = '#111'; ctx.fillRect(22, -2, 6, 3); ctx.fillRect(8, 2, 4, 10);
-      ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(4, 2); ctx.lineTo(2, 10); ctx.lineTo(-4, 10); ctx.fill();
-      drawMuzzleFlash(ctx, 28, 0, player.lastAttackTime);
+      // 以 (0,0) 為武器視覺中心，槍管朝右
+      ctx.translate(2, 0);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#1e293b';
+      // 滑套（銀鋼色）
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, -4, 22, 8); ctx.strokeRect(0, -4, 22, 8);
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(0, -4, 22, 1); // 高光邊
+      // 槍管延伸 + 框架（深鋼色）
+      ctx.fillStyle = '#475569'; ctx.fillRect(22, -2, 6, 4); ctx.fillRect(8, 4, 4, 10);
+      // 握把（深灰）
+      ctx.fillStyle = '#374151';
+      ctx.beginPath(); ctx.moveTo(-2, 4); ctx.lineTo(4, 4); ctx.lineTo(2, 14); ctx.lineTo(-4, 14); ctx.closePath(); ctx.fill();
+      drawMuzzleFlash(ctx, 28, 0, slot?.lastAttackTime ?? player.lastAttackTime);
       ctx.restore();
     },
   },
@@ -302,16 +292,22 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
         makeBullet(player, dmgMult, v.x, v.y, 2, 1, 9, 5, -perp.x, -perp.y, 'blue_ellipse', origin),
       ];
     },
-    drawWeapon(ctx, player) {
+    drawWeapon(ctx, player, slot) {
       ctx.save();
-      ctx.translate(15, 10);
-      ctx.lineWidth = 2; ctx.strokeStyle = '#111';
-      ctx.fillStyle = '#2c3e50'; ctx.fillRect(0, -6, 28, 5); ctx.strokeRect(0, -6, 28, 5); // 上管
-      ctx.fillStyle = '#2c3e50'; ctx.fillRect(0, 1, 28, 5); ctx.strokeRect(0, 1, 28, 5); // 下管
-      ctx.fillStyle = '#111'; ctx.fillRect(-10, -4, 10, 8); // 握把
-      ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(5, 6); ctx.lineTo(3, 14); ctx.lineTo(-2, 14); ctx.fill();
-      drawMuzzleFlash(ctx, 28, -4, player.lastAttackTime);
-      drawMuzzleFlash(ctx, 28, 4, player.lastAttackTime);
+      // 以 (0,0) 為武器視覺中心，槍管朝右，上下對稱雙管設計
+      ctx.translate(2, 0);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#1e293b';
+      // 上管（銀藍鋼）
+      ctx.fillStyle = '#8bacc4'; ctx.fillRect(0, -7, 28, 5); ctx.strokeRect(0, -7, 28, 5);
+      ctx.fillStyle = '#dce8f2'; ctx.fillRect(0, -7, 28, 1); // 高光
+      // 下管（稍深銀藍）
+      ctx.fillStyle = '#7a9eb8'; ctx.fillRect(0, 2, 28, 5); ctx.strokeRect(0, 2, 28, 5);
+      ctx.fillStyle = '#ccdde8'; ctx.fillRect(0, 2, 28, 1); // 高光
+      // 握把（深灰）
+      ctx.fillStyle = '#374151'; ctx.fillRect(-12, -5, 12, 10);
+      ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(5, 5); ctx.lineTo(3, 13); ctx.lineTo(-2, 13); ctx.closePath(); ctx.fill();
+      drawMuzzleFlash(ctx, 28, -5, slot?.lastAttackTime ?? player.lastAttackTime);
+      drawMuzzleFlash(ctx, 28, 5, slot?.lastAttackTime ?? player.lastAttackTime);
       ctx.restore();
     },
   },
@@ -334,20 +330,24 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
         -perp.x * 10 - v.x * 4, -perp.y * 10 - v.y * 4, 'blue_ellipse', origin);
       return [front, left, right];
     },
-    drawWeapon(ctx, player) {
+    drawWeapon(ctx, player, slot) {
       ctx.save();
-      ctx.translate(15, 10);
-      ctx.lineWidth = 2; ctx.strokeStyle = '#111';
-      // 雙管
-      ctx.fillStyle = '#3e2723'; ctx.fillRect(0, -6, 32, 5); ctx.strokeRect(0, -6, 32, 5);
-      ctx.fillStyle = '#3e2723'; ctx.fillRect(0, 1, 32, 5); ctx.strokeRect(0, 1, 32, 5);
-      // 槍管中段連接件
-      ctx.fillStyle = '#212121'; ctx.fillRect(20, -7, 4, 14);
+      // 以 (0,0) 為武器視覺中心，槍管朝右，上下對稱三管設計
+      ctx.translate(2, 0);
+      ctx.lineWidth = 2; ctx.strokeStyle = '#1e293b';
+      // 上管（鋼藍銀）
+      ctx.fillStyle = '#7496b0'; ctx.fillRect(0, -7, 32, 5); ctx.strokeRect(0, -7, 32, 5);
+      ctx.fillStyle = '#c8d9e8'; ctx.fillRect(0, -7, 32, 1); // 高光
+      // 下管（鋼藍銀）
+      ctx.fillStyle = '#7496b0'; ctx.fillRect(0, 2, 32, 5); ctx.strokeRect(0, 2, 32, 5);
+      ctx.fillStyle = '#c8d9e8'; ctx.fillRect(0, 2, 32, 1); // 高光
+      // 槍管中段連接件（深鋼色）
+      ctx.fillStyle = '#4a6a80'; ctx.fillRect(20, -8, 4, 16);
       // 握把 + 扳機
-      ctx.fillStyle = '#111'; ctx.fillRect(-12, -4, 12, 8);
-      ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(6, 4); ctx.lineTo(4, 12); ctx.lineTo(-2, 12); ctx.fill();
-      drawMuzzleFlash(ctx, 32, -4, player.lastAttackTime);
-      drawMuzzleFlash(ctx, 32, 4, player.lastAttackTime);
+      ctx.fillStyle = '#374151'; ctx.fillRect(-14, -5, 14, 10);
+      ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(6, 5); ctx.lineTo(4, 13); ctx.lineTo(-2, 13); ctx.closePath(); ctx.fill();
+      drawMuzzleFlash(ctx, 32, -5, slot?.lastAttackTime ?? player.lastAttackTime);
+      drawMuzzleFlash(ctx, 32, 5, slot?.lastAttackTime ?? player.lastAttackTime);
       ctx.restore();
     },
   },
@@ -446,7 +446,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(5, p, m, 0.35, 200, 70, 3, 1500, 300, 1800, 4)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchA(ctx, p, slot); },
   },
   '6A': {
     attackInterval: 1700,
@@ -458,7 +458,7 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
         makeSwordConfigA(6, p, m, 0.4, 220, 80, 4, 1800, 280, 1700, 4.5)
       ));
     },
-    drawWeapon(ctx, p) { _drawHeldBranchA(ctx, p); },
+    drawWeapon(ctx, p, slot) { _drawHeldBranchA(ctx, p, slot); },
   },
   '7A': {
     attackInterval: 1600,
@@ -549,13 +549,17 @@ function _makeMissile(
   damage: number, splitAfter: number,
   origin?: {x: number, y: number, aimAngle: number}
 ): MissileProjectile {
-  return new MissileProjectile({
+  const speed = 8;
+  const maxRange = 280;
+  const lifetime = (maxRange / speed) * (1000 / 60);
+
+  const proj = new MissileProjectile({
     ownerId: p.id,
     x: origin?.x ?? p.x, 
     y: origin?.y ?? p.y,
     angle: origin?.aimAngle ?? p.aimAngle,
     damage: damage * dmgMult,
-    speed: 8,
+    speed,
     turnSpeed: 0.005,   // rad/ms 軟追蹤
     radius: 10,
     isSmall: false,
@@ -563,6 +567,9 @@ function _makeMissile(
     groundFireRadius: 70,  // 跟龍捲風差不多大
     groundFireDuration: 3000,
   });
+  proj.lifetime = lifetime;
+  proj.maxLifetime = Math.max(proj.maxLifetime, lifetime);
+  return proj;
 }
 
 // ── 火箭炮外觀（5A-8A 共用；用戶設計 64×64 → offset dx=-14, dy=-32 對齊玩家中心）──
@@ -570,6 +577,7 @@ function _makeMissile(
 function _drawMissileLauncher(
   ctx: CanvasRenderingContext2D,
   player: Player,
+  slot?: import('../../Player').WeaponSlot
 ): void {
   const ox = 10, oy = 28, len = 38; // 縮短一點點主砲管，為強化砲口騰出空間
   const dx = -14, dy = -32; // 坐標偏移：user + offset = game
@@ -649,7 +657,7 @@ function _drawMissileLauncher(
   ctx.fillStyle = C.steelDark; r(ox - 6, oy + 8, 6, 2);
 
   // 槍口火光（對齊新砲口）
-  drawMuzzleFlash(ctx, mx + mw + dx, oy + 4 + dy, player.lastAttackTime);
+  drawMuzzleFlash(ctx, mx + mw + dx, oy + 4 + dy, slot?.lastAttackTime ?? player.lastAttackTime);
 
   ctx.restore();
 }
@@ -663,7 +671,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
       audioManager.playShoot(4);
       game.missiles.push(_makeMissile(p, m, 5, 0, origin));
     },
-    drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
+    drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 
   // ── 6A：連射 ×2 追蹤導彈 ─────────────────────────────────────────────
@@ -676,7 +684,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
       audioManager.playShoot(4);
       game.missiles.push(_makeMissile(p, m, 6, 0, origin));
     },
-    drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
+    drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 
   // ── 7A：連射 ×3 追蹤導彈 ─────────────────────────────────────────────
@@ -689,7 +697,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
       audioManager.playShoot(5);
       game.missiles.push(_makeMissile(p, m, 7, 0, origin));
     },
-    drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
+    drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 
   // ── 8A：連射 ×3 分裂彈（0.3s 後裂成 3 顆小導彈）────────────────────
@@ -702,11 +710,11 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
       audioManager.playShoot(5);
       game.missiles.push(_makeMissile(p, m, 8, 300, origin)); // splitAfter=300ms
     },
-    drawWeapon(ctx, player) { _drawMissileLauncher(ctx, player); },
+    drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 };
 
-function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, level: number): void {
+function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, level: number, slot?: import('../../Player').WeaponSlot): void {
   ctx.save();
   ctx.imageSmoothingEnabled = true;
 
@@ -819,7 +827,7 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
   ctx.setLineDash([3, 6]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1.0;
 
   // 槍口放電共振火光 (在最前端開火)
-  drawMuzzleFlash(ctx, 135 + blExt, 53, player.lastAttackTime);
+  drawMuzzleFlash(ctx, 135 + blExt, 53, slot?.lastAttackTime ?? player.lastAttackTime);
 
   ctx.restore();
 }
@@ -833,7 +841,12 @@ function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: n
   // ArcProjectile(ownerId, level, x, y, vx, vy, damage, jumps, paralyzeDuration)
   const ox = origin?.x ?? p.x;
   const oy = origin?.y ?? p.y;
-  game.arcProjectiles.push(new ArcProjectile(p.id, level, ox, oy, vx, vy, damage, jumps, paralyze));
+  
+  const lifetime = (280 / speed) * (1000 / 60);
+  const proj = new ArcProjectile(p.id, level, ox, oy, vx, vy, damage, jumps, paralyze);
+  proj.lifetime = lifetime;
+  proj.maxLifetime = lifetime;
+  game.arcProjectiles.push(proj);
 }
 
 const GUN_BRANCH_B: Record<string, IWeaponLevelDef> = {
@@ -841,25 +854,25 @@ const GUN_BRANCH_B: Record<string, IWeaponLevelDef> = {
     attackInterval: 1800,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 5, 5, 3, 1000, origin); },
-    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 5); },
+    drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 5, slot); },
   },
   '6B': {
     attackInterval: 1800,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 6, 6, 5, 1200, origin); },
-    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 6); },
+    drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 6, slot); },
   },
   '7B': {
     attackInterval: 1800,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 7, 7, 8, 1500, origin); },
-    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 7); },
+    drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 7, slot); },
   },
   '8B': {
     attackInterval: 2000,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 8, 8, 10, 2000, origin); },
-    drawWeapon(ctx, player) { _drawThreeClawArcGun(ctx, player, 8); },
+    drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 8, slot); },
   },
 };
 
@@ -893,7 +906,7 @@ export function getWeaponKey(
   branch: 'A' | 'B' | null,
 ): number | string {
   if (level >= 5 && branch) return `${level}${branch}`;
-  // 槍基礎線只到 Lv4（無 Lv5 過渡），劍基礎線到 Lv5
-  const maxBase = weapon === 'gun' ? 4 : 5;
+  // 槍基礎線只到 Lv4（無 Lv5 過渡），劍基礎線也到 Lv4（Lv5 只有分支）
+  const maxBase = 4;
   return Math.min(level, maxBase);
 }

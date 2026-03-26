@@ -113,9 +113,9 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
   }
 }
 
-export function handlePlayerAttacks(game: Game, player: Player): void {
-  const activeWeapons = player.isFloatingWeapons 
-    ? player.weapons 
+export function handlePlayerAttacks(game: Game, player: Player, dt: number = 16): void {
+  const activeWeapons = player.isFloatingWeapons
+    ? player.weapons
     : [{ id: 'main', type: player.weapon, level: player.weaponLevels[player.weapon] || 1, lastAttackTime: player.lastAttackTime, branch: player.weaponBranches[player.weapon] }];
 
   const now = Date.now();
@@ -136,72 +136,108 @@ export function handlePlayerAttacks(game: Game, player: Player): void {
     if (!weaponDef) continue;
 
     const attackInterval = weaponDef.attackInterval / player.attackSpeedMultiplier;
+    // 射程：未設定時 sword=150px, gun=300px
+    const attackRange = weaponDef.attackRange ?? (wType === 'sword' ? 150 : 300);
 
-    if (now - slot.lastAttackTime > attackInterval) {
+    if (player.isFloatingWeapons) {
+      // ── 浮空武器：每幀平滑旋轉瞄準最近怪物，進入射程才開火 ──────────────
+      const offsetAngle = (i / player.weapons.length) * Math.PI * 2;
+      const bob = Math.sin(now / 300 + i) * 6;
+      const bx = player.x + Math.cos(offsetAngle) * 38;
+      const by = player.y + Math.sin(offsetAngle) * 38 + bob;
+
+      // 1. 瞄準（大雷達範圍 700px，無距離限制，始終旋轉朝向最近怪物）
+      const aimTarget = findNearestZombie(game, bx, by, 700);
+      if (aimTarget) {
+        const targetAngle = Math.atan2(aimTarget.y - by, aimTarget.x - bx);
+        let aDiff = targetAngle - (slot.aimAngle ?? player.aimAngle);
+        while (aDiff > Math.PI) aDiff -= Math.PI * 2;
+        while (aDiff < -Math.PI) aDiff += Math.PI * 2;
+        const maxRot = 3.5 * (dt / 1000); // 3.5 rad/s 平滑旋轉
+        slot.aimAngle = Math.abs(aDiff) <= maxRot
+          ? targetAngle
+          : (slot.aimAngle ?? player.aimAngle) + Math.sign(aDiff) * maxRot;
+      }
+
+      // 2. 射程檢查：只有怪物進入 attackRange 才開火
+      const inRange = aimTarget && Math.hypot(aimTarget.x - bx, aimTarget.y - by) <= attackRange;
+      if (!inRange || now - slot.lastAttackTime <= attackInterval) continue;
+
+      slot.lastAttackTime = now;
+      const origin = { x: bx, y: by, aimAngle: slot.aimAngle ?? player.aimAngle };
+
+      const fireOnce = () => {
+        if (player.hp <= 0) return;
+        if (weaponDef.fireDirect) {
+          weaponDef.fireDirect(game, player, dmgMult, origin);
+        } else {
+          const specs = weaponDef.fire(player, dmgMult, origin);
+          _dispatchSpecs(game, specs, player, dmgMult, origin, weaponDef.attackInterval);
+        }
+      };
+
+      fireOnce();
+      if (weaponDef.burstCount && weaponDef.burstCount > 1) {
+        let fired = 1;
+        const burstInterval = setInterval(() => {
+          if (fired >= (weaponDef.burstCount ?? 1) || player.hp <= 0) { clearInterval(burstInterval); return; }
+          fireOnce(); fired++;
+        }, weaponDef.burstDelay ?? 150);
+      }
+
+    } else {
+      // ── 主武器（無盡模式）：射程檢查，在範圍內才開火 ──────────────────────
+      if (now - slot.lastAttackTime <= attackInterval) continue;
+
+      const nearest = findNearestZombie(game, player.x, player.y, attackRange);
+      if (!nearest) continue; // 射程內無怪物，不開火
+
       slot.lastAttackTime = now;
       if (!player.isFloatingWeapons) player.lastAttackTime = now;
 
       const fireOnce = () => {
         if (player.hp <= 0) return;
-
-        let origin: {x: number, y: number, aimAngle: number} | undefined = undefined;
-        if (player.isFloatingWeapons) {
-          const offsetAngle = (i / player.weapons.length) * Math.PI * 2;
-          const bob = Math.sin(now / 300 + i) * 6; // 更大一點的呼吸感
-          const bx = player.x + Math.cos(offsetAngle) * 38;
-          const by = player.y + Math.sin(offsetAngle) * 38 + bob;
-          
-          let wAim = player.aimAngle;
-          // 獨立索敵雷達：以武器自身為中心，尋找最近且存活的敵人 (雷達距離給大一點 600px)
-          const nearest = findNearestZombie(game, bx, by, 600);
-          if (nearest && nearest.hp > 0) {
-            wAim = Math.atan2(nearest.y - by, nearest.x - bx);
-          }
-          slot.aimAngle = wAim;
-          origin = { x: bx, y: by, aimAngle: wAim };
-        }
-
         if (weaponDef.fireDirect) {
-          // 直接操作 game（包含刀劍、A/B 分支武器）
-          weaponDef.fireDirect(game, player, dmgMult, origin);
+          weaponDef.fireDirect(game, player, dmgMult, undefined);
         } else {
-          // 產生子彈規格
-          const specs = weaponDef.fire(player, dmgMult, origin);
-          for (const s of specs) {
-            // 修正 Sword Level 5 回傳 ProjectileSpec 時被塞入普通子彈的問題
-            if (s.type === 'slash') {
-               // 建立模擬的 SwordConfig 塞回真實的 SwordProjectiles
-               game.swordProjectiles.push(new SwordProjectile({
-                 branch: 'base', level: s.level, ownerId: s.ownerId,
-                 x: s.x, y: s.y, angle: origin?.aimAngle ?? player.aimAngle, dmgMult,
-                 passRadius: 12, damage: Math.floor(s.damage / dmgMult),
-                 speed: 0.42, maxRange: 200, attackInterval: weaponDef.attackInterval,
-                 spinRadius: 0, spinDamage: 0, spinDuration: 0, spinTickMs: 0,
-                 embedDuration: 0, explodeDamage: 0, explodeRadius: 0,
-               }));
-            } else {
-               game.projectiles.push(new Projectile(
-                s.ownerId, s.x, s.y, s.vx, s.vy,
-                s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level, false,
-                s.bulletType ?? 'blue_ellipse',
-               ));
-            }
-          }
+          const specs = weaponDef.fire(player, dmgMult, undefined);
+          _dispatchSpecs(game, specs, player, dmgMult, undefined, weaponDef.attackInterval);
         }
       };
 
       fireOnce();
-
       if (weaponDef.burstCount && weaponDef.burstCount > 1) {
         let fired = 1;
         const burstInterval = setInterval(() => {
-          if (fired >= (weaponDef.burstCount ?? 1) || player.hp <= 0) {
-            clearInterval(burstInterval); return;
-          }
-          fireOnce();
-          fired++;
+          if (fired >= (weaponDef.burstCount ?? 1) || player.hp <= 0) { clearInterval(burstInterval); return; }
+          fireOnce(); fired++;
         }, weaponDef.burstDelay ?? 150);
       }
+    }
+  }
+}
+
+function _dispatchSpecs(
+  game: Game, specs: import('../types').ProjectileSpec[], player: Player,
+  dmgMult: number, origin: {x:number,y:number,aimAngle:number} | undefined,
+  attackInterval: number,
+): void {
+  for (const s of specs) {
+    if (s.type === 'slash') {
+      game.swordProjectiles.push(new SwordProjectile({
+        branch: 'base', level: s.level, ownerId: s.ownerId,
+        x: s.x, y: s.y, angle: origin?.aimAngle ?? player.aimAngle, dmgMult,
+        passRadius: 12, damage: Math.floor(s.damage / dmgMult),
+        speed: 0.42, maxRange: 200, attackInterval,
+        spinRadius: 0, spinDamage: 0, spinDuration: 0, spinTickMs: 0,
+        embedDuration: 0, explodeDamage: 0, explodeRadius: 0,
+      }));
+    } else {
+      game.projectiles.push(new Projectile(
+        s.ownerId, s.x, s.y, s.vx, s.vy,
+        s.damage, s.pierce, s.lifetime, s.type, s.radius, s.knockback, s.level, false,
+        s.bulletType ?? 'blue_ellipse',
+      ));
     }
   }
 }

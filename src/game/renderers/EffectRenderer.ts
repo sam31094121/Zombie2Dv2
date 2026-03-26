@@ -14,6 +14,10 @@ export interface HitEffect {
   radius?: number; // 供 pixel_explosion 等有大小感的特效使用
   targetX?: number; // 供 arc_lightning 使用
   targetY?: number; // 供 arc_lightning 使用
+  vx?: number; // 物理噴發速度 X（gib_blood 用）
+  vy?: number; // 物理噴發速度 Y（gib_blood 用）
+  rotation?: number; // 碎片旋轉角度
+  size?: number; // 碎片大小
 }
 
 export interface HealVFX {
@@ -236,6 +240,68 @@ export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D):
         ? Math.min(1, (Date.now() - effect.startTime) / effect.maxLifetime)
         : 1 - effect.lifetime / effect.maxLifetime;
       drawPixelExplosion(ctx, effect.x, effect.y, effect.radius ?? 50, p);
+      break;
+    }
+    case 'gib_blood': {
+      // 物理驅動的耠筆風格肉塊碎片
+      const p = effect.lifetime / effect.maxLifetime;
+      const sz = effect.size ?? 5;
+      const rot = effect.rotation ?? 0;
+      ctx.save();
+      ctx.translate(effect.x, effect.y);
+      ctx.rotate(rot + (1 - p) * 3); // 碎片飛行時旋轉
+      ctx.globalAlpha = Math.min(1, p * 2.5); // 尾端快速淡出
+
+      // ── 手繪蠠筆感: 用多個不規則圖層疊加 ──
+      // 底層：暗紅粗糙形狀
+      const baseR = 100 + Math.floor(sz * 12);
+      const baseG = 15 + Math.floor(sz * 5);
+      ctx.fillStyle = `rgb(${baseR}, ${baseG}, 10)`;
+      ctx.beginPath();
+      for (let a = 0; a < 7; a++) {
+        const ang = (a / 7) * Math.PI * 2;
+        const wobble = 0.7 + Math.sin(ang * 3 + rot) * 0.35;
+        ctx.lineTo(Math.cos(ang) * sz * 1.4 * wobble, Math.sin(ang) * sz * 0.8 * wobble);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      // 中層：鮮紅框線（手繪筆觸感）
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `rgba(180, 30, 20, ${p * 0.8})`;
+      ctx.stroke();
+
+      // 高光層：小個光點模擬濕潤血滴
+      ctx.fillStyle = `rgba(220, 80, 50, ${p * 0.7})`;
+      ctx.beginPath();
+      ctx.ellipse(-sz * 0.2, -sz * 0.15, sz * 0.5, sz * 0.3, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      break;
+    }
+    case 'white_flash': {
+      // 子彈命中瞬間的高對比白色爆亮
+      const p = effect.lifetime / effect.maxLifetime;
+      const flashR = 18 * p;
+      ctx.save();
+      ctx.globalAlpha = p * 0.95;
+      // 外層光暈
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = `rgba(255,255,255,${p * 0.6})`;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, flashR, 0, Math.PI * 2);
+      ctx.fill();
+      // 核心純白
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, flashR * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
       break;
     }
   }
@@ -597,10 +663,13 @@ export function drawMuzzleFlash(
   const elapsed = Date.now() - lastAttackTime;
   if (elapsed >= 260) return;
 
-  const r = (dx: number, dy: number, w: number, h: number) =>
-    ctx.fillRect(x + dx, y + dy, w, h);
-
   ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1.5, 1.5); // 放大 1.5 倍強化震撼感
+
+  const r = (dx: number, dy: number, w: number, h: number) =>
+    ctx.fillRect(dx, dy, w, h);
+
   ctx.imageSmoothingEnabled = false;
 
   if (elapsed < 60) {

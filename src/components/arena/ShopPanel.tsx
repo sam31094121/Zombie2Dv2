@@ -7,6 +7,8 @@ import { Player, WeaponSlot, OwnedItem } from '../../game/Player';
 import { audioManager } from '../../game/AudioManager';
 import { STAT_REGISTRY } from '../../game/items/StatDefinitions';
 import { ITEM_REGISTRY } from '../../game/items/ItemDefinitions';
+import { WeaponPreviewCanvas } from './WeaponPreviewCanvas';
+import { StarRating } from './StarRating';
 
 // ── 商店卡牌型別 ──────────────────────────────────────────────────────────────
 
@@ -58,8 +60,8 @@ function weaponCost(level: number): number {
 }
 
 function drawCards(wave: number): ShopCard[] {
-  const weaponCount = Math.random() < 0.4 ? 1 : (Math.random() < 0.6 ? 2 : 3);
-  const itemCount = 4 - weaponCount;
+  const weaponCount = Math.random() < 0.5 ? 2 : 3; // 5 張：2 或 3 把武器
+  const itemCount = 5 - weaponCount;
   const cards: ShopCard[] = [];
 
   for (let i = 0; i < weaponCount; i++) {
@@ -147,12 +149,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
     audioManager.playPickup();
     setShopCards(prev => prev.filter(c => c.id !== card.id));
 
-    const match = player.weapons.find(w =>
-      w.id !== newSlot.id && w.type === newSlot.type &&
-      w.level === newSlot.level && w.branch === newSlot.branch
-    );
-    if (match) setMergePending({ keepId: match.id, removeId: newSlot.id });
-    else rerender();
+    rerender(); // 合成由玩家手動點選武器欄觸發，不自動彈窗
   };
 
   // ── Phase 2：購買配件 ──────────────────────────────────────────────────────
@@ -268,7 +265,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
       <div className="flex-shrink-0 w-full max-w-2xl px-3 pt-3 pb-2 sm:px-6 sm:pt-4">
         {/* 資源列 */}
         <div className="flex items-center gap-3 mb-2 bg-neutral-900/80 px-4 py-2 rounded-2xl border border-neutral-700/50 w-full">
-          <div className="text-base font-black sm:text-xl">💰 <span className="text-yellow-400">{Math.floor(player.materials)}</span></div>
+          <div className="text-base font-black sm:text-xl">💰 <span className="text-yellow-400">{player.materials >= 999999 ? '∞' : Math.floor(player.materials)}</span></div>
           <div className="text-xs text-neutral-400 font-bold">HP <span className="text-green-400">{Math.floor(player.hp)}/{player.maxHp}</span></div>
           <div className="text-xs text-neutral-400 font-bold">LV <span className="text-blue-400">{player.level}</span></div>
           <div className="ml-auto text-yellow-500 font-black text-xs sm:text-base tracking-widest">WAVE {wave} ✓</div>
@@ -375,7 +372,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
                 {Array.from({ length: 6 }).map((_, i) => {
                   const w = player.weapons[i];
                   if (!w) return (
-                    <div key={`empty-${i}`} className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-neutral-800 flex items-center justify-center text-neutral-700 text-[10px] font-bold">
+                    <div key={`empty-${i}`} className="rounded-xl border-2 border-dashed border-neutral-800 flex items-center justify-center text-neutral-700 text-[10px] font-bold" style={{ minHeight: 108 }}>
                       EMPTY
                     </div>
                   );
@@ -387,16 +384,20 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
                     <div
                       key={w.id}
                       onClick={() => handleInventoryWeaponClick(w)}
-                      className="h-16 sm:h-20 rounded-xl border-2 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all relative overflow-hidden touch-manipulation"
+                      className="rounded-xl border-2 flex flex-col items-center cursor-pointer active:scale-95 transition-all relative overflow-hidden touch-manipulation group"
                       style={{ borderColor: col, boxShadow: `0 0 8px ${col}33` }}
                     >
-                      <span className="text-xl sm:text-2xl">{w.type === 'sword' ? '🗡️' : '🔫'}</span>
-                      <span className="text-[10px] sm:text-xs font-black" style={{ color: col }}>
-                        Lv.{w.level}{w.branch ?? ''}
-                      </span>
+                      {/* 武器預覽 */}
+                      <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={96} bufH={60} />
+                      {/* 等級 + 星星 */}
+                      <div className="flex flex-col items-center gap-0.5 pb-1 pt-0.5">
+                        <span className="text-[10px] font-black" style={{ color: col }}>Lv.{w.level}{w.branch ?? ''}</span>
+                        <StarRating level={w.level} branch={w.branch} size="sm" />
+                      </div>
+                      {/* 合成 / 賣出 提示 */}
                       {hasMatch
                         ? <div className="absolute bottom-0 inset-x-0 bg-yellow-500 text-black text-[9px] text-center font-black py-0.5 animate-pulse">⬆ 合成</div>
-                        : <div className="absolute bottom-0 inset-x-0 bg-red-800/90 text-white text-[9px] text-center font-bold py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">賣出</div>
+                        : <div className="absolute bottom-0 inset-x-0 bg-red-800/90 text-white text-[9px] text-center font-bold py-0.5 opacity-0 group-hover:opacity-100 active:opacity-100 transition-opacity">賣出</div>
                       }
                     </div>
                   );
@@ -432,30 +433,34 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
               </div>
             )}
 
-            {/* ── 商店卡牌（手機 2 列 / 桌面 4 列） ── */}
+            {/* ── 商店卡牌（手機 3 列 / 桌面 5 列，共 5 張） ── */}
             <div className="w-full mb-4">
               <h3 className="text-xs font-bold text-neutral-500 tracking-widest uppercase mb-2">補給站</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {shopCards.map(card => {
                   if (card.cardType === 'weapon') {
                     const col = weaponColor(card.level);
                     const canBuy = player.materials >= card.cost && player.weapons.length < 6;
-                    const branchName = card.branch ? ` — ${BRANCH_DISPLAY[card.type]?.[card.branch] ?? card.branch}` : '';
+                    const branchName = card.branch ? BRANCH_DISPLAY[card.type]?.[card.branch] ?? card.branch : '';
                     return (
-                      <div key={card.id} className="bg-neutral-800 border-2 rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center" style={{ borderColor: col }}>
-                        <div className="text-[10px] font-bold text-neutral-400 uppercase mb-1">WEAPON</div>
-                        <span className="text-3xl sm:text-4xl mb-1">{card.type === 'sword' ? '🗡️' : '🔫'}</span>
-                        <div className="font-black text-xs sm:text-sm mb-0.5" style={{ color: col }}>
-                          Lv.{card.level}{card.branch ?? ''}
+                      <div key={card.id} className="bg-neutral-800 border-2 rounded-2xl flex flex-col overflow-hidden" style={{ borderColor: col }}>
+                        {/* 武器 canvas 預覽 */}
+                        <WeaponPreviewCanvas type={card.type} level={card.level} branch={card.branch} bufW={104} bufH={64} />
+                        {/* 資訊區 */}
+                        <div className="flex flex-col items-center px-1.5 pb-2 pt-1 gap-0.5 flex-1">
+                          <div className="font-black text-[11px]" style={{ color: col }}>
+                            Lv.{card.level}{card.branch ?? ''}
+                          </div>
+                          <StarRating level={card.level} branch={card.branch} size="sm" />
+                          {branchName && <div className="text-[9px] text-neutral-400">{branchName}</div>}
+                          <button
+                            onClick={() => handleBuyWeapon(card)}
+                            disabled={!canBuy}
+                            className={`mt-auto w-full py-1.5 rounded-xl font-black text-[10px] transition-all touch-manipulation ${canBuy ? 'bg-yellow-500 active:bg-yellow-400 text-black' : 'bg-neutral-700 text-neutral-500 cursor-not-allowed'}`}
+                          >
+                            {player.weapons.length >= 6 ? '滿' : `💰${card.cost}`}
+                          </button>
                         </div>
-                        {branchName && <div className="text-[10px] text-neutral-400 mb-1">{branchName}</div>}
-                        <button
-                          onClick={() => handleBuyWeapon(card)}
-                          disabled={!canBuy}
-                          className={`mt-auto w-full py-2 rounded-xl font-black text-xs sm:text-sm transition-all touch-manipulation ${canBuy ? 'bg-yellow-500 active:bg-yellow-400 text-black' : 'bg-neutral-700 text-neutral-500 cursor-not-allowed'}`}
-                        >
-                          {player.weapons.length >= 6 ? '欄位滿' : `💰 ${card.cost}`}
-                        </button>
                       </div>
                     );
                   } else {
@@ -463,26 +468,26 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
                     if (!def) return null;
                     const canBuy = player.materials >= def.cost;
                     return (
-                      <div key={card.id} className={`bg-neutral-800 border-2 rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center ${def.type === 'consumable' ? 'border-green-700/60' : 'border-purple-700/60'}`}>
-                        <div className={`text-[10px] font-bold uppercase mb-1 ${def.type === 'consumable' ? 'text-green-500' : 'text-purple-400'}`}>
+                      <div key={card.id} className={`bg-neutral-800 border-2 rounded-2xl p-2 flex flex-col items-center text-center ${def.type === 'consumable' ? 'border-green-700/60' : 'border-purple-700/60'}`}>
+                        <div className={`text-[9px] font-bold uppercase mb-1 ${def.type === 'consumable' ? 'text-green-500' : 'text-purple-400'}`}>
                           {def.type === 'consumable' ? '一次性' : '永久'}
                         </div>
-                        <span className="text-3xl sm:text-4xl mb-1">{def.icon}</span>
-                        <div className="font-black text-xs sm:text-sm mb-1">{def.name}</div>
-                        <p className="text-[10px] sm:text-xs text-neutral-400 mb-2 flex-1 leading-snug">{def.description}</p>
+                        <span className="text-3xl mb-1">{def.icon}</span>
+                        <div className="font-black text-[11px] mb-0.5">{def.name}</div>
+                        <p className="text-[9px] text-neutral-400 mb-2 flex-1 leading-snug">{def.description}</p>
                         <button
                           onClick={() => handleBuyItem(card)}
                           disabled={!canBuy}
-                          className={`mt-auto w-full py-2 rounded-xl font-black text-xs sm:text-sm transition-all touch-manipulation ${canBuy ? 'bg-yellow-500 active:bg-yellow-400 text-black' : 'bg-neutral-700 text-neutral-500 cursor-not-allowed'}`}
+                          className={`mt-auto w-full py-1.5 rounded-xl font-black text-[10px] transition-all touch-manipulation ${canBuy ? 'bg-yellow-500 active:bg-yellow-400 text-black' : 'bg-neutral-700 text-neutral-500 cursor-not-allowed'}`}
                         >
-                          💰 {def.cost}
+                          💰{def.cost}
                         </button>
                       </div>
                     );
                   }
                 })}
                 {shopCards.length === 0 && (
-                  <div className="col-span-2 sm:col-span-4 py-10 text-center text-neutral-500 border-2 border-dashed border-neutral-700 rounded-2xl font-bold tracking-widest">
+                  <div className="col-span-3 sm:col-span-5 py-10 text-center text-neutral-500 border-2 border-dashed border-neutral-700 rounded-2xl font-bold tracking-widest">
                     SOLD OUT
                   </div>
                 )}
@@ -528,10 +533,27 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({ player, wave, onNextWave }
         const nextLv = w.level + 1;
         return (
           <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/70 touch-manipulation" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-            <div className="bg-neutral-900 border-2 border-yellow-500 rounded-t-3xl sm:rounded-2xl p-6 text-center w-full sm:max-w-sm sm:mx-4 shadow-[0_0_40px_rgba(234,179,8,0.3)]">
-              <div className="text-4xl mb-3">⬆️</div>
-              <h3 className="text-xl font-black mb-2 tracking-wide">合成確認</h3>
-              <p className="text-neutral-400 mb-6 leading-relaxed text-sm">
+            <div className="bg-neutral-900 border-2 border-yellow-500 rounded-t-3xl sm:rounded-2xl p-5 text-center w-full sm:max-w-sm sm:mx-4 shadow-[0_0_40px_rgba(234,179,8,0.3)]">
+              <h3 className="text-lg font-black mb-3 tracking-wide">⬆️ 合成確認</h3>
+              {/* 武器預覽（顯示合成前的樣子） */}
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <div className="rounded-xl overflow-hidden border-2 w-28" style={{ borderColor: weaponColor(w.level) }}>
+                  <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={104} bufH={64} />
+                </div>
+                <div className="text-2xl text-yellow-400 font-black">→</div>
+                <div className="rounded-xl overflow-hidden border-2 w-28 relative" style={{ borderColor: weaponColor(nextLv) }}>
+                  <WeaponPreviewCanvas type={w.type} level={nextLv} branch={w.branch} bufW={104} bufH={64} />
+                  <div className="absolute bottom-0 inset-x-0 bg-yellow-500/80 text-black text-[9px] text-center font-black py-0.5">
+                    Lv.{nextLv}{w.branch ?? ''}
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-center gap-2 mb-3">
+                <StarRating level={w.level} branch={w.branch} />
+                <span className="text-neutral-500 text-xs self-center">→</span>
+                <StarRating level={nextLv} branch={w.branch} />
+              </div>
+              <p className="text-neutral-400 mb-4 leading-relaxed text-sm">
                 兩把 Lv.{w.level} {w.type === 'sword' ? '劍' : '槍'}{w.branch ?? ''} 合成<br />
                 升級至 <span className="text-yellow-400 font-black">Lv.{nextLv}</span>
                 {nextLv === 5 && w.branch === null && (

@@ -34,18 +34,30 @@ export const BULLET_REGISTRY: Record<string, IBulletDef> = {
       ctx.save();
       ctx.translate(proj.x, proj.y);
       ctx.rotate(angle);
-      // 殘影
-      ctx.fillStyle = 'rgba(0,229,255,0.5)';
-      ctx.fillRect(-15, -2, 10, 4);
-      // 主體橢圓
+      
+      // 主體發光與放大
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 10;
+      
       ctx.beginPath();
-      ctx.ellipse(0, 0, 6, 3, 0, 0, Math.PI * 2);
-      ctx.fillStyle = '#00e5ff';
+      // 大小總長約 20px (半徑 10x5)
+      ctx.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff'; // 核心白化強化高能熱點
       ctx.fill();
+      
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 11, 6, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
       ctx.restore();
     },
     onHit({ zombie, pushEffect }) {
-      pushEffect({ x: zombie.x, y: zombie.y, type: 'grey_sparks', lifetime: 200, maxLifetime: 200 });
+      pushEffect({ x: zombie.x, y: zombie.y, type: 'grey_sparks', lifetime: 90, maxLifetime: 90 });
+      // 高對比白閃：瞬時爆亮 (0.09秒)，強化每顆子彈的命中「重量感」
+      pushEffect({ x: zombie.x, y: zombie.y, type: 'white_flash', lifetime: 90, maxLifetime: 90 });
     },
   },
 

@@ -33,22 +33,51 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
   // ── 武器（委派給 WeaponDefinitions registry）─────────────────────────────
   if (player.isFloatingWeapons && player.weapons && player.weapons.length > 0) {
     player.weapons.forEach((slot, i) => {
-      const wKey = getWeaponKey(slot.type, slot.level, null);
+      // ── 正確帶入 branch，確保 Lv5+ 分支武器能找到對應的 drawWeapon ──
+      const wKey = getWeaponKey(slot.type, slot.level, slot.branch);
       const weaponDef = WEAPON_REGISTRY[slot.type]?.[wKey];
       if (weaponDef) {
         ctx.save();
         const time = Date.now();
-        const offsetAngle = (i / player.weapons.length) * Math.PI * 2;
-        const bob = Math.sin(time / 300 + i) * 6; // 更大一點的呼吸感
-        
-        ctx.translate(Math.cos(offsetAngle) * 38, Math.sin(offsetAngle) * 38 + bob);
-        ctx.rotate(slot.aimAngle ?? angle); // 依據武器獨立雷達角度旋轉，若無則依賴玩家視角
-        
-        const colors = ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'];
-        ctx.shadowColor = colors[Math.min(slot.level - 1, 3)];
+
+        // ── 6 把武器固定槽位：右 3 左 3，垂直等距排列 ──
+        // 槽位索引：0=右上, 1=右中, 2=右下, 3=左上, 4=左中, 5=左下
+        const SLOT_POSITIONS = [
+          {  rx:  44, ry: -26 }, // 0: 右上
+          {  rx:  44, ry:   0 }, // 1: 右中
+          {  rx:  44, ry:  26 }, // 2: 右下
+          {  rx: -44, ry: -26 }, // 3: 左上
+          {  rx: -44, ry:   0 }, // 4: 左中
+          {  rx: -44, ry:  26 }, // 5: 左下
+        ];
+
+        const slotPos = SLOT_POSITIONS[i % SLOT_POSITIONS.length];
+        const bob = Math.sin(time / 300 + i) * 4; // 個別呼吸感偏移
+
+        // 右邊 3 把朝右（angle=0），左邊 3 把朝左（angle=PI）
+        const facingAngle = slotPos.rx > 0 ? 0 : Math.PI;
+
+        ctx.translate(slotPos.rx, slotPos.ry + bob);
+        ctx.rotate(slot.aimAngle ?? facingAngle);
+
+        // ── 槍械後座力 ──
+        if (slot.type === 'gun') {
+          const timeSinceAttack = Date.now() - slot.lastAttackTime;
+          if (timeSinceAttack < 150) {
+            const recoil = Math.max(0, 8 - (timeSinceAttack / 150) * 8);
+            // 右側武器後座向左，左側向右
+            ctx.translate(slotPos.rx > 0 ? -recoil : recoil, 0);
+          }
+        }
+
+        // Lv1=白, Lv2=綠, Lv3=藍, Lv4=紫, Lv5+=金
+        const glowColor = slot.level >= 5
+          ? '#fbbf24' // 金色光暈（分支武器）
+          : ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'][Math.min(slot.level - 1, 3)];
+        ctx.shadowColor = glowColor;
         ctx.shadowBlur = 10;
-        
-        weaponDef.drawWeapon(ctx, player);
+
+        weaponDef.drawWeapon(ctx, player, slot);
         ctx.restore();
       }
     });

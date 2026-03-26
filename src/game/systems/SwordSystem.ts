@@ -71,7 +71,7 @@ function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
       if (!sword.hitZombieIds.has(z.id)) {
         sword.hitZombieIds.add(z.id);
         z.hp -= config.damage * config.dmgMult;
-        _queueKill(game, z, sword.ownerId, sword.level);
+        _queueKill(game, z, sword.ownerId, sword.level, sword.angle);
         _pushForward(sword, z, 26);
         audioManager.playHit();
         game.hitEffects.push({ x: z.x, y: z.y, type: 'red_blood', lifetime: 300, maxLifetime: 300 });
@@ -90,7 +90,7 @@ function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
       if (!sword.hitZombieIds.has(z.id)) {
         sword.hitZombieIds.add(z.id);
         z.hp -= config.damage * config.dmgMult;
-        _queueKill(game, z, sword.ownerId, sword.level);
+        _queueKill(game, z, sword.ownerId, sword.level, sword.angle);
         _pushForward(sword, z, 26);
         audioManager.playHit();
         const fx = sword.branch === 'A' ? 'purple_particles' : 'grey_sparks';
@@ -169,7 +169,7 @@ function _returning(sword: SwordProjectile, game: Game, dt: number): void {
       if (zdist < config.passRadius + z.radius) {
         sword.hitZombieIds.add(z.id);
         z.hp -= config.damage * config.dmgMult;
-        _queueKill(game, z, sword.ownerId, sword.level);
+        _queueKill(game, z, sword.ownerId, sword.level, sword.angle);
         audioManager.playHit();
         game.hitEffects.push({ x: z.x, y: z.y, type: 'purple_particles', lifetime: 300, maxLifetime: 300 });
       }
@@ -244,9 +244,9 @@ function _clearSwordOut(game: Game, ownerId: number): void {
 // ─────────────────────────────────────────────────────────────────────────────
 // 擊殺佇列輔助
 // ─────────────────────────────────────────────────────────────────────────────
-function _queueKill(game: Game, z: Zombie, ownerId: number, level: number): void {
+function _queueKill(game: Game, z: Zombie, ownerId: number, level: number, hitAngle?: number): void {
   if (z.hp <= 0 && !game.pendingSwordKills.has(z)) {
-    game.pendingSwordKills.set(z, { ownerId, level });
+    game.pendingSwordKills.set(z, { ownerId, level, hitAngle });
   }
 }
 

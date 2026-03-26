@@ -53,7 +53,8 @@ export class ArcSystem {
       });
 
       if (nearest.hp <= 0) {
-        game.pendingSwordKills.set(nearest, { ownerId, level });
+        const angle = Math.atan2(nearest.y - startY, nearest.x - startX);
+        game.pendingSwordKills.set(nearest, { ownerId, level, hitAngle: angle });
       }
 
       // 將後續的連鎖跳躍排入佇列，給予一點時間差 (80ms)

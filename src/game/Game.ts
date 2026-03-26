@@ -91,7 +91,7 @@ export class Game {
   isHostMode: boolean = false;
 
   // ── 劍系投射物擊殺佇列（SwordSystem 填入，Game.update 結尾處理）
-  pendingSwordKills: Map<Zombie, { ownerId: number; level: number }> = new Map();
+  pendingSwordKills: Map<Zombie, { ownerId: number; level: number; hitAngle?: number }> = new Map();
 
   // ── Feature 5: Lag compensation — hitbox expansion + backward reconciliation
   lagCompensationRadius: number = 0;
@@ -184,6 +184,7 @@ export class Game {
   testMode: boolean = false;
   debugPaused: boolean = false;
   debugHpLocked: boolean = false;
+  debugInfiniteCoins: boolean = false; // 測試用：無限金幣
 
   handleKeyDown = (e: KeyboardEvent) => {
     this.keys[e.key] = true;
@@ -283,6 +284,13 @@ export class Game {
   }
   debugToggleHpLock() {
     this.debugHpLocked = !this.debugHpLocked;
+  }
+  debugToggleInfiniteCoins() {
+    this.debugInfiniteCoins = !this.debugInfiniteCoins;
+    // 立即生效：所有玩家金幣設為極大值
+    if (this.debugInfiniteCoins) {
+      this.players.forEach(p => { p.materials = 999999; });
+    }
   }
 
   // ── 升級選擇套用 ────────────────────────────────────────────────────────────
@@ -531,14 +539,45 @@ export class Game {
       return;
     }
 
-    // --- ARENA MODE WAVE END FREEZE ---
+    // --- ARENA MODE WAVE END FREEZE & AUTO-LOOT ---
     if (this.mode === 'arena' && this.waveManager.isResting) {
       if (!this._shopCleared) {
-        this.clearEntitiesForShop();
-        this._shopCleared = true;
+        this.zombies = []; // 強制銷毀所有殭屍
+        this.projectiles = [];
+        this.swordProjectiles = [];
+        this.missiles = [];
+        this.arcProjectiles = [];
+        this.activeEffects = [];
+
+        const p = this.players[0];
+        if (p) {
+          let allLooted = true;
+          for (let i = this.items.length - 1; i >= 0; i--) {
+            const item = this.items[i];
+            const dx = p.x - item.x;
+            const dy = p.y - item.y;
+            const dist = Math.hypot(dx, dy);
+            // 瞬間吸星大法
+            if (dist < 40) {
+              if (item.type === 'energy_orb') {
+                p.addXp(item.value || 1);
+                p.materials += (item.value || 1);
+              }
+              audioManager.playPickup();
+              this.items.splice(i, 1);
+            } else {
+              item.x += (dx / dist) * Math.min(dist, 50); // 每幀飛 50px
+              item.y += (dy / dist) * Math.min(dist, 50);
+              allLooted = false;
+            }
+          }
+          if (allLooted) this._shopCleared = true;
+        } else {
+          this._shopCleared = true;
+        }
       }
       this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
-      return; // Freeze all physics and game objects during Shop Phase
+      return; // Freeze all normal physics and game objects during Shop Phase
     }
 
     const isIntro = this.waveManager.waveIntroTimer > 0;
@@ -684,6 +723,11 @@ export class Game {
       }
     }
 
+    // ── Debug：無限金幣每幀補滿 ────────────────────────────────────────────
+    if (this.debugInfiniteCoins) {
+      this.players.forEach(p => { p.materials = 999999; });
+    }
+
     // Spawn zombies
     if (!this.debugPaused) this.waveManager.update(dt);
     if (!this.waveManager.isResting && !this.debugPaused) {
@@ -800,8 +844,8 @@ export class Game {
     updateActiveEffects(this, dt);
 
     // 處理劍系 + 場地效果擊殺（SwordSystem / ActiveEffectSystem 蒐集的死亡殭屍）
-    for (const [zombie, { ownerId, level }] of this.pendingSwordKills) {
-      if (zombie.hp <= 0) this.killZombie(zombie, ownerId, level);
+    for (const [zombie, { ownerId, level, hitAngle }] of this.pendingSwordKills) {
+      if (zombie.hp <= 0) this.killZombie(zombie, ownerId, level, hitAngle);
     }
     this.pendingSwordKills.clear();
 
@@ -960,6 +1004,7 @@ export class Game {
 
           // Hit effects — 由 BulletDefinitions / 未來 SlashDefinitions 的 onHit 決定
           if (proj.type === 'bullet') {
+            zombie.flashWhiteTimer = 90; // 怪物全身純白閃爍 0.09秒
             const bulletDef = BULLET_REGISTRY[proj.bulletType] ?? BULLET_REGISTRY['blue_ellipse'];
             bulletDef.onHit?.({ zombie, pushEffect: e => this.hitEffects.push(e) });
           }
@@ -970,7 +1015,8 @@ export class Game {
           }
 
           if (zombie.hp <= 0) {
-            const children = this.killZombie(zombie, proj.ownerId, proj.level);
+            const hitAngle = Math.atan2(proj.vy, proj.vx);
+            const children = this.killZombie(zombie, proj.ownerId, proj.level, hitAngle);
             for (const child of children) proj.hitZombies.add(child);
           }
 
@@ -1034,7 +1080,20 @@ export class Game {
           } else if (item.type === 'shield') {
             player.shield = true;
           } else if (item.type === 'energy_orb') {
-            player.addXp(item.value || 1);
+            // 競技場模式：升級不阻塞 XP，改為自動發放素質點數
+            if (this.mode === 'arena') {
+              const prevLevel = player.level;
+              player.pendingLevelUp = false;
+              player.addXp(item.value || 1);
+              // 背景計算升級次數，直接轉換為素質點數
+              const levelsGained = player.level - prevLevel;
+              if (levelsGained > 0) {
+                player.arenaStatPoints += levelsGained;
+                player.pendingLevelUp = false; // 再次確保不彈出升級選擇面板
+              }
+            } else {
+              player.addXp(item.value || 1);
+            }
             player.materials += (item.value || 1);
           }
           
@@ -1055,6 +1114,16 @@ export class Game {
     for (let i = this.hitEffects.length - 1; i >= 0; i--) {
       const effect = this.hitEffects[i];
       effect.lifetime -= dt;
+      // 物理驅動的碎片：套用慣性與空氣阻力
+      if (effect.vx !== undefined && effect.vy !== undefined) {
+        effect.x += effect.vx * (dt / 16);
+        effect.y += effect.vy * (dt / 16);
+        const drag = Math.pow(0.88, dt / 16); // 極強空氣阻力 → 快速定格
+        effect.vx *= drag;
+        effect.vy *= drag;
+        // 加入微弱重力
+        effect.vy += 0.15 * (dt / 16);
+      }
       if (effect.lifetime <= 0) {
         this.hitEffects.splice(i, 1);
       }
@@ -1080,9 +1149,28 @@ export class Game {
    * 殭屍死亡統一處理：音效、掉落 orb、爆裂特效、slime 分裂、移除、加分。
    * 回傳新生成的子殭屍（供呼叫方加入命中保護 Set）。
    */
-  killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number): Zombie[] {
+  killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number, hitAngle?: number): Zombie[] {
     audioManager.playKill();
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
+
+    // ── 碎裂噴發 (Gibbing) ─────────────────────────────────────────────────
+    const burstAngle = hitAngle !== undefined ? hitAngle + Math.PI : Math.random() * Math.PI * 2;
+    const gibCount = 3 + Math.floor(Math.random() * 3); // 3~5 顆肉塊
+    for (let g = 0; g < gibCount; g++) {
+      // 在受擊反方向的扇形範圍 (±40°) 內散射
+      const spreadAngle = burstAngle + (Math.random() - 0.5) * 1.4;
+      const speed = 10 + Math.random() * 7; // 初速 10~17 px/tick (目標距離 80~150px)
+      this.hitEffects.push({
+        x: zombie.x, y: zombie.y,
+        type: 'gib_blood',
+        lifetime: 400 + Math.random() * 200,
+        maxLifetime: 600,
+        vx: Math.cos(spreadAngle) * speed,
+        vy: Math.sin(spreadAngle) * speed,
+        rotation: Math.random() * Math.PI * 2,
+        size: 3 + Math.random() * 4,
+      });
+    }
 
     // 掉落能量球
     for (let i = 0; i < zombieDef.orbCount; i++) {

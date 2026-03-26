@@ -67,7 +67,7 @@ export class WaveManager {
 
   startCombat() {
     this.isResting = false;
-    this.timer = this.mode === 'arena' ? Math.min(50, 20 + this.currentWave * 2) : 30;
+    this.timer = this.mode === 'arena' ? 30 + Math.floor(Math.random() * 21) : 30; // 30~50 seconds for arena
     this.waveIntroTimer = 3000; // 3 seconds intro
     if (!this.isInfinite) {
       if (this.currentWave < 9) {

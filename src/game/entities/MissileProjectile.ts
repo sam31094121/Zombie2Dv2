@@ -40,6 +40,7 @@ export class MissileProjectile {
   groundFireRadius: number;
   groundFireDuration: number;
   lifetime: number = 3000;
+  maxLifetime: number = 3000;
   alive: boolean = true;
 
   constructor(cfg: MissileConfig) {
