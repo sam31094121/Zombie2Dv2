@@ -179,22 +179,22 @@ export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, 
       {/* P1 / P2 準備按鈕 */}
       <div className="grid grid-cols-2 gap-1.5 px-1.5 pb-2">
         <button onClick={onP1Ready} disabled={p1Ready}
-          className="py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-95"
+          className="py-4 sm:py-5 rounded-2xl text-base sm:text-lg font-black tracking-widest transition-all active:scale-95 shadow-lg"
           style={{
             background: p1Ready ? '#14532d' : `${p1.color}22`,
             color: p1Ready ? '#86efac' : p1.color,
-            border: `1px solid ${p1Ready ? '#166534' : p1.color + '44'}`,
+            border: `2px solid ${p1Ready ? '#166534' : p1.color + '44'}`,
           }}>
-          {p1Ready ? '✓ P1 準備好' : 'P1 準備好了'}
+          {p1Ready ? '✓ P1 READY' : 'P1 準備好了'}
         </button>
         <button onClick={onP2Ready} disabled={p2Ready}
-          className="py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-95"
+          className="py-4 sm:py-5 rounded-2xl text-base sm:text-lg font-black tracking-widest transition-all active:scale-95 shadow-lg"
           style={{
             background: p2Ready ? '#14532d' : `${p2.color}22`,
             color: p2Ready ? '#86efac' : p2.color,
-            border: `1px solid ${p2Ready ? '#166534' : p2.color + '44'}`,
+            border: `2px solid ${p2Ready ? '#166534' : p2.color + '44'}`,
           }}>
-          {p2Ready ? '✓ P2 準備好' : 'P2 準備好了'}
+          {p2Ready ? '✓ P2 READY' : 'P2 準備好了'}
         </button>
       </div>
     </>
@@ -208,7 +208,7 @@ export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, 
   // - hideInventory: 武器欄由底部 CharacterPreview 呈現，不需要內建格子
   // - customFooter: 注入角色預覽 + 準備按鈕
   return (
-    <div className="absolute inset-0 overflow-hidden relative">
+    <div className="w-full h-full">
       <ShopPanel
         key={`mgmt-p${selectedPlayer}`}
         player={activePlayer}

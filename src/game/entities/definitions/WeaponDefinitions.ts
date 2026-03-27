@@ -93,6 +93,7 @@ function angleVec(a: number) { return { x: Math.cos(a), y: Math.sin(a) }; }
 // SWORD DRAW HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 function swordSwingOffset(player: Player, slot?: import('../../Player').WeaponSlot): number {
+  if ((player as any).isPreview) return 0;
   const t = Date.now() - (slot?.lastAttackTime ?? player.lastAttackTime);
   const dur = 200;
   return t < dur ? -Math.PI / 2 + (t / dur) * Math.PI : -Math.PI / 4;

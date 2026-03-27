@@ -35,7 +35,8 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
         x: p.x + (Math.random() - 0.5) * 15,
         y: p.y - 30,
         alpha: 1.0,
-        startTime: Date.now()
+        startTime: Date.now(),
+        ownerId: p.id,
       });
     });
 

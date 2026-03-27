@@ -15,7 +15,7 @@ export const WEAPON_SLOT_POSITIONS = [
   {  rx:  44, ry:  26 }, // 5: 右下
 ];
 
-export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void {
+export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: { hideUI?: boolean }): void {
   if (player.hp <= 0) return;
 
   const angle = player.aimAngle;
@@ -116,21 +116,25 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
 
   ctx.restore();
 
-  // HP Bar（world-space）
-  const hpRatio = player.hp / player.maxHp;
-  ctx.fillStyle = 'red';   ctx.fillRect(player.x - 15, player.y - 25, 30, 4);
-  ctx.fillStyle = 'green'; ctx.fillRect(player.x - 15, player.y - 25, 30 * hpRatio, 4);
+  if (!options?.hideUI) {
+    // HP Bar（world-space）
+    const hpRatio = player.hp / player.maxHp;
+    ctx.fillStyle = 'red';   ctx.fillRect(player.x - 15, player.y - 25, 30, 4);
+    ctx.fillStyle = 'green'; ctx.fillRect(player.x - 15, player.y - 25, 30 * hpRatio, 4);
+  }
 
-  // Level indicator
-  ctx.fillStyle = 'white'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
-  if (player.isFloatingWeapons) {
-    ctx.fillText(`Lv.${player.level}`, player.x, player.y - 30);
-  } else {
-    const wLv    = player.weaponLevels[player.weapon];
-    const branch = player.weaponBranches[player.weapon];
-    const branchTag = branch ? `[${branch}]` : '';
-    const levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
-    ctx.fillStyle = branch === 'A' ? '#4fc3f7' : branch === 'B' ? '#ff8a65' : 'white';
-    ctx.fillText(levelText, player.x, player.y - 30);
+  if (!options?.hideUI) {
+    // Level indicator
+    ctx.fillStyle = 'white'; ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center';
+    if (player.isFloatingWeapons) {
+      ctx.fillText(`Lv.${player.level}`, player.x, player.y - 30);
+    } else {
+      const wLv    = player.weaponLevels[player.weapon];
+      const branch = player.weaponBranches[player.weapon];
+      const branchTag = branch ? `[${branch}]` : '';
+      const levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
+      ctx.fillStyle = branch === 'A' ? '#4fc3f7' : branch === 'B' ? '#ff8a65' : 'white';
+      ctx.fillText(levelText, player.x, player.y - 30);
+    }
   }
 }

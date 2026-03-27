@@ -314,7 +314,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           雙人模式下不撐滿高度（由外部 ManagementView 控制佈局）
           單人模式下 h-full 填滿整個 overlay */}
       <div
-        className="relative w-full h-full bg-[#060a10] flex flex-col items-center overflow-hidden text-neutral-200"
+        className="relative w-full h-screen bg-[#060a10] flex flex-col items-center overflow-hidden text-neutral-200"
         style={{
           backgroundImage: 'linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)',
           backgroundSize: '40px 40px',

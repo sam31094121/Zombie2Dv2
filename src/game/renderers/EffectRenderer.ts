@@ -24,7 +24,11 @@ export interface HitEffect {
 }
 
 export interface HealVFX {
-  x: number; y: number; alpha: number; startTime: number;
+  x: number;
+  y: number;
+  alpha: number;
+  startTime: number;
+  ownerId?: number;
 }
 
 export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D): void {

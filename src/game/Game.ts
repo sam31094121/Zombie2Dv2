@@ -1,4 +1,4 @@
-import { CONSTANTS } from './Constants';
+﻿import { CONSTANTS } from './Constants';
 import { Player } from './Player';
 import { Zombie, ZombieType } from './Zombie';
 import { ObstacleType, GameMode } from './types';
@@ -10,7 +10,7 @@ import { audioManager } from './AudioManager';
 import { WaveManager } from './WaveManager';
 import { ZOMBIE_REGISTRY } from './entities/definitions/ZombieDefinitions';
 import { WEAPON_REGISTRY } from './entities/definitions/WeaponDefinitions';
-import { drawHitEffect, drawHealVFX, HitEffect } from './renderers/EffectRenderer';
+import { drawHitEffect, drawHealVFX, HitEffect, HealVFX } from './renderers/EffectRenderer';
 import { BULLET_REGISTRY } from './renderers/BulletDefinitions';
 import { resolveOverlaps } from './systems/PhysicsSystem';
 import { spawnZombie as _spawnZombie, spawnItemAt as _spawnItemAt, spawnItem as _spawnItem } from './systems/SpawnSystem';
@@ -40,7 +40,7 @@ export class Game {
   items: Item[] = [];
   hitEffects: HitEffect[] = [];
   activeEffects: ActiveEffect[] = [];
-  healVFX: { x: number, y: number, alpha: number, startTime: number }[] = [];
+  healVFX: HealVFX[] = [];
   slimeTrails: { x: number, y: number, radius: number, lifetime: number, maxLifetime: number }[] = [];
   mapManager: MapManager;
   camera: { x: number, y: number } = { x: 0, y: 0 };
@@ -741,7 +741,8 @@ export class Game {
               x: player.x + (Math.random() - 0.5) * 10, 
               y: player.y - 35, 
               alpha: 0.8, 
-              startTime: now 
+              startTime: now,
+              ownerId: player.id,
             });
             player.lastRegenVfxTime = now;
           }
@@ -1177,6 +1178,14 @@ export class Game {
 
     // Update heal VFX
     this.healVFX = this.healVFX.filter(vfx => {
+      const owner = vfx.ownerId !== undefined
+        ? this.players.find(player => player.id === vfx.ownerId)
+        : null;
+
+      if (owner && owner.hp >= owner.maxHp) {
+        return false;
+      }
+
       vfx.y -= 1; // 向上漂浮
       vfx.alpha -= 0.02; // 逐漸淡出
       return vfx.alpha > 0;

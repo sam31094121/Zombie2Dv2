@@ -11,9 +11,8 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import type { Player } from '../../game/Player';
 import { drawPlayer, WEAPON_SLOT_POSITIONS } from '../../game/renderers/PlayerRenderer';
 
-// ── 點擊熱區半徑（px，以 canvas 內部解析度計）────────────────────────────────
-// 武器繪製尺寸約 30px，熱區設為 30px 半徑讓點擊手感寬鬆
-const HIT_RADIUS = 30;
+// 武器平均尺寸，將熱區縮小以適應更緊湊的預覽
+const HIT_RADIUS = 20;
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -44,8 +43,8 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
   isActive = false,
   onSlotClick,
   onPlayerClick,
-  bufW = 240,
-  bufH = 180,
+  bufW = 124,
+  bufH = 100,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // rAF handle，用於 cleanup
@@ -71,21 +70,16 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
       aimAngle: 0,
       // 確保走懸浮武器路徑
       isFloatingWeapons: true,
-      // 停用戰鬥相關視覺效果
       weaponSwitchTimer: 0,
       isInsideContainer: false,
       slowDebuffTimer: 0,
-    };
+      // 標記為預覽模式，供 WeaponDefinitions.ts 修正武器角度（例如劍的傾斜）
+      isPreview: true,
+    } as any;
 
     const render = () => {
       ctx.clearRect(0, 0, bufW, bufH);
-
-      // ── 背景：玩家顏色的放射漸層 ──
-      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
-      gradient.addColorStop(0, isActive ? `${player.color}22` : `${player.color}0d`);
-      gradient.addColorStop(1, 'transparent');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, bufW, bufH);
+      // ── 移除背景繪製，讓角色直接顯示在商店背景上 ──
 
       // ── 選中槽位高亮環（畫在 drawPlayer 之前，避免被覆蓋）──
       if (selectedSlotIdx !== null && selectedSlotIdx >= 0) {
@@ -105,20 +99,10 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
         ctx.restore();
       }
 
-      // ── 核心：使用完全相同的 drawPlayer 渲染 ──
-      drawPlayer(previewProxy, ctx);
+      // ── 核心：使用完全相同的 drawPlayer 渲染，但隱藏遊戲 UI（血條、等級）──
+      drawPlayer(previewProxy, ctx, { hideUI: true });
 
-      // ── 底部標籤：玩家名稱 + 金幣 ──
-      if (playerLabel) {
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = isActive ? player.color : '#475569';
-        ctx.fillText(playerLabel, cx, 12);
-      }
-      ctx.font = '9px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#fbbf24';
-      ctx.fillText(`💰 ${Math.floor(player.materials)}`, cx, bufH - 4);
+      // ── 移除底部標籤與金幣（使用者需求：僅顯示角色與武器） ──
 
       rafRef.current = requestAnimationFrame(render);
     };
@@ -184,14 +168,12 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
       onClick={handleClick}
       style={{
         display: 'block',
-        width: '100%',
-        height: 'auto',
+        width: '124px',          // 鎖定寬度，確保 1:1 像素比例
+        height: '100px',         // 鎖定高度
+        margin: '0 auto',        // 置中
         cursor: 'pointer',
-        borderRadius: '10px',
-        background: '#070c16',
-        outline: isActive
-          ? `1.5px solid ${player.color}55`
-          : '1.5px solid #131e2e',
+        background: 'transparent',
+        // 移除外框與背景，保持極簡
         // 讓點擊區域更準，避免瀏覽器縮放模糊
         imageRendering: 'pixelated',
       }}
