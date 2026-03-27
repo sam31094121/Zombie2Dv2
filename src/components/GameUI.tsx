@@ -43,6 +43,7 @@ export const GameUI: React.FC = () => {
   const [joinInput, setJoinInput] = useState('');
   const [onlineError, setOnlineError] = useState('');
   const [myPlayerId, setMyPlayerId] = useState(1);
+  const [onlineLobbyMode, setOnlineLobbyMode] = useState<'endless' | 'arena'>('endless');
   const networkRef = useRef<NetworkManager | null>(null);
 
   const [playerCount, setPlayerCount] = useState<number>(1);
@@ -207,7 +208,7 @@ export const GameUI: React.FC = () => {
   };
 
   // ── 線上遊戲開始 ──────────────────────────────────────────
-  const startOnlineGame = (nm: NetworkManager, pid: number) => {
+  const startOnlineGame = (nm: NetworkManager, pid: number, mode: 'endless' | 'arena' = onlineLobbyMode) => {
     audioManager.init();
     audioManager.resume();
     audioManager.startBGM();
@@ -240,6 +241,7 @@ export const GameUI: React.FC = () => {
         if (pid === 1) nm.sendControl({ t: 'GO', time, kills });
       },
       makeOnUpdate(),
+      mode,
     );
 
     if (pid === 1) {
@@ -291,7 +293,7 @@ export const GameUI: React.FC = () => {
       if (nm.isHost && readyRef.current.myReady && readyRef.current.otherReady) {
         readyRef.current = { myReady: false, otherReady: false };
         nm.sendControl({ t: 'START' });
-        startOnlineGame(nm, 1);
+        startOnlineGame(nm, 1, gameRef.current?.mode || onlineLobbyMode);
       }
     };
 
@@ -320,11 +322,27 @@ export const GameUI: React.FC = () => {
     const nm = new NetworkManager();
     networkRef.current = nm;
     nm.onError = (msg) => setOnlineError(msg);
-    nm.onDisconnect = () => { if (gameStateRef.current !== 'playing') { setOnlineError('與伺服器斷線'); setOnlineStep('menu'); } };
+    nm.onDisconnect = () => {
+      if (gameStateRef.current !== 'playing') {
+        setOnlineError('與伺服器斷線');
+        setOnlineStep('menu');
+        setGameState('start');
+      }
+    };
     try { await nm.connect(WS_URL); } catch { setOnlineError('無法連線到伺服器，請稍後再試'); return; }
     let localPid = 1;
     nm.onRoomJoined = (code, pid) => { localPid = pid; setRoomCode(code); setMyPlayerId(pid); setOnlineStep('waiting'); };
-    nm.onGameStart  = () => { startOnlineGame(nm, localPid); };
+    nm.onPeerConnected = () => {
+      setPlayerCount(2);
+      setOnlineLobbyMode('endless');
+      gameStateRef.current = 'lobby';
+      setGameState('lobby');
+    };
+    nm.onGameStart  = (mode) => {
+      const nextMode = mode ?? gameRef.current?.mode ?? 'endless';
+      setOnlineLobbyMode(nextMode);
+      startOnlineGame(nm, localPid, nextMode);
+    };
     nm.createRoom();
   };
 
@@ -336,11 +354,26 @@ export const GameUI: React.FC = () => {
     const nm = new NetworkManager();
     networkRef.current = nm;
     nm.onError = (msg) => setOnlineError(msg);
-    nm.onDisconnect = () => { if (gameStateRef.current !== 'playing') { setOnlineError('與伺服器斷線'); setOnlineStep('menu'); } };
+    nm.onDisconnect = () => {
+      if (gameStateRef.current !== 'playing') {
+        setOnlineError('與伺服器斷線');
+        setOnlineStep('menu');
+        setGameState('start');
+      }
+    };
     try { await nm.connect(WS_URL); } catch { setOnlineError('無法連線到伺服器，請稍後再試'); return; }
     let localPid = 2;
     nm.onRoomJoined = (code, pid) => { localPid = pid; setMyPlayerId(pid); setRoomCode(code); };
-    nm.onGameStart  = () => { startOnlineGame(nm, localPid); };
+    nm.onPeerConnected = () => {
+      setPlayerCount(2);
+      gameStateRef.current = 'lobby';
+      setGameState('lobby');
+    };
+    nm.onGameStart  = (mode) => {
+      const nextMode = mode ?? gameRef.current?.mode ?? 'endless';
+      setOnlineLobbyMode(nextMode);
+      startOnlineGame(nm, localPid, nextMode);
+    };
     nm.joinRoom(joinInput);
   };
 
@@ -350,6 +383,7 @@ export const GameUI: React.FC = () => {
   const handleMainMenu = () => {
     setGameState('start'); setSelectionStep('platform'); setOnlineStep('menu');
     setRoomCode(''); setJoinInput(''); setOnlineError('');
+    setOnlineLobbyMode('endless');
     setReadyState({ myReady: false, otherReady: false });
     arenaShopEnteredRef.current = false;
     setP1ShopReady(false);
@@ -466,9 +500,26 @@ export const GameUI: React.FC = () => {
         {gameState === 'lobby' && (
           <div className="absolute inset-0 z-30">
             <LobbyCanvas
-              playerColor="#4fc3f7"
+              playerColor={myPlayerId === 1 ? '#4fc3f7' : '#f97316'}
               platform={platform}
-              onStartGame={(diff, mode) => startGame(playerCount, diff, mode)}
+              readOnly={!!networkRef.current && myPlayerId !== 1}
+              statusText={
+                networkRef.current
+                  ? myPlayerId === 1
+                    ? '1 號玩家可以選擇模式，2 號玩家只能觀看'
+                    : '等待 1 號玩家選擇模式'
+                  : undefined
+              }
+              onStartGame={(diff, mode) => {
+                if (networkRef.current) {
+                  if (myPlayerId !== 1) return;
+                  setOnlineLobbyMode(mode);
+                  networkRef.current.sendControl({ t: 'START', mode });
+                  startOnlineGame(networkRef.current, myPlayerId, mode);
+                  return;
+                }
+                startGame(playerCount, diff, mode);
+              }}
             />
           </div>
         )}

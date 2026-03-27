@@ -15,10 +15,18 @@ import { QuestPanel }      from './panels/QuestPanel';
 interface Props {
   playerColor?: string;
   platform?: 'pc' | 'mobile' | null;
+  readOnly?: boolean;
+  statusText?: string;
   onStartGame: (difficulty: 'normal' | 'hard' | 'infinite', mode: 'endless' | 'arena') => void;
 }
 
-export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: Props) {
+export function LobbyCanvas({
+  playerColor = '#4fc3f7',
+  platform,
+  readOnly = false,
+  statusText,
+  onStartGame,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef  = useRef<LobbyScene | null>(null);
   const rafRef    = useRef<number>(0);
@@ -33,15 +41,19 @@ export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: 
 
     scene.onNPCTrigger = (id) => setOpenPanel(id);
 
-    window.addEventListener('keydown', scene.handleKeyDown);
-    window.addEventListener('keyup',   scene.handleKeyUp);
+    if (!readOnly) {
+      window.addEventListener('keydown', scene.handleKeyDown);
+      window.addEventListener('keyup',   scene.handleKeyUp);
+    }
 
     return () => {
-      window.removeEventListener('keydown', scene.handleKeyDown);
-      window.removeEventListener('keyup',   scene.handleKeyUp);
+      if (!readOnly) {
+        window.removeEventListener('keydown', scene.handleKeyDown);
+        window.removeEventListener('keyup',   scene.handleKeyUp);
+      }
       cancelAnimationFrame(rafRef.current);
     };
-  }, [playerColor]);
+  }, [playerColor, readOnly]);
 
   // ── 遊戲迴圈 ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -91,11 +103,17 @@ export function LobbyCanvas({ playerColor = '#4fc3f7', platform, onStartGame }: 
       />
 
       {/* 手機版搖桿（只在 mobile 且面板未開時顯示） */}
-      {platform === 'mobile' && !openPanel && (
+      {platform === 'mobile' && !openPanel && !readOnly && (
         <MobileControls
           playerCount={1}
           onMove={(_idx, input) => { if (sceneRef.current) sceneRef.current.joystick = input; }}
         />
+      )}
+
+      {statusText && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 rounded-full border border-white/15 bg-black/70 px-4 py-2 text-center text-sm font-semibold text-white shadow-xl backdrop-blur-md">
+          {statusText}
+        </div>
       )}
 
       {/* NPC 面板 */}

@@ -1,19 +1,19 @@
-// ── 伺服器廣播的遊戲狀態型別 ─────────────────────────────
+﻿// ?? 隡箸??典誨?剔????????????????????????????????????
 export interface NetPlayerState {
   id: number; x: number; y: number;
   hp: number; mh: number;
   xp: number; mx: number;
   lv: number; pl: number;
   wp: string; aim: number; sh: boolean; st?: number;
-  sl: number;  // slowDebuffTimer（ms）— 同步給 P2 保持減速預測一致
+  sl: number;  // slowDebuffTimer嚗s嚗??郊蝯?P2 靽?皜?皜砌???
 }
 
 export interface NetGameState {
   t: 'ST';
   tk: number;       // TickID
-  hs?: boolean;     // HardSync flag（波次切換時為 true）
-  ts: number;       // 每幀時間戳（供插值與時鐘校正）
-  ack: number;      // Host 最後確認的 P2 input tick（Reconciliation 用）
+  hs?: boolean;     // HardSync flag嚗郭甈∪?????true嚗?
+  ts: number;       // 瘥????喉?靘??潸????⊥迤嚗?
+  ack: number;      // Host ?敺Ⅱ隤? P2 input tick嚗econciliation ?剁?
   ps: NetPlayerState[];
   zs: { id: number; x: number; y: number; hp: number; mh: number; tp: string; ag: number }[];
   pj: { x: number; y: number; vx: number; vy: number; tp: string; lv: number; lt: number; ml: number; en: boolean; r: number; oi: number }[];
@@ -21,30 +21,32 @@ export interface NetGameState {
   wv: { w: number; r: boolean; t: number; i: boolean; m: string[] };
 }
 
-// ── STUN 伺服器（Google 免費，供 NAT 穿透） ──────────────
+// ?? STUN 隡箸??剁?Google ?祥嚗? NAT 蝛輸? ??????????????
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
-// ── NetworkManager：管理 WebSocket 信令 + WebRTC DataChannel ─
+// ?? NetworkManager嚗恣??WebSocket 靽∩誘 + WebRTC DataChannel ?
 export class NetworkManager {
   private ws:           WebSocket | null = null;
   private pc:           RTCPeerConnection | null = null;
-  private reliableDC:   RTCDataChannel | null = null; // ordered, reliable — 遊戲事件
-  private fastDC:       RTCDataChannel | null = null; // unordered, unreliable — 移動/狀態
+  private reliableDC:   RTCDataChannel | null = null; // ordered, reliable ???鈭辣
+  private fastDC:       RTCDataChannel | null = null; // unordered, unreliable ??蝘餃?/???
 
   private reliableReady = false;
   private fastReady     = false;
-  private _peerReady    = false;   // 收到對方的 DC_READY
-  private _gameStarted  = false;   // 防止重複觸發 onGameStart
+  private _peerReady    = false;   // ?嗅撠??DC_READY
+  private _peerConnected = false;  // 雙向 DataChannel 都 ready
+  private _gameStarted  = false;   // ?脫迫??閫貊 onGameStart
   private _isHost       = false;   // P1 = Host/Caller, P2 = Client/Callee
 
   private sendTick = 0;
 
-  // ── 回呼事件（介面與舊版相同，外部程式碼無需改動）──────
+  // ?? ?鈭辣嚗??Ｚ????詨?嚗??函?撘Ⅳ?⊿??孵?嚗??????
   onRoomJoined:    ((code: string, playerId: number) => void) | null = null;
-  onGameStart:     (() => void) | null = null;
+  onPeerConnected: (() => void) | null = null;
+  onGameStart:     ((mode?: 'endless' | 'arena') => void) | null = null;
   onStateUpdate:   ((state: NetGameState) => void) | null = null;
   onGameOver:      ((time: number, kills: number) => void) | null = null;
   onError:         ((msg: string) => void) | null = null;
@@ -52,20 +54,20 @@ export class NetworkManager {
   onRespawnStart:  ((pid: number, duration: number) => void) | null = null;
   onRespawned:     ((pid: number) => void) | null = null;
   onPlayerReady:   ((pid: number) => void) | null = null;
-  // Host 接收 P2 的移動輸入（含 inputTick 供 Reconciliation）
+  // Host ?交 P2 ?宏?撓?伐???inputTick 靘?Reconciliation嚗?
   onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
 
   get isHost() { return this._isHost; }
 
-  // ── 建立 WebSocket 信令連線 ──────────────────────────────
+  // ?? 撱箇? WebSocket 靽∩誘??? ??????????????????????????????
   connect(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(url);
         this.ws.onopen  = () => resolve();
-        this.ws.onerror = (e) => { console.error('WS error:', e); reject(new Error('無法連線到伺服器')); };
+        this.ws.onerror = (e) => { console.error('WS error:', e); reject(new Error('?⊥?????唬撩?')); };
         this.ws.onclose = () => {
-          // 只在 DataChannel 尚未建立時才觸發斷線（遊戲中 WS 可自然關閉）
+          // ?芸 DataChannel 撠撱箇???閫貊?瑞?嚗??脖葉 WS ?航?園???
           if (!this._gameStarted) this.onDisconnect?.();
         };
         this.ws.onmessage = (e) => this._handleWsMsg(e.data as string);
@@ -73,7 +75,7 @@ export class NetworkManager {
     });
   }
 
-  // ── WebSocket 信令訊息處理 ────────────────────────────────
+  // ?? WebSocket 靽∩誘閮?? ????????????????????????????????
   private _handleWsMsg(data: string) {
     try {
       const msg = JSON.parse(data);
@@ -82,19 +84,19 @@ export class NetworkManager {
           this.onRoomJoined?.(msg.code, msg.pid);
           break;
         case 'PEER_JOINED':
-          // P2 加入房間 → P1（Host/Caller）開始建立 WebRTC
+          // P2 ??輸? ??P1嚗ost/Caller嚗?憪遣蝡?WebRTC
           if (this._isHost) this._startAsHost();
           break;
         case 'OFFER':
-          // P2（Callee）收到 Offer
+          // P2嚗allee嚗??Offer
           this._handleOffer(msg.offer);
           break;
         case 'ANSWER':
-          // P1（Caller）收到 Answer
+          // P1嚗aller嚗??Answer
           this.pc?.setRemoteDescription(new RTCSessionDescription(msg.answer)).catch(console.error);
           break;
         case 'ICE':
-          // ICE Trickle：邊產生邊加入，不等全部收集完（連線速度快 2–8 秒）
+          // ICE Trickle嚗??Ｙ????伐?銝??券?園?摰?????漲敹?2?? 蝘?
           if (msg.candidate) {
             this.pc?.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(console.error);
           }
@@ -106,25 +108,25 @@ export class NetworkManager {
     } catch (err) { console.error('WS parse error:', err); }
   }
 
-  // ── 建立房間（P1/Host/Caller）────────────────────────────
+  // ?? 撱箇??輸?嚗1/Host/Caller嚗????????????????????????????
   createRoom() {
     this._isHost = true;
     this._sendWs({ t: 'CREATE' });
   }
 
-  // ── 加入房間（P2/Client/Callee）──────────────────────────
+  // ?? ??輸?嚗2/Client/Callee嚗??????????????????????????
   joinRoom(code: string) {
     this._isHost = false;
     this._sendWs({ t: 'JOIN', code: code.trim() });
   }
 
-  // ── P1（Host/Caller）：建立 RTCPeerConnection + DataChannel ─
+  // ?? P1嚗ost/Caller嚗?撱箇? RTCPeerConnection + DataChannel ?
   private async _startAsHost() {
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this._setupPCHandlers();
 
-    // 重要：只有 Caller 呼叫 createDataChannel
-    // P2（Callee）必須透過 ondatachannel 接收，不可自己建立
+    // ??嚗??Caller ?澆 createDataChannel
+    // P2嚗allee嚗??? ondatachannel ?交嚗??航撌勗遣蝡?
     this.reliableDC = this.pc.createDataChannel('reliable', { ordered: true });
     this.fastDC     = this.pc.createDataChannel('fast',     { ordered: false, maxRetransmits: 0 });
 
@@ -136,13 +138,13 @@ export class NetworkManager {
     this._sendWs({ t: 'OFFER', offer: this.pc.localDescription });
   }
 
-  // ── P2（Client/Callee）：收到 Offer 建立連線 ────────────
+  // ?? P2嚗lient/Callee嚗??嗅 Offer 撱箇???? ????????????
   private async _handleOffer(offer: RTCSessionDescriptionInit) {
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this._setupPCHandlers();
 
-    // P2 透過 ondatachannel 接收 Caller 建立的 DataChannel
-    // 不可自己呼叫 createDataChannel，否則是不同的 channel
+    // P2 ?? ondatachannel ?交 Caller 撱箇???DataChannel
+    // 銝?芸楛?澆 createDataChannel嚗?銝???channel
     this.pc.ondatachannel = (e) => {
       const ch = e.channel;
       ch.binaryType = 'arraybuffer';
@@ -161,16 +163,16 @@ export class NetworkManager {
     this._sendWs({ t: 'ANSWER', answer: this.pc.localDescription });
   }
 
-  // ── RTCPeerConnection 通用事件 ────────────────────────────
+  // ?? RTCPeerConnection ?鈭辣 ????????????????????????????
   private _setupPCHandlers() {
     if (!this.pc) return;
 
-    // ICE Trickle：每產生一個 candidate 就立刻送出，不等全部收集完
+    // ICE Trickle嚗??Ｙ?銝??candidate 撠梁??駁嚗?蝑?冽??
     this.pc.onicecandidate = (e) => {
       if (e.candidate) this._sendWs({ t: 'ICE', candidate: e.candidate });
     };
 
-    // P2P 連線狀態監控（斷線偵測）
+    // P2P ??????改??瑞??菜葫嚗?
     this.pc.onconnectionstatechange = () => {
       const state = this.pc?.connectionState;
       console.log(`[WebRTC] Connection state: ${state}`);
@@ -180,7 +182,7 @@ export class NetworkManager {
     };
   }
 
-  // ── DataChannel 事件設定 ──────────────────────────────────
+  // ?? DataChannel 鈭辣閮剖? ??????????????????????????????????
   private _setupDataChannel(ch: RTCDataChannel, label: 'reliable' | 'fast') {
     ch.binaryType = 'arraybuffer';
 
@@ -188,8 +190,8 @@ export class NetworkManager {
       console.log(`[WebRTC] DataChannel "${label}" open`);
       if (label === 'reliable') {
         this.reliableReady = true;
-        // 可靠頻道開啟後立刻發送握手確認訊號
-        // 重要：在收到對方的 DC_READY 之前絕對不送遊戲資料
+        // ?舫??駁???敺??餌??Ⅱ隤???
+        // ??嚗?嗅撠??DC_READY 銋?蝯?銝??脰???
         ch.send(JSON.stringify({ t: 'DC_READY' }));
       }
       if (label === 'fast') {
@@ -200,10 +202,10 @@ export class NetworkManager {
 
     ch.onmessage = (e) => {
       if (e.data instanceof ArrayBuffer) {
-        // Binary 移動輸入（8 bytes，只有 Host 會收到來自 P2 的）
+        // Binary 蝘餃?頛詨嚗? bytes嚗??Host ??唬???P2 ??
         if (e.data.byteLength === 8) {
           const view      = new DataView(e.data);
-          const inputTick = view.getUint32(0, false);   // bytes 0-3：P2 本地 tick
+          const inputTick = view.getUint32(0, false);   // bytes 0-3嚗2 ?砍 tick
           const dx        = view.getInt8(6) / 127;
           const dy        = view.getInt8(7) / 127;
           this.onRemoteInput?.(
@@ -223,29 +225,29 @@ export class NetworkManager {
     ch.onerror = (e) => console.error(`[WebRTC] "${label}" error:`, e);
     ch.onclose = () => {
       console.log(`[WebRTC] DataChannel "${label}" closed`);
-      // reliable 頻道關閉 = 對方斷線
+      // reliable ?駁??? = 撠?瑞?
       if (label === 'reliable' && this._gameStarted) {
         this.onDisconnect?.();
       }
     };
   }
 
-  // ── DataChannel 訊息處理 ──────────────────────────────────
+  // ?? DataChannel 閮?? ??????????????????????????????????
   private _handleDCMsg(msg: any) {
     switch (msg.t) {
       case 'DC_READY':
-        // 收到對方的握手確認 → 雙方都準備好了
+        // ?嗅撠??Ⅱ隤?????賣??末鈭?
         this._peerReady = true;
         this._checkBothReady();
         break;
       case 'START':
-        // Host 通知 P2 開始遊戲（初始或重賽）
+        // Host ? P2 ???嚗?憪??魚嚗?
         if (!this._isHost && !this._gameStarted) {
           this._gameStarted = true;
-          this.onGameStart?.();
+          this.onGameStart?.(msg.mode);
         } else if (!this._isHost && this._gameStarted) {
-          // 重賽：重設狀態後再呼叫 onGameStart
-          this.onGameStart?.();
+          // ?魚嚗?閮剔??????onGameStart
+          this.onGameStart?.(msg.mode);
         }
         break;
       case 'ST':
@@ -266,21 +268,15 @@ export class NetworkManager {
     }
   }
 
-  // ── 雙向 Ready 確認（兩個頻道都開啟 + 收到對方握手）────
-  // 重要：在所有條件滿足之前，不可送任何遊戲資料，否則 Script 崩潰
+  // ?? ?? Ready 蝣箄?嚗???? + ?嗅撠?⊥?嚗????
+  // ??嚗???隞嗆遛頞喃???銝?遙雿??脰????血? Script 撏拇蔑
   private _checkBothReady() {
-    if (!this.reliableReady || !this.fastReady || !this._peerReady || this._gameStarted) return;
-
-    if (this._isHost) {
-      // Host 確認雙方都就緒 → 送 START 給 P2 → 本地開始遊戲
-      this._gameStarted = true;
-      this.reliableDC!.send(JSON.stringify({ t: 'START' }));
-      this.onGameStart?.();
-    }
-    // P2 等待 Host 送來的 START，不在這裡觸發 onGameStart
+    if (!this.reliableReady || !this.fastReady || !this._peerReady || this._peerConnected) return;
+    this._peerConnected = true;
+    this.onPeerConnected?.();
   }
 
-  // ── 對外介面：傳送移動輸入（P2 送給 Host，8-byte binary）─
+  // ?? 撠?隞嚗?宏?撓?伐?P2 ?策 Host嚗?-byte binary嚗?
   sendInput(dx: number, dy: number) {
     if (!this.fastDC || this.fastDC.readyState !== 'open') return;
     this.sendTick = (this.sendTick + 1) >>> 0;
@@ -293,25 +289,26 @@ export class NetworkManager {
     this.fastDC.send(buf);
   }
 
-  // ── 對外介面：Host 傳送遊戲狀態給 P2（fast channel）────
+  // ?? 撠?隞嚗ost ?喲??脩??策 P2嚗ast channel嚗????
   sendGameState(state: object) {
     if (!this.fastDC || this.fastDC.readyState !== 'open') return;
     this.fastDC.send(JSON.stringify(state));
   }
 
-  // ── 對外介面：傳送控制訊息（reliable channel）──────────
-  // 用於：GO、RESPAWN_START、RESPAWNED、PLAYER_READY、START（重賽）
+  // ?? 撠?隞嚗??嗉??荔?reliable channel嚗??????????
+  // ?冽嚗O?ESPAWN_START?ESPAWNED?LAYER_READY?TART嚗?鞈踝?
   sendControl(msg: object) {
     if (!this.reliableDC || this.reliableDC.readyState !== 'open') return;
+    if ((msg as any)?.t === 'START') this._gameStarted = true;
     this.reliableDC.send(JSON.stringify(msg));
   }
 
-  // ── 對外介面：重賽準備 ────────────────────────────────────
+  // ?? 撠?隞嚗?鞈賣???????????????????????????????????????
   sendReady() {
     this.sendControl({ t: 'PLAYER_READY', pid: this._isHost ? 1 : 2 });
   }
 
-  // ── 斷線清理 ─────────────────────────────────────────────
+  // ?? ?瑞?皜? ?????????????????????????????????????????????
   disconnect() {
     this.reliableDC?.close();
     this.fastDC?.close();
@@ -324,6 +321,7 @@ export class NetworkManager {
     this.reliableReady = false;
     this.fastReady     = false;
     this._peerReady    = false;
+    this._peerConnected = false;
     this._gameStarted  = false;
   }
 
@@ -336,3 +334,4 @@ export class NetworkManager {
     }
   }
 }
+
