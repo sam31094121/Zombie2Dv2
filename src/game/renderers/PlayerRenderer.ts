@@ -15,7 +15,11 @@ export const WEAPON_SLOT_POSITIONS = [
   {  rx:  44, ry:  26 }, // 5: 右下
 ];
 
-export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: { hideUI?: boolean }): void {
+export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: { 
+  hideUI?: boolean;
+  selectedSlotIdx?: number | null;
+  dimUnselected?: boolean;
+}): void {
   if (player.hp <= 0) return;
 
   const angle = player.aimAngle;
@@ -52,13 +56,29 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
         const time = Date.now();
 
         const slotPos = WEAPON_SLOT_POSITIONS[i % WEAPON_SLOT_POSITIONS.length];
-        const bob = Math.sin(time / 300 + i) * 4; // 個別呼吸感偏移
+        
+        // ── 互動邏輯：當有選中某把武器時，其餘武器不呼吸 (bob=0) 並變暗 ──
+        const isSelected = options?.selectedSlotIdx === i;
+        const isOtherSelected = options?.selectedSlotIdx !== undefined && options?.selectedSlotIdx !== null && !isSelected;
+        
+        const bob = isOtherSelected ? 0 : Math.sin(time / 300 + i) * 4; // 個別呼吸感偏移
 
         // 右邊 3 把朝右（angle=0），左邊 3 把朝左（angle=PI）
         const facingAngle = slotPos.rx > 0 ? 0 : Math.PI;
 
         ctx.translate(slotPos.rx, slotPos.ry + bob);
-        ctx.rotate(slot.aimAngle ?? facingAngle);
+        const finalAngle = slot.aimAngle ?? facingAngle;
+        ctx.rotate(finalAngle);
+
+        // ── 預覽模式優化：確保左側武器不倒置（槍口向外，槍柄向下） ──
+        if ((player as any).isPreview && Math.abs(finalAngle) > Math.PI / 2) {
+          ctx.scale(1, -1);
+        }
+
+        // ── 如果點選了別把武器，本武器變暗且不發光 ──
+        if (isOtherSelected && options?.dimUnselected) {
+          ctx.globalAlpha = 0.25; // 加上黑色遮罩感（25% 不透明度）
+        }
 
         // ── 槍械後座力 ──
         if (slot.type === 'gun') {
@@ -74,11 +94,16 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
         const glowColor = slot.level >= 5
           ? '#fbbf24' // 金色光暈（分支武器）
           : ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'][Math.min(slot.level - 1, 3)];
-        ctx.shadowColor = glowColor;
-        ctx.shadowBlur = 10;
+        
+        // 只有被選中或正常模式才有發光，被 Dim 的武器不發光
+        if (!(isOtherSelected && options?.dimUnselected)) {
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = 10;
+        }
 
         weaponDef.drawWeapon(ctx, player, slot);
         ctx.restore();
+        ctx.globalAlpha = 1.0; // 本武器繪製完畢，還原不透明度
       }
     });
   } else {

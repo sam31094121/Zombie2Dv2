@@ -43,12 +43,19 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
   isActive = false,
   onSlotClick,
   onPlayerClick,
-  bufW = 124,
-  bufH = 100,
+  bufW = 195,
+  bufH = 110,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // rAF handle，用於 cleanup
   const rafRef = useRef<number>(0);
+  const playerRef = useRef(player);
+  
+  // 隨時同步最新的 player 物件供 rAF 使用，避免閉包快照導致的更新延遲
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
   // 玩家中心在 canvas 中的座標
   const cx = Math.round(bufW / 2);
   const cy = Math.round(bufH / 2) + 4;
@@ -60,49 +67,30 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 建立一個「假的」Player 代理，讓 drawPlayer 把原點當作 canvas 中心
-    // 只複製繪製需要的欄位，不影響遊戲中真實的 player 物件
-    const previewProxy: Player = {
-      ...player,
-      x: cx,
-      y: cy,
-      // 靜止姿態：不攻擊，手指朝右（0 rad）
-      aimAngle: 0,
-      // 確保走懸浮武器路徑
-      isFloatingWeapons: true,
-      weaponSwitchTimer: 0,
-      isInsideContainer: false,
-      slowDebuffTimer: 0,
-      // 標記為預覽模式，供 WeaponDefinitions.ts 修正武器角度（例如劍的傾斜）
-      isPreview: true,
-    } as any;
-
     const render = () => {
       ctx.clearRect(0, 0, bufW, bufH);
-      // ── 移除背景繪製，讓角色直接顯示在商店背景上 ──
+      
+      const p = playerRef.current;
+      // 每一幀都建立最新的代理，確保購買武器後立刻更新預覽
+      const previewProxy: Player = {
+        ...p,
+        weapons: p.weapons.map(w => w ? { ...w, aimAngle: undefined, lastAttackTime: 0 } : null),
+        x: cx,
+        y: cy,
+        aimAngle: 0,
+        isFloatingWeapons: true,
+        weaponSwitchTimer: 0,
+        isInsideContainer: false,
+        slowDebuffTimer: 0,
+        isPreview: true,
+      } as any;
 
-      // ── 選中槽位高亮環（畫在 drawPlayer 之前，避免被覆蓋）──
-      if (selectedSlotIdx !== null && selectedSlotIdx >= 0) {
-        const sp = WEAPON_SLOT_POSITIONS[selectedSlotIdx];
-        // 計算 bob 偏移（與 drawPlayer 完全一致的公式）
-        const bob = Math.sin(Date.now() / 300 + selectedSlotIdx) * 4;
-        const hx = cx + sp.rx;
-        const hy = cy + sp.ry + bob;
-        ctx.save();
-        ctx.shadowColor = '#fbbf24';
-        ctx.shadowBlur = 20;
-        ctx.beginPath();
-        ctx.arc(hx, hy, HIT_RADIUS, 0, Math.PI * 2);
-        ctx.strokeStyle = '#fbbf2466';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      // ── 核心：使用完全相同的 drawPlayer 渲染，但隱藏遊戲 UI（血條、等級）──
-      drawPlayer(previewProxy, ctx, { hideUI: true });
-
-      // ── 移除底部標籤與金幣（使用者需求：僅顯示角色與武器） ──
+      // ── 核心：使用完全相同的 drawPlayer 渲染，但隱藏遊戲 UI 並加入選中特效 ──
+      drawPlayer(previewProxy, ctx, { 
+        hideUI: true, 
+        selectedSlotIdx: selectedSlotIdx,
+        dimUnselected: true 
+      });
 
       rafRef.current = requestAnimationFrame(render);
     };
@@ -112,8 +100,8 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
     return () => {
       cancelAnimationFrame(rafRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player, selectedSlotIdx, isActive, bufW, bufH, cx, cy, playerLabel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSlotIdx, isActive, bufW, bufH, cx, cy]);
 
   // ── 點擊熱區判斷 ────────────────────────────────────────────────────────────
   // 使用與 drawPlayer 完全一致的 WEAPON_SLOT_POSITIONS 計算每個槽位中心，
@@ -135,9 +123,17 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
     let minDist = HIT_RADIUS;
 
     for (let i = 0; i < WEAPON_SLOT_POSITIONS.length; i++) {
+      const slot = player.weapons[i];
+      if (!slot) continue; // 只有該位置有裝備武器時才計算熱區
+
       const sp = WEAPON_SLOT_POSITIONS[i];
-      // bob 在點擊瞬間即時計算，與 rAF 誤差 < 1 幀
-      const bob = Math.sin(Date.now() / 300 + i) * 4;
+      
+      // ── 與 PlayerRenderer 渲染邏輯同步 ──
+      // 當點選了別把武器時，本武器是不呼吸的 (bob=0)
+      const isSelected = selectedSlotIdx === i;
+      const isOtherSelected = selectedSlotIdx !== null && !isSelected;
+      const bob = isOtherSelected ? 0 : Math.sin(Date.now() / 300 + i) * 4;
+
       const slotX = cx + sp.rx;
       const slotY = cy + sp.ry + bob;
       const dist = Math.hypot(mx - slotX, my - slotY);
@@ -152,12 +148,10 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
       return;
     }
 
-    // ── 角色主體熱區判斷 ──
-    const playerDist = Math.hypot(mx - cx, my - cy);
-    if (playerDist < (player.radius ?? 16) + 10) {
-      onPlayerClick?.();
-    }
-  }, [bufW, bufH, cx, cy, player.radius, onSlotClick, onPlayerClick]);
+    // ── 2. 角色與背景判斷 ──
+    // 只要沒點到武器，點擊框內任何地方都視為「選擇角色」（全部呼吸模式）
+    onPlayerClick?.();
+  }, [bufW, bufH, cx, cy, selectedSlotIdx, onSlotClick, onPlayerClick]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -168,13 +162,16 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
       onClick={handleClick}
       style={{
         display: 'block',
-        width: '124px',          // 鎖定寬度，確保 1:1 像素比例
-        height: '100px',         // 鎖定高度
-        margin: '0 auto',        // 置中
+        width: '186px',          // 增加寬度，讓長武器也能完全展示
+        height: '110px',
+        margin: '0 auto',
         cursor: 'pointer',
-        background: 'transparent',
-        // 移除外框與背景，保持極簡
-        // 讓點擊區域更準，避免瀏覽器縮放模糊
+        // 🔽 高級展示框設計
+        background: 'rgba(7, 12, 22, 0.6)',           // 深色透明背板
+        borderRadius: '12px',                         // 柔和圓角
+        border: `1.5px solid ${isActive ? player.color : '#1e293b'}`, // 根據選中狀態切換顏色
+        boxShadow: isActive ? `0 0 15px ${player.color}44` : 'none', // 選中時發光
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         imageRendering: 'pixelated',
       }}
     />
