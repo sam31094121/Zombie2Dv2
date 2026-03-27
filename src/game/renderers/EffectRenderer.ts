@@ -762,6 +762,8 @@ export function drawMuzzleFlash(
   y: number,
   lastAttackTime: number,
 ): void {
+  if ((ctx as any).isOutlinePass) return;
+
   const elapsed = Date.now() - lastAttackTime;
   if (elapsed >= 260) return;
 

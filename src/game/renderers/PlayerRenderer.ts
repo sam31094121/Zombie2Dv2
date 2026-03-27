@@ -7,12 +7,12 @@ import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDef
 // ── 武器槽位座標矩陣（export 供 PlayerPreviewCanvas 點擊熱區使用）────────────
 // 相對於玩家中心的偏移（px），右 3 把 rx>0，左 3 把 rx<0
 export const WEAPON_SLOT_POSITIONS = [
-  {  rx:  44, ry:   0 }, // 0: 右中
-  {  rx: -44, ry:   0 }, // 1: 左中
-  {  rx: -44, ry: -26 }, // 2: 左上
-  {  rx:  44, ry: -26 }, // 3: 右上
-  {  rx: -44, ry:  26 }, // 4: 左下
-  {  rx:  44, ry:  26 }, // 5: 右下
+  { rx: 44, ry: 0 }, // 0: 右中
+  { rx: -44, ry: 0 }, // 1: 左中
+  { rx: -44, ry: -26 }, // 2: 左上
+  { rx: 44, ry: -26 }, // 3: 右上
+  { rx: -44, ry: 26 }, // 4: 左下
+  { rx: 44, ry: 26 }, // 5: 右下
 ];
 
 /**
@@ -39,56 +39,56 @@ export function drawWeaponWithPremiumStyle(
   const dimUnselected = options?.dimUnselected ?? false;
   const scale = options?.scale ?? 1.0;
 
+  // 保存原始狀態
   ctx.save();
   if (scale !== 1.0) ctx.scale(scale, scale);
 
-  // 1. 決定稀有度顏色
+  // 1. 決定稀有度顏色 (1:White/Black, 2:Green, 3:Blue, 4:Purple, 5+:Gold)
   const rarityColor = slot.level >= 5
-    ? '#fbbf24' // 金色
-    : ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'][Math.min(slot.level - 1, 3)];
+    ? '#fbbf24'
+    : ['#000000', '#4ade80', '#60a5fa', '#c084fc'][Math.min(slot.level - 1, 3)];
 
-  // 2. 處理 Dim 變暗
+  // 2. 透明度處理：如果是副武器則變暗
   if (isOtherSelected && dimUnselected) {
-    ctx.globalAlpha = 0.25;
+    ctx.globalAlpha *= 0.25;
   }
 
-  // 3. 繪製描邊 (Outline)
-  // 自動偵測：若畫布有明顯縮放或強制開啟，則使用平滑描邊
-  const currentTransform = ctx.getTransform();
-  const isHighRes = options?.forceSmooth || currentTransform.a > 1.1 || (player as any).isPreview;
+  // 🔽 核心：徹底固定渲染模式
+  // 全軍統一使用 1.6 像素的「8 向位移疊加」實體厚邊框
+  const thickness = 1.6;
 
-  if (!(isOtherSelected && dimUnselected)) {
-    ctx.save();
-    if (isHighRes) {
-      // 🔽 高質感平滑描邊
-      ctx.shadowBlur = 1.5;
-      ctx.shadowColor = rarityColor;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-      weaponDef.drawWeapon(ctx, player, slot);
-    } else {
-      // 🔼 經典像素硬邊描邊
-      ctx.shadowBlur = 0;
-      ctx.shadowColor = rarityColor;
-      const offsets = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-      offsets.forEach(off => {
-        ctx.shadowOffsetX = off.x;
-        ctx.shadowOffsetY = off.y;
-        weaponDef.drawWeapon(ctx, player, slot);
-      });
-    }
-    ctx.restore();
-  }
+  // 3. 繪製 8 層厚描邊 (Solid Outline)
+  ctx.save();
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = rarityColor;
+  
+  const dirs = [
+    {x:thickness, y:0}, {x:-thickness, y:0}, {x:0, y:thickness}, {x:0, y:-thickness},
+    {x:thickness, y:thickness}, {x:-thickness, y:thickness}, {x:thickness, y:-thickness}, {x:-thickness, y:-thickness}
+  ];
 
-  // 4. 繪製本體
+  // 🔔 標記目前為描邊階段，讓火花等特效自動跳過，避免火花也帶有描邊
+  (ctx as any).isOutlinePass = true;
+
+  dirs.forEach(d => {
+    ctx.shadowOffsetX = d.x;
+    ctx.shadowOffsetY = d.y;
+    weaponDef.drawWeapon(ctx, player, slot);
+  });
+
+  (ctx as any).isOutlinePass = false;
+
+  // 4. 重置 Shadow 狀態，確保本體乾淨
+  ctx.restore(); 
+
+  // 5. 繪製最終本體 (第 9 層)
   weaponDef.drawWeapon(ctx, player, slot);
   
-  // 還原狀態
-  ctx.globalAlpha = 1.0;
+  // 還原最外層狀態
   ctx.restore();
 }
 
-export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: { 
+export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: {
   hideUI?: boolean;
   selectedSlotIdx?: number | null;
   dimUnselected?: boolean;
@@ -119,8 +119,8 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
   ctx.beginPath(); ctx.arc(4, 6, player.radius, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill(); ctx.closePath();
 
-  // ── 武器（委派給 WeaponDefinitions registry）─────────────────────────────
-  if (player.isFloatingWeapons && player.weapons && player.weapons.length > 0) {
+  // ── 武器渲染（統一使用浮空武器體系） ─────────────────────────────
+  if (player.weapons && player.weapons.length > 0) {
     player.weapons.forEach((slot, i) => {
       // ── 正確帶入 branch，確保 Lv5+ 分支武器能找到對應的 drawWeapon ──
       const wKey = getWeaponKey(slot.type, slot.level, slot.branch);
@@ -130,7 +130,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
         const time = Date.now();
 
         const slotPos = WEAPON_SLOT_POSITIONS[i % WEAPON_SLOT_POSITIONS.length];
-        
+
         // ── 互動邏輯：當有選中某把武器時，其餘武器不呼吸 (bob=0) 並變暗 ──
         const isSelected = options?.selectedSlotIdx === i;
         const isOtherSelected = options?.selectedSlotIdx !== undefined && options?.selectedSlotIdx !== null && !isSelected;
@@ -138,9 +138,12 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
 
         const facingAngle = slotPos.rx > 0 ? 0 : Math.PI;
         ctx.translate(slotPos.rx, slotPos.ry + bob);
-        const finalAngle = slot.aimAngle ?? facingAngle;
+        
+        // 優先使用 slot 個別的 aimAngle（如有索敵），否則使用玩家朝向
+        const finalAngle = slot.aimAngle !== undefined ? slot.aimAngle : facingAngle;
         ctx.rotate(finalAngle);
 
+        // 預覽模式下，左側武器水平翻轉避免上下顛倒
         if ((player as any).isPreview && Math.abs(finalAngle) > Math.PI / 2) {
           ctx.scale(1, -1);
         }
@@ -158,18 +161,43 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
         drawWeaponWithPremiumStyle(ctx, player, slot, {
           isOtherSelected,
           dimUnselected: options?.dimUnselected,
-          scale: options?.weaponScale ?? 1.0
+          scale: options?.weaponScale ?? 1.0,
+          forceSmooth: player.weaponSwitchTimer > 0 // 換槍時強制平滑
         });
 
         ctx.restore();
       }
     });
   } else {
+    // ── 傳統單手武器模式：同樣套用統一的高級渲染模組 ──
     ctx.save();
     ctx.rotate(angle);
-    if (player.weaponSwitchTimer > 0) { ctx.shadowColor = 'white'; ctx.shadowBlur = 10; }
-    const wKey = getWeaponKey(player.weapon, player.weaponLevels[player.weapon], player.weaponBranches[player.weapon]);
-    WEAPON_REGISTRY[player.weapon]?.[wKey]?.drawWeapon(ctx, player);
+
+    const slot: import('../Player').WeaponSlot = {
+      id: 'main',
+      type: player.weapon,
+      level: player.weaponLevels[player.weapon],
+      branch: player.weaponBranches[player.weapon],
+      lastAttackTime: player.lastAttackTime,
+    };
+
+    // ── 槍械後座力 ──
+    if (slot.type === 'gun') {
+      const timeSinceAttack = Date.now() - slot.lastAttackTime;
+      if (timeSinceAttack < 150) {
+        const recoil = Math.max(0, 8 - (timeSinceAttack / 150) * 8);
+        ctx.translate(-recoil, 0);
+      }
+    }
+
+    // ── 換彈/換槍發光特效與高級描邊整合 ──
+    const forceSmooth = player.weaponSwitchTimer > 0;
+    
+    drawWeaponWithPremiumStyle(ctx, player, slot, {
+      forceSmooth,
+      // 如果正在換槍，可以考慮微調顏色或厚度，這裡維持一致以保證「紮實感」
+    });
+
     ctx.restore();
   }
 
@@ -202,7 +230,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
   if (!options?.hideUI) {
     // HP Bar（world-space）
     const hpRatio = player.hp / player.maxHp;
-    ctx.fillStyle = 'red';   ctx.fillRect(player.x - 15, player.y - 25, 30, 4);
+    ctx.fillStyle = 'red'; ctx.fillRect(player.x - 15, player.y - 25, 30, 4);
     ctx.fillStyle = 'green'; ctx.fillRect(player.x - 15, player.y - 25, 30 * hpRatio, 4);
   }
 
@@ -212,7 +240,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
     if (player.isFloatingWeapons) {
       ctx.fillText(`Lv.${player.level}`, player.x, player.y - 30);
     } else {
-      const wLv    = player.weaponLevels[player.weapon];
+      const wLv = player.weaponLevels[player.weapon];
       const branch = player.weaponBranches[player.weapon];
       const branchTag = branch ? `[${branch}]` : '';
       const levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
