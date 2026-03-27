@@ -11,12 +11,6 @@ export function applyWaveMechanisms(game: Game, dt: number): void {
   const isInfinite = game.waveManager.isInfinite;
   const mechanics = game.waveManager.activeMechanics;
 
-  // Earthquake (W8 or Infinite)
-  if (wave === 8 || (isInfinite && mechanics.includes('slow_liquid'))) {
-    if (Math.random() < 0.02) {
-      game.shakeTimer = 200;
-    }
-  }
 
   // Lightning (W9 or Infinite)
   if (wave === 9 || (isInfinite && mechanics.includes('lightning'))) {
@@ -83,47 +77,6 @@ export function drawWaveFilters(game: Game, ctx: CanvasRenderingContext2D): void
       }
     }
 
-    // Infinite Mode: Fog of War
-    if (isInfinite) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-      ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-      ctx.globalCompositeOperation = 'destination-out';
-
-      for (const player of game.players) {
-        if (player.hp <= 0) continue;
-        const screenX = player.x - game.camera.x;
-        const screenY = player.y - game.camera.y;
-        const radius = 150;
-        const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius);
-        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      const nearbyObstacles = game.mapManager.getNearbyObstacles(
-        game.camera.x + CONSTANTS.CANVAS_WIDTH / 2,
-        game.camera.y + CONSTANTS.CANVAS_HEIGHT / 2
-      );
-      for (const obs of nearbyObstacles) {
-        if (obs.type === 'streetlight' && !obs.isDestroyed) {
-          const screenX = obs.x + obs.width / 2 - game.camera.x;
-          const screenY = obs.y + obs.height / 2 - game.camera.y;
-          const radius = 300;
-          const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, radius);
-          grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      ctx.globalCompositeOperation = 'source-over';
-    }
   }
 
   drawHealVFX(game.healVFX, ctx);

@@ -93,9 +93,23 @@ function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
         _queueKill(game, z, sword.ownerId, sword.level, sword.angle);
         _pushForward(sword, z, 26);
         audioManager.playHit();
-        const fx = sword.branch === 'A' ? 'purple_particles' : 'grey_sparks';
-        const lt = sword.branch === 'A' ? 300 : 180;
-        game.hitEffects.push({ x: z.x, y: z.y, type: fx, lifetime: lt, maxLifetime: lt });
+        if (sword.branch === 'base' && sword.level >= 1 && sword.level <= 4) {
+          game.hitEffects.push({
+            x: z.x,
+            y: z.y,
+            type: 'wolf_claw_red',
+            lifetime: 800,
+            maxLifetime: 800,
+            angle: -0.72,
+            size: 0.96 + sword.level * 0.08,
+            seed: z.id * 13 + sword.level * 101,
+            followZombieId: z.id,
+          });
+        } else {
+          const fx = sword.branch === 'A' ? 'purple_particles' : 'grey_sparks';
+          const lt = sword.branch === 'A' ? 300 : 180;
+          game.hitEffects.push({ x: z.x, y: z.y, type: fx, lifetime: lt, maxLifetime: lt });
+        }
       }
     }
   }
@@ -245,9 +259,7 @@ function _clearSwordOut(game: Game, ownerId: number): void {
 // 擊殺佇列輔助
 // ─────────────────────────────────────────────────────────────────────────────
 function _queueKill(game: Game, z: Zombie, ownerId: number, level: number, hitAngle?: number): void {
-  if (z.hp <= 0 && !game.pendingSwordKills.has(z)) {
-    game.pendingSwordKills.set(z, { ownerId, level, hitAngle });
-  }
+  if (z.hp <= 0) game.queueZombieDeath(z, ownerId, level, hitAngle);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

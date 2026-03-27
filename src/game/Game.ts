@@ -61,7 +61,8 @@ export class Game {
   arenaWidth: number = 1500;
   arenaHeight: number = 1500;
   baggedMaterials: number = 0;
-  private _arenaWaveStartLevel: number = 1;
+  private _arenaWaveStartLevels: number[] = []  // 每位玩家的波次開始等級;
+  sharedStatPoints: number = 0;   // 本地雙人模式共享素質點數池
 
   // 網路多人模式
   networkMode: boolean = false;
@@ -91,7 +92,7 @@ export class Game {
   isHostMode: boolean = false;
 
   // ── 劍系投射物擊殺佇列（SwordSystem 填入，Game.update 結尾處理）
-  pendingSwordKills: Map<Zombie, { ownerId: number; level: number; hitAngle?: number }> = new Map();
+  pendingSwordKills: Map<Zombie, { ownerId: number | null; level: number; hitAngle?: number }> = new Map();
 
   // ── Feature 5: Lag compensation — hitbox expansion + backward reconciliation
   lagCompensationRadius: number = 0;
@@ -110,6 +111,23 @@ export class Game {
   }> = [];
   private readonly _SNAP_DELAY_MS = 50;
   readonly _SNAP_BUF_MAX = 24;
+
+  queueZombieDeath(zombie: Zombie, ownerId: number | null, level: number, hitAngle?: number) {
+    if (zombie.hp > 0 || this.pendingSwordKills.has(zombie)) return;
+    this.pendingSwordKills.set(zombie, { ownerId, level, hitAngle });
+  }
+
+  flushQueuedZombieDeaths() {
+    for (const [zombie, { ownerId, level, hitAngle }] of this.pendingSwordKills) {
+      if (zombie.hp <= 0) this.killZombie(zombie, ownerId, level, hitAngle);
+    }
+    this.pendingSwordKills.clear();
+
+    for (let i = this.zombies.length - 1; i >= 0; i--) {
+      const zombie = this.zombies[i];
+      if (zombie.hp <= 0) this.killZombie(zombie, null, 1);
+    }
+  }
 
   constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void, mode: GameMode = 'endless') {
     this.onGameOver = onGameOver;
@@ -273,7 +291,7 @@ export class Game {
   debugToggleStatus(pid: number, key: 'shield' | 'speedBoost' | 'slowDebuff' | 'glow') {
     const p = this.players.find(pl => pl.id === pid);
     if (!p) return;
-    if (key === 'shield')     p.shield = !p.shield;
+    if (key === 'shield')     p.shieldTimer > 0 ? (p.shieldTimer = 0, p.shield = false) : p.activateShield(3000);
     if (key === 'speedBoost') p.speedBoostTimer = p.speedBoostTimer > 0 ? 0 : 6000;
     if (key === 'slowDebuff') p.slowDebuffTimer  = p.slowDebuffTimer  > 0 ? 0 : 5000;
     if (key === 'glow')       p.isInfiniteGlow  = !p.isInfiniteGlow;
@@ -319,6 +337,9 @@ export class Game {
 
   // ── Arena Mode Logic ────────────────────────────────────────────────────────
   clearEntitiesForShop() {
+    if (this._shopEntryHandled) return;
+    this._shopEntryHandled = true;
+
     let uncollected = 0;
     for (const item of this.items) {
       if (item.type === 'energy_orb') {
@@ -327,12 +348,22 @@ export class Game {
     }
     this.baggedMaterials = Math.floor(uncollected * 0.5); // 50% risk mechanics
 
-    // ── 競技場素質點數結算：每波固定 1 點 + 本波升級次數 ──
-    const arenaPlayer = this.players[0];
-    if (arenaPlayer && this.mode === 'arena') {
-      const levelsGained = Math.max(0, arenaPlayer.level - this._arenaWaveStartLevel);
-      arenaPlayer.arenaStatPoints += 1 + levelsGained;
-      arenaPlayer.pendingLevelUp = false; // 競技場不使用升級 UI，直接清除
+    // ── 競技場素質點數結算：每波固定 1 點 + 本波升級次數 ──────────────────────
+    if (this.mode === 'arena') {
+      const isLocalDuo = !this.networkMode && this.players.length === 2;
+      for (let i = 0; i < this.players.length; i++) {
+        const p = this.players[i];
+        const startLv = this._arenaWaveStartLevels[i] ?? 1;
+        const levelsGained = Math.max(0, p.level - startLv);
+        const earned = 1 + levelsGained;
+        if (isLocalDuo) {
+          // 本地雙人：共享點數池（只計算 P1 的升級，避免重複疊加）
+          if (i === 0) this.sharedStatPoints += earned;
+        } else {
+          p.arenaStatPoints += earned;
+        }
+        p.pendingLevelUp = false;
+      }
     }
 
     this.zombies = [];
@@ -349,17 +380,56 @@ export class Game {
 
   nextArenaWave() {
     if (this.mode !== 'arena') return;
-    this._arenaWaveStartLevel = this.players[0]?.level ?? 1; // 記錄波次開始等級
+    this._arenaWaveStartLevels = this.players.map(p => p.level); // 所有玩家波次開始等級
     this.waveManager.startCombat();
+    this._shopEntryHandled = false;
     this._shopCleared = false;
   }
 
+  private _shopEntryHandled: boolean = false;
   private _shopCleared: boolean = false;
 
   // 取得需要升級選擇的玩家（回傳第一個等待中的）
   get upgradePendingPlayer(): import('./Player').Player | null {
     if (this.mode === 'arena') return null; // 競技場模式禁用升級介面
     return this.players.find(p => p.pendingLevelUp) ?? null;
+  }
+
+  private get isLocalSharedXpMode(): boolean {
+    return !this.networkMode && !this.isHostMode && this.players.length > 1 && this.mode !== 'arena';
+  }
+
+  private awardOrbXp(player: Player, amount: number) {
+    if (this.mode === 'arena') {
+      const prevLevel = player.level;
+      player.pendingLevelUp = false;
+      player.addXp(amount);
+      const levelsGained = player.level - prevLevel;
+      if (levelsGained > 0) {
+        player.arenaStatPoints += levelsGained;
+        player.pendingLevelUp = false;
+      }
+      return;
+    }
+
+    if (!this.isLocalSharedXpMode) {
+      player.addXp(amount);
+      return;
+    }
+
+    if (this.players.some(p => p.pendingLevelUp)) return;
+
+    const lead = this.players[0];
+    const prevLevel = lead.level;
+    lead.addXp(amount);
+    const leveledUp = lead.level > prevLevel;
+
+    for (const teammate of this.players) {
+      teammate.level = lead.level;
+      teammate.xp = lead.xp;
+      teammate.maxXp = lead.maxXp;
+      teammate.pendingLevelUp = leveledUp;
+    }
   }
 
   setJoystickInput(playerIndex: number, input: { x: number, y: number } | null) {
@@ -399,6 +469,7 @@ export class Game {
           let nearestEnemy = null;
           let minDistSq = Infinity;
           for (const z of this.zombies) {
+            if (z.hp <= 0) continue;
             const zDx = z.x - localPlayer.x, zDy = z.y - localPlayer.y;
             const distSq = zDx * zDx + zDy * zDy;
             if (distSq < minDistSq) { minDistSq = distSq; nearestEnemy = z; }
@@ -560,7 +631,7 @@ export class Game {
             // 瞬間吸星大法
             if (dist < 40) {
               if (item.type === 'energy_orb') {
-                p.addXp(item.value || 1);
+                this.awardOrbXp(p, item.value || 1);
                 p.materials += (item.value || 1);
               }
               audioManager.playPickup();
@@ -681,6 +752,7 @@ export class Game {
         let nearestEnemy = null;
         let minDistanceSq = Infinity;
         for (const zombie of this.zombies) {
+          if (zombie.hp <= 0) continue;
           const dx = zombie.x - player.x;
           const dy = zombie.y - player.y;
           const distSq = dx * dx + dy * dy;
@@ -773,9 +845,15 @@ export class Game {
       }
     }
 
+    this.flushQueuedZombieDeaths();
+
     // Update zombies
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const zombie = this.zombies[i];
+      if (zombie.hp <= 0) {
+        this.queueZombieDeath(zombie, null, 1);
+        continue;
+      }
       
       // Update glow state based on intro timer
       if (this.waveManager.isInfinite) {
@@ -793,17 +871,11 @@ export class Game {
           const lastDmgTime = zombie.lastDamageTime.get(player.id) || 0;
           if (Date.now() - lastDmgTime > CONSTANTS.ZOMBIE_DAMAGE_INTERVAL) {
             zombie.lastDamageTime.set(player.id, Date.now());
-            if (player.shield) {
-              player.shield = false;
-            } else {
-              let damage = CONSTANTS.ZOMBIE_DAMAGE;
-              if (zombie.type === 'slime' || zombie.type === 'slime_small') {
-                damage = 0.5; // Very low damage
-              }
-              if (!this.debugHpLocked) player.hp -= damage;
-              audioManager.playPlayerHit();
-              player.lastDamageTime = Date.now();
+            let damage = CONSTANTS.ZOMBIE_DAMAGE;
+            if (zombie.type === 'slime' || zombie.type === 'slime_small') {
+              damage = 0.5; // Very low damage
             }
+            if (!this.debugHpLocked && player.takeDamage(damage)) audioManager.playPlayerHit();
           }
         }
       }
@@ -830,6 +902,7 @@ export class Game {
     }
 
     this.handleObstacleInteractions(dt);
+    this.flushQueuedZombieDeaths();
 
     // Update sword projectiles (Branch A/B boomerang + embed)
     updateSwordProjectiles(this.swordProjectiles, this, dt);
@@ -844,10 +917,7 @@ export class Game {
     updateActiveEffects(this, dt);
 
     // 處理劍系 + 場地效果擊殺（SwordSystem / ActiveEffectSystem 蒐集的死亡殭屍）
-    for (const [zombie, { ownerId, level, hitAngle }] of this.pendingSwordKills) {
-      if (zombie.hp <= 0) this.killZombie(zombie, ownerId, level, hitAngle);
-    }
-    this.pendingSwordKills.clear();
+    this.flushQueuedZombieDeaths();
 
     // Update projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -901,13 +971,7 @@ export class Game {
           if (player.hp <= 0) continue;
           const dist = Math.hypot(player.x - proj.x, player.y - proj.y);
           if (dist < player.radius + proj.radius) {
-            if (player.shield) {
-              player.shield = false;
-            } else {
-              if (!this.debugHpLocked) player.hp -= proj.damage;
-              audioManager.playPlayerHit();
-              player.lastDamageTime = Date.now();
-            }
+            if (!this.debugHpLocked && player.takeDamage(proj.damage)) audioManager.playPlayerHit();
             proj.lifetime = 0;
             break;
           }
@@ -1041,12 +1105,23 @@ export class Game {
       // Item-Player collision
       for (const player of this.players) {
         if (player.hp <= 0) continue;
-        const dist = Math.hypot(player.x - item.x, player.y - item.y);
-        
+
         // Magnetic effect for energy orbs
         if (item.type === 'energy_orb' && Date.now() - item.spawnTime > 200) {
-          const distToPlayer = Math.hypot(player.x - item.x, player.y - item.y);
-          if (distToPlayer < 200) {
+          if (item.attractedByPlayerId !== null) {
+            const lockedPlayer = this.players.find(p => p.id === item.attractedByPlayerId && p.hp > 0);
+            if (!lockedPlayer) item.attractedByPlayerId = null;
+          }
+
+          if (item.attractedByPlayerId === null) {
+            const magneticRadius = 200 * player.pickupRadiusMultiplier;
+            const distToPlayer = Math.hypot(player.x - item.x, player.y - item.y);
+            if (distToPlayer < magneticRadius) {
+              item.attractedByPlayerId = player.id;
+            }
+          }
+
+          if (item.attractedByPlayerId === player.id) {
             const angle = Math.atan2(player.y - item.y, player.x - item.x);
             const speed = 400 * (dt / 1000); // Magnetic speed
             
@@ -1065,6 +1140,12 @@ export class Game {
           }
         }
 
+        if (item.type === 'energy_orb' && item.attractedByPlayerId !== null && item.attractedByPlayerId !== player.id) {
+          continue;
+        }
+
+        const dist = Math.hypot(player.x - item.x, player.y - item.y);
+
         if (dist < player.radius + item.radius) {
           audioManager.playPickup();
           if (item.type === 'weapon_sword') {
@@ -1078,23 +1159,14 @@ export class Game {
           } else if (item.type === 'speed') {
             player.speedBoostTimer = 5000;
           } else if (item.type === 'shield') {
-            player.shield = true;
+            player.activateShield(3000);
           } else if (item.type === 'energy_orb') {
-            // 競技場模式：升級不阻塞 XP，改為自動發放素質點數
-            if (this.mode === 'arena') {
-              const prevLevel = player.level;
-              player.pendingLevelUp = false;
-              player.addXp(item.value || 1);
-              // 背景計算升級次數，直接轉換為素質點數
-              const levelsGained = player.level - prevLevel;
-              if (levelsGained > 0) {
-                player.arenaStatPoints += levelsGained;
-                player.pendingLevelUp = false; // 再次確保不彈出升級選擇面板
-              }
-            } else {
-              player.addXp(item.value || 1);
+            const val = item.value || 1;
+            this.awardOrbXp(player, val);
+            // ── 共同薪資：所有存活玩家各自獲得相同金幣（獨立錢包）──
+            for (const p of this.players) {
+              p.materials += val;
             }
-            player.materials += (item.value || 1);
           }
           
           this.items.splice(i, 1);
@@ -1150,6 +1222,9 @@ export class Game {
    * 回傳新生成的子殭屍（供呼叫方加入命中保護 Set）。
    */
   killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number, hitAngle?: number): Zombie[] {
+    const zombieIndex = this.zombies.indexOf(zombie);
+    if (zombieIndex === -1) return [];
+
     audioManager.playKill();
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
 
@@ -1214,8 +1289,7 @@ export class Game {
       }
     }
 
-    const idx = this.zombies.indexOf(zombie);
-    if (idx !== -1) this.zombies.splice(idx, 1);
+    this.zombies.splice(zombieIndex, 1);
 
     this.score++;
     const owner = this.players.find(p => p.id === ownerId);
@@ -1280,13 +1354,22 @@ export class Game {
     drawMissiles(this.missiles, ctx);
     drawArcProjectiles(this.arcProjectiles, ctx);
     drawSwordProjectiles(this.swordProjectiles, ctx);
-    for (const zombie of this.zombies) zombie.draw(ctx);
+    for (const zombie of this.zombies) {
+      if (zombie.hp > 0) zombie.draw(ctx);
+    }
     for (const player of this.players) player.draw(ctx);
 
     // Apply Mechanism Filters (Fog of War, etc.)
     this.drawWaveFilters(ctx);
 
     for (const effect of this.hitEffects) {
+      if (effect.followZombieId !== undefined) {
+        const target = this.zombies.find(z => z.id === effect.followZombieId);
+        if (target) {
+          drawHitEffect({ ...effect, x: target.x, y: target.y }, ctx);
+          continue;
+        }
+      }
       drawHitEffect(effect, ctx);
     }
     

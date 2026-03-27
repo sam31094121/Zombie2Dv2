@@ -27,6 +27,7 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       wp: p.weapon,
       aim: p.aimAngle,
       sh: p.shield,
+      st: Math.round(p.shieldTimer),
       sl: Math.round(p.slowDebuffTimer),
     })),
     zs: game.zombies.map(z => ({
@@ -165,6 +166,7 @@ export function applyNetworkState(game: Game, state: any): void {
         }
       }
       player.slowDebuffTimer = (ps as any).sl ?? 0;
+      player.shieldTimer = (ps as any).st ?? ((ps as any).sh ? Math.max(player.shieldTimer, 100) : 0);
     }
     player.hp  = ps.hp;
     player.maxHp = ps.mh;
@@ -173,7 +175,7 @@ export function applyNetworkState(game: Game, state: any): void {
     player.level = ps.lv;
     player.prestigeLevel = ps.pl;
     player.weapon = ps.wp as 'sword' | 'gun';
-    player.shield = ps.sh;
+    player.shield = player.shieldTimer > 0 || ps.sh;
   }
 
   // ID-based zombie matching

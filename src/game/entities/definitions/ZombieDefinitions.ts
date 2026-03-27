@@ -197,10 +197,11 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
         if (dist < self.radius + p.radius + 5) {
           const lastDmg = self.lastDamageTime.get(p.id) ?? 0;
           if (now - lastDmg > 400) {
-            p.hp = Math.max(0, p.hp - 40);
-            p.x += chargeDX * 35;
-            p.y += chargeDY * 35;
-            self.lastDamageTime.set(p.id, now);
+            if (p.takeDamage(40)) {
+              p.x += chargeDX * 35;
+              p.y += chargeDY * 35;
+              self.lastDamageTime.set(p.id, now);
+            }
           }
         }
       }
@@ -219,7 +220,7 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
         for (const p of players) {
           if (p.hp <= 0) continue;
           if (Math.hypot(p.x - self.x, p.y - self.y) < 150) {
-            p.hp = Math.max(0, p.hp - 50);
+            p.takeDamage(50);
           }
         }
         self.extraState.set('phase', 'slamming');

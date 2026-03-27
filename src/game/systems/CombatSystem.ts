@@ -81,6 +81,7 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
           if (now - obs.lastEffectTime > 1000) {
             zombie.hp -= 5;
             zombie.paralysisTimer = 500;
+            game.queueZombieDeath(zombie, null, 1);
             obs.lastEffectTime = now;
             game.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'green_electricity', lifetime: 300, maxLifetime: 300 });
           }
@@ -295,8 +296,7 @@ export function explodeObstacle(game: Game, obs: Obstacle): void {
     if (player.hp > 0) {
       const dist = Math.hypot(player.x - (obs.x + obs.width / 2), player.y - (obs.y + obs.height / 2));
       if (dist < explosionRadius) {
-        player.hp -= damage * (1 - dist / explosionRadius);
-        player.lastDamageTime = Date.now();
+        player.takeDamage(damage * (1 - dist / explosionRadius));
       }
     }
   }
@@ -306,6 +306,7 @@ export function explodeObstacle(game: Game, obs: Obstacle): void {
       zombie.hp -= damage * 2 * (1 - dist / explosionRadius);
       zombie.vx += (zombie.x - (obs.x + obs.width / 2)) / dist * 10;
       zombie.vy += (zombie.y - (obs.y + obs.height / 2)) / dist * 10;
+      game.queueZombieDeath(zombie, null, 1);
     }
   }
   obs.isDestroyed = true;

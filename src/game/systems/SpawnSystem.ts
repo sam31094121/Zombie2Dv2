@@ -88,7 +88,9 @@ export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' |
 export function spawnItemAt(game: Game, x: number, y: number): void {
   const rand = Math.random();
   let type: ItemType;
-  if (rand < 0.4) type = 'weapon_sword';
+  if (game.mode === 'arena') {
+    type = rand < 0.5 ? 'shield' : 'speed';
+  } else if (rand < 0.4) type = 'weapon_sword';
   else if (rand < 0.8) type = 'weapon_gun';
   else if (rand < 0.9) type = 'shield';
   else type = 'speed';

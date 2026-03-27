@@ -62,6 +62,8 @@ export class Zombie {
     projectiles: Projectile[],
     slimeTrails: { x: number; y: number; radius: number; lifetime: number; maxLifetime: number }[],
   ) {
+    if (this.hp <= 0) return;
+
     this.time += dt;
 
     if (this.paralysisTimer > 0) {

@@ -13,6 +13,7 @@ export class Item {
   spawnTime: number;
   initialX: number;
   initialY: number;
+  attractedByPlayerId: number | null = null;
 
   constructor(x: number, y: number, type: ItemType, lifetime: number, value?: number, color?: string) {
     this.x = x;

@@ -9,6 +9,9 @@ export interface HitEffect {
   type: string;
   lifetime: number;
   maxLifetime: number;
+  angle?: number;
+  seed?: number;
+  followZombieId?: number;
   startTime?: number;
   _grayOut?: boolean;
   radius?: number; // 供 pixel_explosion 等有大小感的特效使用
@@ -146,6 +149,88 @@ export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D):
       ctx.fillStyle=`rgba(244,67,54,${progress})`;
       for(let i=0;i<8;i++){const a=Math.random()*Math.PI*2;const d=Math.random()*25;ctx.beginPath();ctx.arc(effect.x+Math.cos(a)*d,effect.y+Math.sin(a)*d,3+Math.random()*3,0,Math.PI*2);ctx.fill();}
       break;
+    case 'wolf_claw_red': {
+      const p = effect.lifetime / effect.maxLifetime;
+      const fade = p * p;
+      const fresh = Math.max(0, Math.min(1, (p - 0.62) / 0.38));
+      const angle = effect.angle ?? -0.72;
+      const scale = effect.size ?? 1;
+      const seedBase = effect.seed ?? 71;
+      const baseLen = 34 * scale;
+      const gap = 8.2 * scale;
+      const yOffsets = [-gap, 0, gap];
+      const widths = [2.6 * scale, 3.3 * scale, 2.5 * scale];
+
+      const hash = (n: number) => {
+        const v = Math.sin(n * 12.9898) * 43758.5453;
+        return v - Math.floor(v);
+      };
+
+      const drawJaggedScratch = (
+        y: number,
+        length: number,
+        width: number,
+        lineSeed: number,
+        color: string,
+        extraOffsetY: number,
+      ) => {
+        const segments = 11;
+        ctx.beginPath();
+        for (let s = 0; s <= segments; s++) {
+          const t = s / segments;
+          const x = -length * 0.5 + length * t;
+          const curve = -Math.sin(t * Math.PI) * (2.2 * scale);
+          const jag = (hash(lineSeed + s * 1.87) - 0.5) * (2.9 * scale);
+          const py = y + curve + jag + extraOffsetY;
+          if (s === 0) ctx.moveTo(x, py);
+          else ctx.lineTo(x, py);
+        }
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      };
+
+      ctx.translate(effect.x, effect.y);
+      ctx.rotate(angle);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(10,8,8,${0.26 * fade})`;
+      ctx.lineWidth = 12 * scale;
+      ctx.moveTo(-baseLen * 0.58, 6 * scale);
+      ctx.lineTo(baseLen * 0.56, -6 * scale);
+      ctx.stroke();
+
+      for (let i = 0; i < 3; i++) {
+        const length = baseLen * (i === 1 ? 1 : 0.88);
+        const y = yOffsets[i];
+        const w = widths[i];
+        const localSeed = seedBase + i * 29.73;
+
+        drawJaggedScratch(y, length, w + 1.6 * scale, localSeed, `rgba(80,6,6,${0.9 * fade})`, 0.8 * scale);
+        drawJaggedScratch(y, length, w, localSeed + 9.1, `rgba(170,0,0,${0.98 * fade})`, 0);
+        drawJaggedScratch(y, length * 0.92, Math.max(1, w - 1.2), localSeed + 17.7, `rgba(255,62,62,${(0.85 + fresh * 0.15) * fade})`, -0.4 * scale);
+      }
+
+      if (fresh > 0) {
+        ctx.shadowColor = 'rgba(255,30,30,0.95)';
+        ctx.shadowBlur = 9 * fresh * scale;
+        drawJaggedScratch(-0.5 * scale, baseLen * 0.86, 1.4 * scale, seedBase + 99, `rgba(255,212,212,${0.22 * fresh})`, -1.2 * scale);
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.fillStyle = `rgba(120,0,0,${0.35 * fade})`;
+      for (let i = 0; i < 5; i++) {
+        const rx = (hash(seedBase + i * 4.1) - 0.5) * baseLen * 0.9;
+        const ry = (hash(seedBase + i * 6.7) - 0.5) * gap * 3.1;
+        const rr = (1 + hash(seedBase + i * 8.3) * 1.5) * scale;
+        ctx.beginPath();
+        ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
     case 'golden_shatter':
       ctx.fillStyle=`rgba(255,214,0,${progress})`;
       for(let i=0;i<12;i++){const a=Math.random()*Math.PI*2;const d=Math.random()*30;ctx.beginPath();ctx.moveTo(effect.x+Math.cos(a)*d,effect.y+Math.sin(a)*d);ctx.lineTo(effect.x+Math.cos(a)*d+5,effect.y+Math.sin(a)*d+5);ctx.lineTo(effect.x+Math.cos(a)*d-2,effect.y+Math.sin(a)*d+8);ctx.fill();}

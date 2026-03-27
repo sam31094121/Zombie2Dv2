@@ -27,30 +27,6 @@ export interface MobileControlsProps {
   onMove: (playerIndex: number, input: { x: number; y: number } | null) => void;
 }
 
-// 靜止提示圖示（底部中央的虛線圓環）
-function IdleHint({ color }: { color: string }) {
-  return (
-    <div style={{
-      width:        OUTER_RADIUS * 2,
-      height:       OUTER_RADIUS * 2,
-      borderRadius: '50%',
-      border:       `2px dashed ${color}`,
-      background:   'rgba(255,255,255,0.03)',
-      display:      'flex',
-      alignItems:   'center',
-      justifyContent: 'center',
-      pointerEvents: 'none',
-    }}>
-      <div style={{
-        width:        INNER_RADIUS * 2,
-        height:       INNER_RADIUS * 2,
-        borderRadius: '50%',
-        background:   color,
-        opacity:      0.35,
-      }} />
-    </div>
-  );
-}
 
 // ── 核心搖桿管理 Hook（分離邏輯與處理，專門負責輸入更新）────────────────────────
 function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onMove']) {
@@ -61,7 +37,6 @@ function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onM
   // DOM Refs (直接操作視覺，不觸發 render)
   const baseRefs  = useRef<(HTMLDivElement | null)[]>([null, null]);
   const stickRefs = useRef<(HTMLDivElement | null)[]>([null, null]);
-  const hintRefs  = useRef<(HTMLDivElement | null)[]>([null, null]);
 
   onMoveRef.current = onMove;
 
@@ -69,18 +44,15 @@ function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onM
   const updateDOM = (p: number, joy: JoystickState) => {
     const base  = baseRefs.current[p];
     const stick = stickRefs.current[p];
-    const hint  = hintRefs.current[p];
     
-    if (!base || !stick || !hint) return;
+    if (!base || !stick) return;
 
     if (joy.active) {
-      hint.style.display = 'none';
       base.style.display = 'block';
       base.style.left = `${joy.baseX - OUTER_RADIUS}px`;
       base.style.top  = `${joy.baseY - OUTER_RADIUS}px`;
       stick.style.transform = `translate(${joy.stickX}px, ${joy.stickY}px)`;
     } else {
-      hint.style.display = p < playerCount ? 'block' : 'none';
       base.style.display = 'none';
       stick.style.transform = `translate(0px, 0px)`;
     }
@@ -264,36 +236,21 @@ function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onM
     };
   }, [playerCount]);
 
-  return { containerRef, baseRefs, stickRefs, hintRefs };
+  return { containerRef, baseRefs, stickRefs };
 }
 
 // ── 渲染層 ───────────────────────────────────────────────────────────────────
 export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
   // 將所有核心邏輯交還給管理 Hook 處理
-  const { containerRef, baseRefs, stickRefs, hintRefs } = useJoystickManager(playerCount, onMove);
+  const { containerRef, baseRefs, stickRefs } = useJoystickManager(playerCount, onMove);
   
   const colors = ['rgba(52,152,219,0.55)', 'rgba(231,76,60,0.55)'];
   const fillColors = ['rgba(52,152,219,0.75)', 'rgba(231,76,60,0.75)'];
-
-  const hintPositions = playerCount === 1
-    ? [{ left: '50%', bottom: '72px', transform: 'translateX(-50%)' }]
-    : [
-        { left: '25%', bottom: '72px', transform: 'translateX(-50%)' },
-        { left: '75%', bottom: '72px', transform: 'translateX(-50%)' },
-      ];
 
   // 預先產生兩種 JoyStick 的原生結構，讓 Hook 控制透明度/顯示，避免 React 重繪
   const renderJoysticks = () => {
     return Array.from({ length: 2 }).map((_, i) => (
       <div key={`joy-group-${i}`}>
-        {/* 靜止提示 */}
-        <div
-          ref={el => { hintRefs.current[i] = el; }}
-          style={{ position: 'absolute', display: i < playerCount ? 'block' : 'none', ...(hintPositions[i] || {}) }}
-        >
-          <IdleHint color={colors[i]} />
-        </div>
-
         {/* 動態搖桿 (預設隱藏) */}
         <div
           ref={el => { baseRefs.current[i] = el; }}

@@ -66,6 +66,7 @@ export class Player {
   lastAttackTime: number = 0;
   aimAngle: number = 0;
   shield: boolean = false;
+  shieldTimer: number = 0;
   speedBoostTimer: number = 0;
   slowDebuffTimer: number = 0;
   color: string;
@@ -127,6 +128,20 @@ export class Player {
     }
   }
 
+  activateShield(durationMs: number = 3000) {
+    this.shieldTimer = Math.max(this.shieldTimer, durationMs);
+    this.shield = true;
+  }
+
+  takeDamage(amount: number, sourceTime: number = Date.now()): boolean {
+    if (amount <= 0) return false;
+    if (this.shieldTimer > 0 || this.shield) return false;
+
+    this.hp = Math.max(0, this.hp - amount);
+    this.lastDamageTime = sourceTime;
+    return true;
+  }
+
   update(dt: number, keys: Record<string, boolean>, obstacles: Obstacle[], externalInput?: { x: number, y: number }, onHeal?: () => void) {
     let dx = 0;
     let dy = 0;
@@ -162,6 +177,10 @@ export class Player {
       currentSpeed *= 1.5;
       this.speedBoostTimer -= dt;
     }
+    if (this.shieldTimer > 0) {
+      this.shieldTimer = Math.max(0, this.shieldTimer - dt);
+    }
+    this.shield = this.shieldTimer > 0;
 
     if (this.weaponSwitchTimer > 0) {
       this.weaponSwitchTimer -= dt;

@@ -16,12 +16,16 @@ import { TestModePanel } from './debug/TestModePanel';
 import { UpgradePanel, UpgradeCard } from './UpgradePanel';
 import { LobbyCanvas } from './lobby/LobbyCanvas';
 import { ShopPanel } from './arena/ShopPanel';
+import { ManagementView } from './arena/ManagementView';
 
 const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
 export const GameUI: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFSVisible, setIsFSVisible] = useState(true);
+  const fsTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const fsBtnRef = useRef<HTMLButtonElement>(null);
   const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
@@ -30,6 +34,7 @@ export const GameUI: React.FC = () => {
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const gameRef = useRef<Game | null>(null);
   const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
+  const arenaShopEnteredRef = useRef(false);
 
   // ── 線上模式狀態 ──────────────────────────────────────────
   const [selectionStep, setSelectionStep] = useState<'platform' | 'players' | 'online'>('platform');
@@ -48,6 +53,10 @@ export const GameUI: React.FC = () => {
   const [p2RespawnCountdown, setP2RespawnCountdown] = useState(0);
   const p1RespawnRef = useRef(0);
   const p2RespawnRef = useRef(0);
+
+  // ── 競技場商店雙人準備狀態 ────────────────────────────────
+  const [p1ShopReady, setP1ShopReady] = useState(false);
+  const [p2ShopReady, setP2ShopReady] = useState(false);
 
   // ── 重賽準備狀態 ──────────────────────────────────────────
   const [readyState, setReadyState] = useState({ myReady: false, otherReady: false });
@@ -100,9 +109,37 @@ export const GameUI: React.FC = () => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
 
+    // ── 全螢幕按鈕自動隱藏與靠近偵測 ──
+    const handleFSActivity = (e: MouseEvent | TouchEvent) => {
+      let cx = 0, cy = 0;
+      if (e instanceof MouseEvent) { cx = e.clientX; cy = e.clientY; }
+      else if (e.touches.length > 0) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+
+      const btn = fsBtnRef.current;
+      if (btn) {
+        const rect = btn.getBoundingClientRect();
+        const dist = Math.hypot(cx - (rect.left + rect.width / 2), cy - (rect.top + rect.height / 2));
+        // 靠近按鈕 120px 內或點擊螢幕則顯現
+        if (dist < 120 || e.type === 'touchstart') triggerFSShow();
+      }
+    };
+
+    const triggerFSShow = () => {
+      setIsFSVisible(true);
+      if (fsTimerRef.current) clearTimeout(fsTimerRef.current);
+      fsTimerRef.current = setTimeout(() => setIsFSVisible(false), 5000);
+    };
+
+    window.addEventListener('mousemove', handleFSActivity);
+    window.addEventListener('touchstart', handleFSActivity);
+    triggerFSShow();
+
     return () => {
       window.removeEventListener('resize', updateDimensions);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('mousemove', handleFSActivity);
+      window.removeEventListener('touchstart', handleFSActivity);
+      if (fsTimerRef.current) clearTimeout(fsTimerRef.current);
     };
   }, []);
 
@@ -110,10 +147,16 @@ export const GameUI: React.FC = () => {
 
   // ── HUD 更新 callback（共用）──────────────────────────────
   const makeOnUpdate = () => (p1: Player | null, p2: Player | null, waveManager: any) => {
-    if (gameRef.current?.mode === 'arena' && waveManager.isResting) {
-      if (gameStateRef.current !== 'shopping') {
-        gameRef.current.clearEntitiesForShop(); // 結算素質點數 + 清空怪物
-        setGameState('shopping');
+    if (gameRef.current?.mode === 'arena') {
+      if (waveManager.isResting) {
+        if (!arenaShopEnteredRef.current) {
+          arenaShopEnteredRef.current = true;
+          gameRef.current.clearEntitiesForShop(); // 結算素質點數 + 清空怪物
+          gameStateRef.current = 'shopping';
+          setGameState('shopping');
+        }
+      } else {
+        arenaShopEnteredRef.current = false;
       }
     }
 
@@ -140,6 +183,9 @@ export const GameUI: React.FC = () => {
     hostRespawnTimers.current = new Map();
     p1RespawnRef.current = 0; setP1RespawnCountdown(0);
     p2RespawnRef.current = 0; setP2RespawnCountdown(0);
+    arenaShopEnteredRef.current = false;
+    setP1ShopReady(false);
+    setP2ShopReady(false);
 
     gameRef.current = new Game(
       count,
@@ -179,6 +225,9 @@ export const GameUI: React.FC = () => {
     hostPrevWave.current       = 1;
     hostPrevResting.current    = false;
     hostRespawnTimers.current  = new Map();
+    arenaShopEnteredRef.current = false;
+    setP1ShopReady(false);
+    setP2ShopReady(false);
 
     if (gameRef.current) gameRef.current.destroy();
 
@@ -302,6 +351,9 @@ export const GameUI: React.FC = () => {
     setGameState('start'); setSelectionStep('platform'); setOnlineStep('menu');
     setRoomCode(''); setJoinInput(''); setOnlineError('');
     setReadyState({ myReady: false, otherReady: false });
+    arenaShopEnteredRef.current = false;
+    setP1ShopReady(false);
+    setP2ShopReady(false);
     networkRef.current?.disconnect();
   };
 
@@ -320,9 +372,21 @@ export const GameUI: React.FC = () => {
   const handleNextArenaWave = () => {
     if (gameRef.current) {
       gameRef.current.nextArenaWave();
+      arenaShopEnteredRef.current = false;
+      gameStateRef.current = 'playing';
       setGameState('playing');
+      setP1ShopReady(false);
+      setP2ShopReady(false);
     }
   };
+
+  // 雙人模式：兩人都準備好才開始下一波
+  React.useEffect(() => {
+    if (playerCount === 2 && p1ShopReady && p2ShopReady) {
+      handleNextArenaWave();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p1ShopReady, p2ShopReady]);
 
   const handleBuyUpgrade = (key: string, cost: number) => {
     if (gameRef.current && p1State) {
@@ -373,11 +437,14 @@ export const GameUI: React.FC = () => {
 
         {/* ── 全螢幕按鈕 ────────────────────────────────────────── */}
         <button
+          ref={fsBtnRef}
           onClick={() => {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
             else document.exitFullscreen();
           }}
-          className="absolute z-[100] w-10 h-10 flex items-center justify-center bg-black/40 hover:bg-black/80 text-white rounded-full border border-white/20 backdrop-blur-md shadow-lg transition-all touch-manipulation"
+          className={`absolute z-[100] w-10 h-10 flex items-center justify-center bg-black/40 hover:bg-black/80 text-white rounded-full border border-white/20 backdrop-blur-md shadow-lg transition-all duration-500 touch-manipulation ${
+            isFSVisible ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-90 pointer-events-none'
+          }`}
           style={{ 
             top: 'calc(max(8px, env(safe-area-inset-top, 8px)) + 8px)', 
             right: 'calc(max(8px, env(safe-area-inset-right, 8px)) + 8px)'
@@ -469,13 +536,37 @@ export const GameUI: React.FC = () => {
         })()}
 
         {/* ── 商店面板 (Arena Mode) ────────────────────────────── */}
-        {gameState === 'shopping' && gameRef.current?.players[0] && (
-          <ShopPanel
-            player={gameRef.current.players[0]}
-            wave={waveState?.wave || 1}
-            onNextWave={handleNextArenaWave}
-          />
-        )}
+        {gameState === 'shopping' && (() => {
+          const g = gameRef.current;
+          if (!g) return null;
+          const isLocalDuo = playerCount === 2 && !isOnlineMode && !!g.players[1];
+          if (isLocalDuo) {
+            /* 本地雙人：管理視角 */
+            return (
+              <div className="absolute inset-0 z-20 overflow-hidden">
+                <ManagementView
+                  game={g}
+                  wave={waveState?.wave || 1}
+                  p1Ready={p1ShopReady}
+                  p2Ready={p2ShopReady}
+                  onP1Ready={() => setP1ShopReady(true)}
+                  onP2Ready={() => setP2ShopReady(true)}
+                />
+              </div>
+            );
+          }
+          /* 單人 / 線上 */
+          return g.players[0] ? (
+            <div className="absolute inset-0 z-20 overflow-hidden">
+              <ShopPanel
+                key={`shop-${waveState?.wave || 1}`}
+                player={g.players[0]}
+                wave={waveState?.wave || 1}
+                onNextWave={handleNextArenaWave}
+              />
+            </div>
+          ) : null;
+        })()}
 
         {/* ── 測試面板 ─────────────────────────────────────────── */}
         {gameState === 'playing' && <TestModePanel gameRef={gameRef} />}

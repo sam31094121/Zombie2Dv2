@@ -4,6 +4,17 @@
 import { Player } from '../Player';
 import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
 
+// ── 武器槽位座標矩陣（export 供 PlayerPreviewCanvas 點擊熱區使用）────────────
+// 相對於玩家中心的偏移（px），右 3 把 rx>0，左 3 把 rx<0
+export const WEAPON_SLOT_POSITIONS = [
+  {  rx:  44, ry:   0 }, // 0: 右中
+  {  rx: -44, ry:   0 }, // 1: 左中
+  {  rx: -44, ry: -26 }, // 2: 左上
+  {  rx:  44, ry: -26 }, // 3: 右上
+  {  rx: -44, ry:  26 }, // 4: 左下
+  {  rx:  44, ry:  26 }, // 5: 右下
+];
+
 export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void {
   if (player.hp <= 0) return;
 
@@ -40,18 +51,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
         ctx.save();
         const time = Date.now();
 
-        // ── 6 把武器固定槽位：右 3 左 3，垂直等距排列 ──
-        // 槽位索引：0=右上, 1=右中, 2=右下, 3=左上, 4=左中, 5=左下
-        const SLOT_POSITIONS = [
-          {  rx:  44, ry:   0 }, // 0: 右中 (1)
-          {  rx: -44, ry:   0 }, // 1: 左中 (2)
-          {  rx: -44, ry: -26 }, // 2: 左上 (3)
-          {  rx:  44, ry: -26 }, // 3: 右上 (4)
-          {  rx: -44, ry:  26 }, // 4: 左下 (5)
-          {  rx:  44, ry:  26 }, // 5: 右下 (6)
-        ];
-
-        const slotPos = SLOT_POSITIONS[i % SLOT_POSITIONS.length];
+        const slotPos = WEAPON_SLOT_POSITIONS[i % WEAPON_SLOT_POSITIONS.length];
         const bob = Math.sin(time / 300 + i) * 4; // 個別呼吸感偏移
 
         // 右邊 3 把朝右（angle=0），左邊 3 把朝左（angle=PI）
@@ -129,7 +129,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D): void 
     const wLv    = player.weaponLevels[player.weapon];
     const branch = player.weaponBranches[player.weapon];
     const branchTag = branch ? `[${branch}]` : '';
-    let levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
+    const levelText = `Lv.${player.level}  ⚔${wLv}${branchTag}`;
     ctx.fillStyle = branch === 'A' ? '#4fc3f7' : branch === 'B' ? '#ff8a65' : 'white';
     ctx.fillText(levelText, player.x, player.y - 30);
   }
