@@ -1320,10 +1320,13 @@ export class Game {
       ctx.translate((Math.random() - 0.5) * intensity, (Math.random() - 0.5) * intensity);
     }
 
-    ctx.translate(-this.camera.x, -this.camera.y);
+    // Pixel snap camera in render path to avoid sub-pixel seam artifacts on tiled ground.
+    const renderCameraX = Math.round(this.camera.x);
+    const renderCameraY = Math.round(this.camera.y);
+    ctx.translate(-renderCameraX, -renderCameraY);
 
     // Draw map (grid and obstacles)
-    this.mapManager.draw(ctx, this.camera.x, this.camera.y, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT, this.players, {
+    this.mapManager.draw(ctx, renderCameraX, renderCameraY, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT, this.players, {
       wave: this.waveManager.currentWave,
       isInfinite: this.waveManager.isInfinite,
       activeMechanics: this.waveManager.activeMechanics

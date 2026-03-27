@@ -23,7 +23,7 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
 
   return (
     <div
-      className={`absolute top-4 w-64 sm:w-96 select-none pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] ${isRight ? 'right-4 text-right' : 'left-4'}`}
+      className={`absolute top-4 w-[250px] sm:w-[350px] select-none pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] ${isRight ? 'right-4 text-right' : 'left-4'}`}
     >
       <HudBarEffectStyles />
 

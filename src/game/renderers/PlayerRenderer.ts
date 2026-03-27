@@ -15,10 +15,84 @@ export const WEAPON_SLOT_POSITIONS = [
   {  rx:  44, ry:  26 }, // 5: 右下
 ];
 
+/**
+ * ── 全局高級武器渲染模組 ──
+ * 封裝了平滑描邊、稀有度顏色與互動 Dim 效果。
+ * 呼叫此函式即可獲得全遊戲統一的高質感武器呈現。
+ */
+export function drawWeaponWithPremiumStyle(
+  ctx: CanvasRenderingContext2D,
+  player: Player,
+  slot: import('../Player').WeaponSlot,
+  options?: {
+    isOtherSelected?: boolean;
+    dimUnselected?: boolean;
+    forceSmooth?: boolean;
+    scale?: number;
+  }
+): void {
+  const wKey = getWeaponKey(slot.type, slot.level, slot.branch);
+  const weaponDef = WEAPON_REGISTRY[slot.type]?.[wKey];
+  if (!weaponDef) return;
+
+  const isOtherSelected = options?.isOtherSelected ?? false;
+  const dimUnselected = options?.dimUnselected ?? false;
+  const scale = options?.scale ?? 1.0;
+
+  ctx.save();
+  if (scale !== 1.0) ctx.scale(scale, scale);
+
+  // 1. 決定稀有度顏色
+  const rarityColor = slot.level >= 5
+    ? '#fbbf24' // 金色
+    : ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'][Math.min(slot.level - 1, 3)];
+
+  // 2. 處理 Dim 變暗
+  if (isOtherSelected && dimUnselected) {
+    ctx.globalAlpha = 0.25;
+  }
+
+  // 3. 繪製描邊 (Outline)
+  // 自動偵測：若畫布有明顯縮放或強制開啟，則使用平滑描邊
+  const currentTransform = ctx.getTransform();
+  const isHighRes = options?.forceSmooth || currentTransform.a > 1.1 || (player as any).isPreview;
+
+  if (!(isOtherSelected && dimUnselected)) {
+    ctx.save();
+    if (isHighRes) {
+      // 🔽 高質感平滑描邊
+      ctx.shadowBlur = 1.5;
+      ctx.shadowColor = rarityColor;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      weaponDef.drawWeapon(ctx, player, slot);
+    } else {
+      // 🔼 經典像素硬邊描邊
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = rarityColor;
+      const offsets = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+      offsets.forEach(off => {
+        ctx.shadowOffsetX = off.x;
+        ctx.shadowOffsetY = off.y;
+        weaponDef.drawWeapon(ctx, player, slot);
+      });
+    }
+    ctx.restore();
+  }
+
+  // 4. 繪製本體
+  weaponDef.drawWeapon(ctx, player, slot);
+  
+  // 還原狀態
+  ctx.globalAlpha = 1.0;
+  ctx.restore();
+}
+
 export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: { 
   hideUI?: boolean;
   selectedSlotIdx?: number | null;
   dimUnselected?: boolean;
+  weaponScale?: number;
 }): void {
   if (player.hp <= 0) return;
 
@@ -60,24 +134,15 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
         // ── 互動邏輯：當有選中某把武器時，其餘武器不呼吸 (bob=0) 並變暗 ──
         const isSelected = options?.selectedSlotIdx === i;
         const isOtherSelected = options?.selectedSlotIdx !== undefined && options?.selectedSlotIdx !== null && !isSelected;
-        
-        const bob = isOtherSelected ? 0 : Math.sin(time / 300 + i) * 4; // 個別呼吸感偏移
+        const bob = isOtherSelected ? 0 : Math.sin(time / 300 + i) * 4;
 
-        // 右邊 3 把朝右（angle=0），左邊 3 把朝左（angle=PI）
         const facingAngle = slotPos.rx > 0 ? 0 : Math.PI;
-
         ctx.translate(slotPos.rx, slotPos.ry + bob);
         const finalAngle = slot.aimAngle ?? facingAngle;
         ctx.rotate(finalAngle);
 
-        // ── 預覽模式優化：確保左側武器不倒置（槍口向外，槍柄向下） ──
         if ((player as any).isPreview && Math.abs(finalAngle) > Math.PI / 2) {
           ctx.scale(1, -1);
-        }
-
-        // ── 如果點選了別把武器，本武器變暗且不發光 ──
-        if (isOtherSelected && options?.dimUnselected) {
-          ctx.globalAlpha = 0.25; // 加上黑色遮罩感（25% 不透明度）
         }
 
         // ── 槍械後座力 ──
@@ -85,25 +150,18 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
           const timeSinceAttack = Date.now() - slot.lastAttackTime;
           if (timeSinceAttack < 150) {
             const recoil = Math.max(0, 8 - (timeSinceAttack / 150) * 8);
-            // 右側武器後座向左，左側向右
             ctx.translate(slotPos.rx > 0 ? -recoil : recoil, 0);
           }
         }
 
-        // Lv1=白, Lv2=綠, Lv3=藍, Lv4=紫, Lv5+=金
-        const glowColor = slot.level >= 5
-          ? '#fbbf24' // 金色光暈（分支武器）
-          : ['#ffffff', '#4ade80', '#60a5fa', '#c084fc'][Math.min(slot.level - 1, 3)];
-        
-        // 只有被選中或正常模式才有發光，被 Dim 的武器不發光
-        if (!(isOtherSelected && options?.dimUnselected)) {
-          ctx.shadowColor = glowColor;
-          ctx.shadowBlur = 10;
-        }
+        // ── 使用封裝好的 Premium 渲染模組 ──
+        drawWeaponWithPremiumStyle(ctx, player, slot, {
+          isOtherSelected,
+          dimUnselected: options?.dimUnselected,
+          scale: options?.weaponScale ?? 1.0
+        });
 
-        weaponDef.drawWeapon(ctx, player, slot);
         ctx.restore();
-        ctx.globalAlpha = 1.0; // 本武器繪製完畢，還原不透明度
       }
     });
   } else {

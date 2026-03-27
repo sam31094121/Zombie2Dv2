@@ -469,7 +469,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                           className="rounded-lg border-2 flex flex-col items-center cursor-pointer active:scale-95 transition-all relative overflow-hidden touch-manipulation group"
                           style={{ borderColor: col + '44', boxShadow: `0 0 6px ${col}11`, minHeight: 90, background: '#0b1623' }}
                         >
-                          <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={80} bufH={54} />
+                          <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={120} bufH={120} />
                           <div className="flex flex-col items-center gap-0.5 pb-1">
                             <span className="text-[9px] font-black" style={{ color: col }}>Lv.{w.level}{w.branch ?? ''}</span>
                             <StarRating level={w.level} branch={w.branch} size="xs" />
@@ -523,7 +523,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                       const canBuy = player.materials >= card.cost && player.weapons.length < 6;
                       return (
                         <div key={card.id} className="bg-[#0b1623] border-2 rounded-xl flex flex-col overflow-hidden" style={{ borderColor: col + '33' }}>
-                          <WeaponPreviewCanvas type={card.type} level={card.level} branch={card.branch} bufW={90} bufH={54} />
+                          <WeaponPreviewCanvas type={card.type} level={card.level} branch={card.branch} bufW={402} bufH={240} />
                           <div className="flex flex-col items-center px-1 pb-1.5 pt-0.5 gap-0.5 flex-1">
                             <div className="font-bold text-[10px]" style={{ color: col }}>Lv.{card.level}{card.branch ?? ''}</div>
                             <StarRating level={card.level} branch={card.branch} size="xs" />
@@ -635,12 +635,10 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
             <div className="bg-neutral-900 border-2 border-yellow-500 rounded-t-3xl sm:rounded-2xl p-5 text-center w-full sm:max-w-sm sm:mx-4 shadow-[0_0_40px_rgba(234,179,8,0.3)]">
               <h3 className="text-lg font-black mb-3 tracking-wide">⬆️ 合成確認</h3>
               <div className="flex items-center justify-center gap-3 mb-3">
-                <div className="rounded-xl overflow-hidden border-2 w-24" style={{ borderColor: weaponColor(w.level) }}>
-                  <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={96} bufH={60} />
-                </div>
+                  <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={402} bufH={240} />
                 <div className="text-2xl text-yellow-400 font-black">→</div>
                 <div className="rounded-xl overflow-hidden border-2 w-24 relative" style={{ borderColor: weaponColor(nextLv) }}>
-                  <WeaponPreviewCanvas type={w.type} level={nextLv} branch={w.branch} bufW={96} bufH={60} />
+                  <WeaponPreviewCanvas type={w.type} level={nextLv} branch={w.branch} bufW={402} bufH={240} />
                   <div className="absolute bottom-0 inset-x-0 bg-yellow-500/80 text-black text-[9px] text-center font-black py-0.5">
                     Lv.{nextLv}{w.branch ?? ''}
                   </div>

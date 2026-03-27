@@ -123,13 +123,9 @@ export class MapManager {
   }
 
   draw(ctx: CanvasRenderingContext2D, cameraX: number, cameraY: number, width: number, height: number, players?: Player[], waveInfo?: { wave: number, isInfinite: boolean, activeMechanics: string[] }) {
-    // Fill base ground color (Dark Asphalt)
-    ctx.fillStyle = waveInfo?.isInfinite ? '#000000' : '#1e2024';
+    // Base tone: brighter urban base so road/sidewalk depth is clearer.
+    ctx.fillStyle = waveInfo?.isInfinite ? '#202224' : '#b7b2a7';
     ctx.fillRect(cameraX, cameraY, width, height);
-
-    if (waveInfo?.isInfinite) {
-      // In infinite mode, we might skip some ground details for performance or style
-    }
 
     const cx = Math.floor((cameraX + width/2) / CHUNK_SIZE);
     const cy = Math.floor((cameraY + height/2) / CHUNK_SIZE);
@@ -137,30 +133,10 @@ export class MapManager {
     for (let i = cx - 2; i <= cx + 2; i++) {
       for (let j = cy - 2; j <= cy + 2; j++) {
         const seed = (i * 73856093) ^ (j * 19349663);
-        
-        if (!waveInfo?.isInfinite) {
-          // Draw Road Markings
-          // Vertical dashed yellow line
-          ctx.strokeStyle = 'rgba(200, 160, 0, 0.4)'; // Faded yellow
-          ctx.lineWidth = 6;
-          ctx.setLineDash([40, 60]); // Dashed line
-          ctx.beginPath();
-          ctx.moveTo(i * CHUNK_SIZE + CHUNK_SIZE / 2, j * CHUNK_SIZE);
-          ctx.lineTo(i * CHUNK_SIZE + CHUNK_SIZE / 2, (j + 1) * CHUNK_SIZE);
-          ctx.stroke();
-          
-          // Horizontal solid white line (crosswalks or lane dividers)
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; // Faded white
-          ctx.lineWidth = 4;
-          ctx.setLineDash([]); // Solid line
-          ctx.beginPath();
-          ctx.moveTo(i * CHUNK_SIZE, j * CHUNK_SIZE + CHUNK_SIZE / 2);
-          ctx.lineTo((i + 1) * CHUNK_SIZE, j * CHUNK_SIZE + CHUNK_SIZE / 2);
-          ctx.stroke();
-        }
+        this.drawModernStreetChunk(ctx, i, j, seed, waveInfo?.isInfinite ?? false);
 
-        // Draw ground details (blood, craters, cracks)
-        const numDetails = waveInfo?.isInfinite ? 5 : 20;
+        // Urban wear details (blood, craters, cracks)
+        const numDetails = waveInfo?.isInfinite ? 6 : 14;
         for (let k = 0; k < numDetails; k++) {
           const dx = i * CHUNK_SIZE + this.pseudoRandom(seed + k * 20) * CHUNK_SIZE;
           const dy = j * CHUNK_SIZE + this.pseudoRandom(seed + k * 21) * CHUNK_SIZE;
@@ -171,25 +147,25 @@ export class MapManager {
             
             const detailType = this.pseudoRandom(seed + k * 23);
             
-            if (detailType < 0.3) {
+            if (detailType < 0.22) {
               // Blood stain (Dark red/brown)
-              const alpha = 0.1 + this.pseudoRandom(seed + k * 24) * 0.4;
+              const alpha = 0.05 + this.pseudoRandom(seed + k * 24) * 0.18;
               ctx.fillStyle = `rgba(100, 0, 0, ${alpha})`;
               ctx.beginPath();
-              const radius = 10 + this.pseudoRandom(seed + k * 25) * 40;
+              const radius = 8 + this.pseudoRandom(seed + k * 25) * 28;
               ctx.ellipse(dx, dy, radius, radius * (0.4 + this.pseudoRandom(seed + k * 26) * 0.6), this.pseudoRandom(seed + k * 27) * Math.PI, 0, Math.PI * 2);
               ctx.fill();
-            } else if (detailType < 0.6) {
+            } else if (detailType < 0.5) {
               // Crater / Explosion mark
-              ctx.fillStyle = waveInfo?.isInfinite ? 'rgba(20, 20, 20, 0.8)' : 'rgba(15, 16, 18, 0.8)';
-              const size = 15 + this.pseudoRandom(seed + k * 22) * 30;
+              ctx.fillStyle = waveInfo?.isInfinite ? 'rgba(20, 20, 20, 0.45)' : 'rgba(40, 42, 45, 0.3)';
+              const size = 12 + this.pseudoRandom(seed + k * 22) * 24;
               ctx.beginPath();
               ctx.arc(dx, dy, size, 0, Math.PI * 2);
               ctx.fill();
             } else {
               // Asphalt Crack
-              ctx.strokeStyle = waveInfo?.isInfinite ? 'rgba(40, 40, 40, 0.8)' : 'rgba(20, 22, 25, 0.8)';
-              ctx.lineWidth = 2 + this.pseudoRandom(seed + k * 31) * 3;
+              ctx.strokeStyle = waveInfo?.isInfinite ? 'rgba(70, 70, 70, 0.4)' : 'rgba(70, 72, 78, 0.35)';
+              ctx.lineWidth = 1 + this.pseudoRandom(seed + k * 31) * 2;
               ctx.lineCap = 'round';
               ctx.lineJoin = 'round';
               ctx.beginPath();
@@ -223,6 +199,138 @@ export class MapManager {
     // W2 Mechanism: Cloud Shadows
     if (waveInfo?.wave === 2 || (waveInfo?.wave >= 2 && !waveInfo?.isInfinite)) {
       this.drawCloudShadows(ctx, cameraX, cameraY, width, height);
+    }
+  }
+
+  private drawModernStreetChunk(ctx: CanvasRenderingContext2D, i: number, j: number, seed: number, isInfinite: boolean) {
+    const chunkX = i * CHUNK_SIZE;
+    const chunkY = j * CHUNK_SIZE;
+    const centerX = chunkX + CHUNK_SIZE / 2;
+    const centerY = chunkY + CHUNK_SIZE / 2;
+    const roadWidth = 280;
+    const halfRoad = roadWidth / 2;
+    const curbSize = 8;
+
+    const palette = isInfinite
+      ? {
+          sidewalk: '#4f524f',
+          road: '#252729',
+          intersection: '#222426',
+          curb: '#6b6f70',
+          centerLine: 'rgba(255, 214, 102, 0.45)',
+          crosswalk: 'rgba(238, 241, 245, 0.42)',
+          grass: 'rgba(76, 101, 77, 0.25)',
+        }
+      : {
+          sidewalk: '#d8d3ca',
+          road: '#3c4148',
+          intersection: '#353a40',
+          curb: '#8b8f95',
+          centerLine: 'rgba(234, 198, 92, 0.75)',
+          crosswalk: 'rgba(245, 247, 250, 0.82)',
+          grass: 'rgba(98, 131, 84, 0.5)',
+        };
+
+    // Sidewalk base (light human-walk area)
+    ctx.fillStyle = palette.sidewalk;
+    ctx.fillRect(chunkX, chunkY, CHUNK_SIZE, CHUNK_SIZE);
+
+    // Dark asphalt roads crossing at center (cross intersection layout)
+    ctx.fillStyle = palette.road;
+    ctx.fillRect(centerX - halfRoad, chunkY, roadWidth, CHUNK_SIZE);
+    ctx.fillRect(chunkX, centerY - halfRoad, CHUNK_SIZE, roadWidth);
+    ctx.fillStyle = palette.intersection;
+    ctx.fillRect(centerX - halfRoad, centerY - halfRoad, roadWidth, roadWidth);
+
+    // Curbs / separators (mid tone)
+    // Keep curbs out of the center intersection so it won't become a boxed square.
+    ctx.fillStyle = palette.curb;
+    // Vertical road curbs (upper and lower segments only)
+    ctx.fillRect(centerX - halfRoad - curbSize, chunkY, curbSize, centerY - halfRoad - chunkY);
+    ctx.fillRect(centerX - halfRoad - curbSize, centerY + halfRoad, curbSize, chunkY + CHUNK_SIZE - (centerY + halfRoad));
+    ctx.fillRect(centerX + halfRoad, chunkY, curbSize, centerY - halfRoad - chunkY);
+    ctx.fillRect(centerX + halfRoad, centerY + halfRoad, curbSize, chunkY + CHUNK_SIZE - (centerY + halfRoad));
+    // Horizontal road curbs (left and right segments only)
+    ctx.fillRect(chunkX, centerY - halfRoad - curbSize, centerX - halfRoad - chunkX, curbSize);
+    ctx.fillRect(centerX + halfRoad, centerY - halfRoad - curbSize, chunkX + CHUNK_SIZE - (centerX + halfRoad), curbSize);
+    ctx.fillRect(chunkX, centerY + halfRoad, centerX - halfRoad - chunkX, curbSize);
+    ctx.fillRect(centerX + halfRoad, centerY + halfRoad, chunkX + CHUNK_SIZE - (centerX + halfRoad), curbSize);
+
+    // Central dashed lane lines (continuous through intersection)
+    const dashLength = 36;
+    const gapLength = 28;
+    const dashCycle = dashLength + gapLength;
+    ctx.strokeStyle = palette.centerLine;
+    ctx.lineWidth = 5;
+    ctx.setLineDash([dashLength, gapLength]);
+
+    // Use world-space dash offsets so spacing stays uniform across chunks.
+    const verticalOffset = ((chunkY % dashCycle) + dashCycle) % dashCycle;
+    const horizontalOffset = ((chunkX % dashCycle) + dashCycle) % dashCycle;
+
+    ctx.lineDashOffset = -verticalOffset;
+    ctx.beginPath();
+    ctx.moveTo(centerX, chunkY);
+    ctx.lineTo(centerX, chunkY + CHUNK_SIZE);
+    ctx.stroke();
+
+    ctx.lineDashOffset = -horizontalOffset;
+    ctx.beginPath();
+    ctx.moveTo(chunkX, centerY);
+    ctx.lineTo(chunkX + CHUNK_SIZE, centerY);
+    ctx.stroke();
+    ctx.lineDashOffset = 0;
+
+    ctx.setLineDash([]);
+
+    // Standard zebra crossings (placed on approaches, not on center square)
+    const crosswalkWidth = roadWidth - 40;
+    const crosswalkThickness = 22;
+    const offsetFromCenter = halfRoad + 42;
+    this.drawCrosswalk(ctx, centerX - crosswalkWidth / 2, centerY - offsetFromCenter, crosswalkWidth, crosswalkThickness, 'horizontal', palette.crosswalk);
+    this.drawCrosswalk(ctx, centerX - crosswalkWidth / 2, centerY + offsetFromCenter - crosswalkThickness, crosswalkWidth, crosswalkThickness, 'horizontal', palette.crosswalk);
+    this.drawCrosswalk(ctx, centerX - offsetFromCenter, centerY - crosswalkWidth / 2, crosswalkThickness, crosswalkWidth, 'vertical', palette.crosswalk);
+    this.drawCrosswalk(ctx, centerX + offsetFromCenter - crosswalkThickness, centerY - crosswalkWidth / 2, crosswalkThickness, crosswalkWidth, 'vertical', palette.crosswalk);
+
+    // Small grass pockets on sidewalk corners for color contrast
+    for (let n = 0; n < 4; n++) {
+      const gxBase = n % 2 === 0 ? chunkX + 90 : chunkX + CHUNK_SIZE - 90;
+      const gyBase = n < 2 ? chunkY + 90 : chunkY + CHUNK_SIZE - 90;
+      const gx = gxBase + (this.pseudoRandom(seed + 200 + n * 5) - 0.5) * 40;
+      const gy = gyBase + (this.pseudoRandom(seed + 201 + n * 5) - 0.5) * 40;
+      const rx = 32 + this.pseudoRandom(seed + 202 + n * 5) * 22;
+      const ry = 24 + this.pseudoRandom(seed + 203 + n * 5) * 18;
+
+      ctx.fillStyle = palette.grass;
+      ctx.beginPath();
+      ctx.ellipse(gx, gy, rx, ry, this.pseudoRandom(seed + 204 + n * 5) * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawCrosswalk(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    orientation: 'horizontal' | 'vertical',
+    color: string,
+  ) {
+    const stripes = 6;
+    ctx.fillStyle = color;
+
+    if (orientation === 'horizontal') {
+      const stripeWidth = w / (stripes * 2 - 1);
+      for (let index = 0; index < stripes; index++) {
+        ctx.fillRect(x + index * stripeWidth * 2, y, stripeWidth, h);
+      }
+      return;
+    }
+
+    const stripeHeight = h / (stripes * 2 - 1);
+    for (let index = 0; index < stripes; index++) {
+      ctx.fillRect(x, y + index * stripeHeight * 2, w, stripeHeight);
     }
   }
 
@@ -268,7 +376,7 @@ export class MapManager {
 
   private drawCloudShadows(ctx: CanvasRenderingContext2D, cameraX: number, cameraY: number, width: number, height: number) {
     const time = Date.now() / 10000;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
     
     for (let i = 0; i < 3; i++) {
       const ox = (time * (100 + i * 50)) % (width * 2) - width;

@@ -43,8 +43,8 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
   isActive = false,
   onSlotClick,
   onPlayerClick,
-  bufW = 195,
-  bufH = 110,
+  bufW = 585, // 3x 解析度提升 (195 * 3)
+  bufH = 330, // 3x 解析度提升 (110 * 3)
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // rAF handle，用於 cleanup
@@ -56,9 +56,11 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
     playerRef.current = player;
   }, [player]);
 
-  // 玩家中心在 canvas 中的座標
-  const cx = Math.round(bufW / 2);
-  const cy = Math.round(bufH / 2) + 4;
+  const LOGICAL_W = 195;
+  const LOGICAL_H = 110;
+  // 玩家中心在畫布中的邏輯座標
+  const cx = LOGICAL_W / 2;
+  const cy = LOGICAL_H / 2 + 4;
 
   // ── 繪製循環 ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -68,7 +70,12 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
     if (!ctx) return;
 
     const render = () => {
+      // 每一幀重新設定 transform 避免累積
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, bufW, bufH);
+      
+      const scale = bufW / LOGICAL_W;
+      ctx.scale(scale, scale);
       
       const p = playerRef.current;
       // 每一幀都建立最新的代理，確保購買武器後立刻更新預覽
@@ -89,7 +96,8 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
       drawPlayer(previewProxy, ctx, { 
         hideUI: true, 
         selectedSlotIdx: selectedSlotIdx,
-        dimUnselected: true 
+        dimUnselected: true,
+        weaponScale: 1.0
       });
 
       rafRef.current = requestAnimationFrame(render);
@@ -110,10 +118,10 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // 將 DOM 座標換算回 canvas 內部解析度座標
+    // 將 DOM 座標換算回畫布內部的「邏輯」座標 (基於 195x110)
     const rect = canvas.getBoundingClientRect();
-    const scaleX = bufW / rect.width;
-    const scaleY = bufH / rect.height;
+    const scaleX = LOGICAL_W / rect.width;
+    const scaleY = LOGICAL_H / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
 
@@ -172,7 +180,7 @@ export const PlayerPreviewCanvas: React.FC<PlayerPreviewCanvasProps> = ({
         border: `1.5px solid ${isActive ? player.color : '#1e293b'}`, // 根據選中狀態切換顏色
         boxShadow: isActive ? `0 0 15px ${player.color}44` : 'none', // 選中時發光
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        imageRendering: 'pixelated',
+        // 移除 pixelated，啟用瀏覽器抗鋸齒以獲得流暢描邊
       }}
     />
   );

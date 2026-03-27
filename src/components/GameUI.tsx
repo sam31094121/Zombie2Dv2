@@ -415,7 +415,7 @@ export const GameUI: React.FC = () => {
   };
 
   // 雙人模式：兩人都準備好才開始下一波
-  React.useEffect(() => {
+  useEffect(() => {
     if (playerCount === 2 && p1ShopReady && p2ShopReady) {
       handleNextArenaWave();
     }
@@ -461,12 +461,17 @@ export const GameUI: React.FC = () => {
       <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '32px 32px' }}></div>
 
       <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+        {/* ── 主畫布 (High-DPI 2x Upsampling) ── */}
         <canvas
           ref={canvasRef}
-          width={dimensions.width}
-          height={dimensions.height}
+          width={dimensions.width * 2}
+          height={dimensions.height * 2}
           className="bg-neutral-900 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-neutral-800 w-full h-full object-cover"
-          style={{ touchAction: gameState === 'playing' ? 'none' : 'auto' }}
+          style={{ 
+            width: dimensions.width,
+            height: dimensions.height,
+            touchAction: gameState === 'playing' ? 'none' : 'auto' 
+          }}
         />
 
         {/* ── 全螢幕按鈕 ────────────────────────────────────────── */}
