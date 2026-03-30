@@ -37,8 +37,9 @@ export function spawnZombie(game: Game): void {
   else type = 'normal';
 
   if (game.mode === 'arena') {
-    x = Math.random() * game.arenaWidth;
-    y = Math.random() * game.arenaHeight;
+    const point = game.randomArenaPoint(36);
+    x = point.x;
+    y = point.y;
     // 競技場模式：產生警告光圈延遲生成
     game.activeEffects.push({
       type: 'spawn_warning',
@@ -100,6 +101,11 @@ export function spawnItemAt(game: Game, x: number, y: number): void {
 
 export function spawnItem(game: Game): void {
   const margin = 100;
+  if (game.mode === 'arena') {
+    const point = game.randomArenaPoint(48);
+    spawnItemAt(game, point.x, point.y);
+    return;
+  }
   const x = game.camera.x + margin + Math.random() * (CONSTANTS.CANVAS_WIDTH - margin * 2);
   const y = game.camera.y + margin + Math.random() * (CONSTANTS.CANVAS_HEIGHT - margin * 2);
   spawnItemAt(game, x, y);

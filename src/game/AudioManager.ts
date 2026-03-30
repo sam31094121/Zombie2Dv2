@@ -1,6 +1,8 @@
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private isInitialized = false;
+  private audioBufferCache = new Map<string, AudioBuffer>();
+  private audioBufferLoads = new Map<string, Promise<AudioBuffer | null>>();
 
   // Master volume
   private masterGain: GainNode | null = null;
@@ -33,6 +35,7 @@ export class AudioManager {
       this.sfxGain.connect(this.masterGain);
 
       this.isInitialized = true;
+      void this.preloadBuffer('/audio/weapons/sword/slash_01.wav.mp3');
     } catch (e) {
       console.warn('Web Audio API not supported', e);
     }
@@ -61,6 +64,57 @@ export class AudioManager {
     osc.stop(time + duration);
     
     return { osc, gain };
+  }
+
+  private async preloadBuffer(src: string): Promise<AudioBuffer | null> {
+    if (!this.ctx) return null;
+    const cached = this.audioBufferCache.get(src);
+    if (cached) return cached;
+
+    const existingLoad = this.audioBufferLoads.get(src);
+    if (existingLoad) return existingLoad;
+
+    const loadPromise = fetch(src)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Failed to load audio: ${src}`);
+        const arrayBuffer = await response.arrayBuffer();
+        const decoded = await this.ctx!.decodeAudioData(arrayBuffer.slice(0));
+        this.audioBufferCache.set(src, decoded);
+        return decoded;
+      })
+      .catch((error) => {
+        console.warn('Failed to preload audio buffer', src, error);
+        return null;
+      })
+      .finally(() => {
+        this.audioBufferLoads.delete(src);
+      });
+
+    this.audioBufferLoads.set(src, loadPromise);
+    return loadPromise;
+  }
+
+  private playBufferedSfx(src: string, volume: number = 0.7) {
+    if (!this.ctx || !this.sfxGain) return;
+
+    const play = (buffer: AudioBuffer | null) => {
+      if (!buffer || !this.ctx || !this.sfxGain) return;
+      const source = this.ctx.createBufferSource();
+      const gain = this.ctx.createGain();
+      source.buffer = buffer;
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(this.sfxGain);
+      source.start();
+    };
+
+    const cached = this.audioBufferCache.get(src);
+    if (cached) {
+      play(cached);
+      return;
+    }
+
+    void this.preloadBuffer(src).then(play);
   }
 
   // --- SFX ---
@@ -104,6 +158,11 @@ export class AudioManager {
   }
 
   public playSlash(level: number) {
+    if (level === 1) {
+      this.playBufferedSfx('/audio/weapons/sword/slash_01.wav.mp3', 0.9);
+      return;
+    }
+
     if (!this.ctx || !this.sfxGain) return;
     const time = this.ctx.currentTime;
     const pitchJitter = 1 + (Math.random() * 0.1 - 0.05);

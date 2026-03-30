@@ -32,8 +32,8 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
   for (const obs of allObstacles) {
     obs.update(dt, game.players, (p) => {
       game.healVFX.push({
-        x: p.x + (Math.random() - 0.5) * 15,
-        y: p.y - 30,
+        x: (Math.random() - 0.5) * 15,
+        y: 0,
         alpha: 1.0,
         startTime: Date.now(),
         ownerId: p.id,
@@ -106,8 +106,17 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
 
     // Altar
     if (obs.type === 'altar' && game.waveManager.currentWave >= 7) {
+      const centerX = obs.x + obs.width / 2;
+      const centerY = obs.y + obs.height / 2;
+      const standHalfWidth = obs.width * 0.34;
+      const standHalfHeight = obs.height * 0.2;
+
       for (const player of game.players) {
-        if (player.hp > 0 && obs.collidesWithCircle(player.x, player.y, player.radius)) {
+        const withinPlatform =
+          Math.abs(player.x - centerX) <= standHalfWidth &&
+          Math.abs(player.y - centerY) <= standHalfHeight + player.radius * 0.35;
+
+        if (player.hp > 0 && withinPlatform) {
           player.isAtAltar = true;
         }
       }

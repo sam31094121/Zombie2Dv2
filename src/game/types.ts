@@ -11,8 +11,9 @@ export class Vector2 {
 }
 
 export type ObstacleType =
-  | 'sandbag' | 'electric_fence' | 'explosive_barrel' | 'stone_wall'
-  | 'street_lamp' | 'tombstone' | 'vending_machine' | 'container'
+  | 'wall' | 'pillar' | 'tree' | 'rock' | 'building'
+  | 'sandbag' | 'electric_fence' | 'explosive_barrel' | 'streetlight'
+  | 'tombstone' | 'vending_machine' | 'container'
   | 'altar' | 'monolith';
 
 export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' | 'butcher';

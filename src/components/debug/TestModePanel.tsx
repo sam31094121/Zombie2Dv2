@@ -483,6 +483,7 @@ export function TestModePanel({ gameRef }: Props) {
     { type: 'sandbag',          label: '沙包'   },
     { type: 'electric_fence',   label: '電網'   },
     { type: 'explosive_barrel', label: '爆炸桶' },
+    { type: 'streetlight',      label: '路燈'   },
     { type: 'tombstone',        label: '墓碑'   },
     { type: 'vending_machine',  label: '販賣機' },
     { type: 'container',        label: '貨櫃'   },

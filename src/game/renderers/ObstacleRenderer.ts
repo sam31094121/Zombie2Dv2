@@ -377,28 +377,65 @@ function drawContainer(obs: Obstacle, ctx: CanvasRenderingContext2D, sox: number
   }
 }
 
-function drawAltar(_obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, sox: number, soy: number) {
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+function drawAltar(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, _r: number, sox: number, soy: number) {
+  const w = obs.width;
+  const h = obs.height;
+  const baseW = w * 0.96;
+  const baseH = h * 0.54;
+  const topW = w * 0.64;
+  const topH = h * 0.2;
+  const baseY = cy + h * 0.08;
+  const topY = cy - h * 0.06;
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 260);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.26)';
   ctx.beginPath();
-  ctx.arc(cx + sox, cy + soy, r, 0, Math.PI * 2);
+  ctx.ellipse(cx + sox, cy + soy + h * 0.2, baseW * 0.45, baseH * 0.28, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#b71c1c';
-  ctx.strokeStyle = '#000';
+
+  ctx.fillStyle = '#3f312c';
+  ctx.strokeStyle = '#120d0b';
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.roundRect(cx - baseW / 2, baseY - baseH / 2, baseW, baseH, 10);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = '#d32f2f';
-  const time = Date.now() / 1000;
-  const pulse = Math.sin(time * 2) * 5;
+
+  ctx.fillStyle = '#5f463a';
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.7 + pulse, 0, Math.PI * 2);
+  ctx.roundRect(cx - topW / 2, topY - topH / 2, topW, topH, 8);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+
+  ctx.fillStyle = '#6c5244';
+  ctx.beginPath();
+  ctx.moveTo(cx - topW * 0.28, topY - topH * 0.55);
+  ctx.lineTo(cx - topW * 0.18, topY - topH * 1.25);
+  ctx.lineTo(cx + topW * 0.18, topY - topH * 1.25);
+  ctx.lineTo(cx + topW * 0.28, topY - topH * 0.55);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(210, 40, 40, ${0.2 + pulse * 0.18})`;
+  ctx.beginPath();
+  ctx.roundRect(cx - topW * 0.38, topY - topH * 0.28, topW * 0.76, topH * 0.56, 6);
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(255, 110, 110, ${0.28 + pulse * 0.22})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.4, time, time + Math.PI);
+  ctx.moveTo(cx - topW * 0.16, topY);
+  ctx.lineTo(cx + topW * 0.16, topY);
+  ctx.moveTo(cx, topY - topH * 0.22);
+  ctx.lineTo(cx, topY + topH * 0.22);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255, 180, 140, 0.14)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - baseW * 0.32, baseY - baseH * 0.08);
+  ctx.lineTo(cx + baseW * 0.32, baseY - baseH * 0.08);
+  ctx.moveTo(cx - baseW * 0.22, baseY + baseH * 0.1);
+  ctx.lineTo(cx + baseW * 0.22, baseY + baseH * 0.1);
   ctx.stroke();
 }
 

@@ -469,7 +469,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                           className="rounded-lg border-2 flex flex-col items-center cursor-pointer active:scale-95 transition-all relative overflow-hidden touch-manipulation group"
                           style={{ borderColor: col + '44', boxShadow: `0 0 6px ${col}11`, minHeight: 90, background: '#0b1623' }}
                         >
-                          <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={120} bufH={120} />
+                          <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={402} bufH={240} />
                           <div className="flex flex-col items-center gap-0.5 pb-1">
                             <span className="text-[9px] font-black" style={{ color: col }}>Lv.{w.level}{w.branch ?? ''}</span>
                             <StarRating level={w.level} branch={w.branch} size="xs" />

@@ -3,6 +3,49 @@ import { Player } from '../Player';
 
 const CHUNK_SIZE = 800;
 
+export function getGeneratedObstacleSize(
+  type: ObstacleType,
+  random: (seed: number) => number,
+  seed: number,
+): { width: number; height: number } {
+  if (type === 'wall' || type === 'container' || type === 'vending_machine') {
+    const isHorizontal = random(seed + 1) > 0.5;
+    if (type === 'wall') {
+      const longEdge = 100 + random(seed + 2) * 150;
+      return { width: isHorizontal ? longEdge : 30, height: isHorizontal ? 30 : longEdge };
+    }
+    if (type === 'container') {
+      return { width: isHorizontal ? 120 : 60, height: isHorizontal ? 60 : 120 };
+    }
+    return { width: 40, height: 40 };
+  }
+
+  if (type === 'electric_fence') {
+    const isHorizontal = random(seed + 1) > 0.5;
+    const len = 150 + random(seed + 2) * 100;
+    return { width: isHorizontal ? len : 0, height: isHorizontal ? 0 : len };
+  }
+
+  if (type === 'building' || type === 'altar') {
+    const radius = (type === 'altar' ? 40 : 80) + random(seed + 1) * 60;
+    return { width: radius * 2, height: radius * 2 };
+  }
+
+  if (type === 'tree' || type === 'sandbag' || type === 'explosive_barrel' || type === 'streetlight' || type === 'tombstone' || type === 'monolith') {
+    let radius = 30;
+    if (type === 'tree') radius = 40 + random(seed + 1) * 30;
+    else if (type === 'sandbag') radius = 30;
+    else if (type === 'explosive_barrel') radius = 22;
+    else if (type === 'streetlight') radius = 20;
+    else if (type === 'tombstone') radius = 25;
+    else if (type === 'monolith') radius = 35;
+    return { width: radius * 2, height: radius * 2 };
+  }
+
+  const radius = 30 + random(seed + 1) * 30;
+  return { width: radius * 2, height: radius * 2 };
+}
+
 export class MapManager {
   obstacles: Map<string, Obstacle[]> = new Map();
 
@@ -47,49 +90,14 @@ export class MapManager {
 
       const x = cx * CHUNK_SIZE + this.pseudoRandom(seed + i * 11) * (CHUNK_SIZE - 200) + 100;
       const y = cy * CHUNK_SIZE + this.pseudoRandom(seed + i * 12) * (CHUNK_SIZE - 200) + 100;
-      
-      if (type === 'wall' || type === 'container' || type === 'vending_machine') {
-        const isHorizontal = this.pseudoRandom(seed + i * 13) > 0.5;
-        let w = 30, h = 30;
-        if (type === 'wall') {
-          w = isHorizontal ? 100 + this.pseudoRandom(seed + i * 14) * 150 : 30;
-          h = isHorizontal ? 30 : 100 + this.pseudoRandom(seed + i * 14) * 150;
-        } else if (type === 'container') {
-          w = isHorizontal ? 120 : 60;
-          h = isHorizontal ? 60 : 120;
-        } else if (type === 'vending_machine') {
-          w = 40; h = 40;
-        }
-        chunkObstacles.push(new Obstacle(x, y, w, h, type));
-      } else if (type === 'electric_fence') {
-        const isHorizontal = this.pseudoRandom(seed + i * 13) > 0.5;
-        const len = 150 + this.pseudoRandom(seed + i * 14) * 100;
-        const w = isHorizontal ? len : 0;
-        const h = isHorizontal ? 0 : len;
-        chunkObstacles.push(new Obstacle(x, y, w, h, type));
-      } else if (type === 'building' || type === 'altar') {
-        const r = (type === 'altar' ? 40 : 80) + this.pseudoRandom(seed + i * 15) * 60;
-        chunkObstacles.push(new Obstacle(x, y, r * 2, r * 2, type));
-      } else if (type === 'tree' || type === 'sandbag' || type === 'explosive_barrel' || type === 'streetlight' || type === 'tombstone' || type === 'monolith') {
-        let r = 30;
-        if (type === 'tree') r = 40 + this.pseudoRandom(seed + i * 15) * 30;
-        else if (type === 'sandbag') r = 30;
-        else if (type === 'explosive_barrel') r = 22; // Increased size
-        else if (type === 'streetlight') r = 20;
-        else if (type === 'tombstone') r = 25;
-        else if (type === 'monolith') r = 35;
-        
-        chunkObstacles.push(new Obstacle(x, y, r * 2, r * 2, type));
+      const size = getGeneratedObstacleSize(type, this.pseudoRandom.bind(this), seed + i * 13);
+      chunkObstacles.push(new Obstacle(x, y, size.width, size.height, type));
 
-        // Chance to spawn a second explosive barrel nearby
-        if (type === 'explosive_barrel' && this.pseudoRandom(seed + i * 16) < 0.3) {
-          const offsetX = (this.pseudoRandom(seed + i * 17) - 0.5) * 100;
-          const offsetY = (this.pseudoRandom(seed + i * 18) - 0.5) * 100;
-          chunkObstacles.push(new Obstacle(x + offsetX, y + offsetY, r * 2, r * 2, type));
-        }
-      } else {
-        const r = 30 + this.pseudoRandom(seed + i * 15) * 30;
-        chunkObstacles.push(new Obstacle(x, y, r * 2, r * 2, type));
+      // Chance to spawn a second explosive barrel nearby
+      if (type === 'explosive_barrel' && this.pseudoRandom(seed + i * 16) < 0.3) {
+        const offsetX = (this.pseudoRandom(seed + i * 17) - 0.5) * 100;
+        const offsetY = (this.pseudoRandom(seed + i * 18) - 0.5) * 100;
+        chunkObstacles.push(new Obstacle(x + offsetX, y + offsetY, size.width, size.height, type));
       }
     }
     
@@ -124,7 +132,7 @@ export class MapManager {
 
   draw(ctx: CanvasRenderingContext2D, cameraX: number, cameraY: number, width: number, height: number, players?: Player[], waveInfo?: { wave: number, isInfinite: boolean, activeMechanics: string[] }) {
     // Base tone: brighter urban base so road/sidewalk depth is clearer.
-    ctx.fillStyle = waveInfo?.isInfinite ? '#202224' : '#b7b2a7';
+    ctx.fillStyle = '#b7b2a7';
     ctx.fillRect(cameraX, cameraY, width, height);
 
     const cx = Math.floor((cameraX + width/2) / CHUNK_SIZE);
@@ -136,7 +144,7 @@ export class MapManager {
         this.drawModernStreetChunk(ctx, i, j, seed, waveInfo?.isInfinite ?? false);
 
         // Urban wear details (blood, craters, cracks)
-        const numDetails = waveInfo?.isInfinite ? 6 : 14;
+        const numDetails = 14;
         for (let k = 0; k < numDetails; k++) {
           const dx = i * CHUNK_SIZE + this.pseudoRandom(seed + k * 20) * CHUNK_SIZE;
           const dy = j * CHUNK_SIZE + this.pseudoRandom(seed + k * 21) * CHUNK_SIZE;
@@ -157,14 +165,14 @@ export class MapManager {
               ctx.fill();
             } else if (detailType < 0.5) {
               // Crater / Explosion mark
-              ctx.fillStyle = waveInfo?.isInfinite ? 'rgba(20, 20, 20, 0.45)' : 'rgba(40, 42, 45, 0.3)';
+              ctx.fillStyle = 'rgba(40, 42, 45, 0.3)';
               const size = 12 + this.pseudoRandom(seed + k * 22) * 24;
               ctx.beginPath();
               ctx.arc(dx, dy, size, 0, Math.PI * 2);
               ctx.fill();
             } else {
               // Asphalt Crack
-              ctx.strokeStyle = waveInfo?.isInfinite ? 'rgba(70, 70, 70, 0.4)' : 'rgba(70, 72, 78, 0.35)';
+              ctx.strokeStyle = 'rgba(70, 72, 78, 0.35)';
               ctx.lineWidth = 1 + this.pseudoRandom(seed + k * 31) * 2;
               ctx.lineCap = 'round';
               ctx.lineJoin = 'round';
@@ -184,11 +192,6 @@ export class MapManager {
           }
         }
 
-        // W8 Mechanism: Earthquake Cracks and Black Liquid
-        if (waveInfo?.wave === 8 || (waveInfo?.isInfinite && waveInfo?.activeMechanics.includes('slow_liquid'))) {
-          this.drawEarthquakeDetails(ctx, i, j, seed, cameraX, cameraY, width, height);
-        }
-
         const chunk = this.obstacles.get(this.getChunkKey(i, j));
         if (chunk) {
           chunk.forEach(obs => obs.draw(ctx, players));
@@ -196,10 +199,6 @@ export class MapManager {
       }
     }
 
-    // W2 Mechanism: Cloud Shadows
-    if (waveInfo?.wave === 2 || (waveInfo?.wave >= 2 && !waveInfo?.isInfinite)) {
-      this.drawCloudShadows(ctx, cameraX, cameraY, width, height);
-    }
   }
 
   private drawModernStreetChunk(ctx: CanvasRenderingContext2D, i: number, j: number, seed: number, isInfinite: boolean) {
@@ -211,25 +210,15 @@ export class MapManager {
     const halfRoad = roadWidth / 2;
     const curbSize = 8;
 
-    const palette = isInfinite
-      ? {
-          sidewalk: '#4f524f',
-          road: '#252729',
-          intersection: '#222426',
-          curb: '#6b6f70',
-          centerLine: 'rgba(255, 214, 102, 0.45)',
-          crosswalk: 'rgba(238, 241, 245, 0.42)',
-          grass: 'rgba(76, 101, 77, 0.25)',
-        }
-      : {
-          sidewalk: '#d8d3ca',
-          road: '#3c4148',
-          intersection: '#353a40',
-          curb: '#8b8f95',
-          centerLine: 'rgba(234, 198, 92, 0.75)',
-          crosswalk: 'rgba(245, 247, 250, 0.82)',
-          grass: 'rgba(98, 131, 84, 0.5)',
-        };
+    const palette = {
+      sidewalk: '#d8d3ca',
+      road: '#3c4148',
+      intersection: '#353a40',
+      curb: '#8b8f95',
+      centerLine: 'rgba(234, 198, 92, 0.75)',
+      crosswalk: 'rgba(245, 247, 250, 0.82)',
+      grass: 'rgba(98, 131, 84, 0.5)',
+    };
 
     // Sidewalk base (light human-walk area)
     ctx.fillStyle = palette.sidewalk;
@@ -334,57 +323,4 @@ export class MapManager {
     }
   }
 
-  private drawEarthquakeDetails(ctx: CanvasRenderingContext2D, i: number, j: number, seed: number, cameraX: number, cameraY: number, width: number, height: number) {
-    const numCracks = 3;
-    for (let k = 0; k < numCracks; k++) {
-      const dx = i * CHUNK_SIZE + this.pseudoRandom(seed + k * 50) * CHUNK_SIZE;
-      const dy = j * CHUNK_SIZE + this.pseudoRandom(seed + k * 51) * CHUNK_SIZE;
-
-      if (dx >= cameraX - 200 && dx <= cameraX + width + 200 &&
-          dy >= cameraY - 200 && dy <= cameraY + height + 200) {
-        
-        // Large Earthquake Crack
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 15;
-        ctx.beginPath();
-        ctx.moveTo(dx, dy);
-        let curX = dx;
-        let curY = dy;
-        for (let s = 0; s < 8; s++) {
-          curX += (this.pseudoRandom(seed + k * 52 + s) - 0.5) * 100;
-          curY += (this.pseudoRandom(seed + k * 53 + s) - 0.5) * 100;
-          ctx.lineTo(curX, curY);
-        }
-        ctx.stroke();
-
-        // Black Liquid Eruption
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-        ctx.beginPath();
-        ctx.arc(dx, dy, 40 + this.pseudoRandom(seed + k * 54) * 40, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Bubbles
-        ctx.fillStyle = 'rgba(20, 20, 20, 0.8)';
-        for (let b = 0; b < 3; b++) {
-          ctx.beginPath();
-          ctx.arc(dx + (this.pseudoRandom(seed + b) - 0.5) * 40, dy + (this.pseudoRandom(seed + b + 1) - 0.5) * 40, 5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-    }
-  }
-
-  private drawCloudShadows(ctx: CanvasRenderingContext2D, cameraX: number, cameraY: number, width: number, height: number) {
-    const time = Date.now() / 10000;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-    
-    for (let i = 0; i < 3; i++) {
-      const ox = (time * (100 + i * 50)) % (width * 2) - width;
-      const oy = (time * (50 + i * 30)) % (height * 2) - height;
-      
-      ctx.beginPath();
-      ctx.ellipse(cameraX + width / 2 + ox, cameraY + height / 2 + oy, 400, 250, Math.PI / 4, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
 }

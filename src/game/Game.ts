@@ -1,4 +1,4 @@
-﻿import { CONSTANTS } from './Constants';
+import { CONSTANTS } from './Constants';
 import { Player } from './Player';
 import { Zombie, ZombieType } from './Zombie';
 import { ObstacleType, GameMode } from './types';
@@ -29,6 +29,8 @@ import { drawArcProjectiles } from './renderers/ArcRenderer';
 import { drawSwordProjectiles } from './renderers/SwordRenderer';
 import { drawActiveEffects } from './renderers/EffectRenderer';
 import type { ActiveEffect } from './types';
+import { ArenaBorderLayout, ArenaPlayableBounds, createArenaBorderLayout, drawArenaBorder } from './renderers/ArenaBorderRenderer';
+import { getGeneratedObstacleSize } from './map/MapManager';
 
 export class Game {
   players: Player[] = [];
@@ -60,6 +62,7 @@ export class Game {
   mode: GameMode = 'endless';
   arenaWidth: number = 1500;
   arenaHeight: number = 1500;
+  arenaBorder: ArenaBorderLayout | null = null;
   baggedMaterials: number = 0;
   private _arenaWaveStartLevels: number[] = []  // 每位玩家的波次開始等級;
   sharedStatPoints: number = 0;   // 本地雙人模式共享素質點數池
@@ -166,11 +169,55 @@ export class Game {
     this.isGameOver = false;
     this.mapManager = new MapManager();
     this.camera = { x: 0, y: 0 };
+    this.initArenaLayout();
 
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleKeyDown);
       window.addEventListener('keyup', this.handleKeyUp);
     }
+  }
+
+  private initArenaLayout() {
+    if (this.mode !== 'arena') {
+      this.arenaBorder = null;
+      return;
+    }
+
+    const seed = Math.floor(Math.random() * 1_000_000);
+    this.arenaBorder = createArenaBorderLayout(this.arenaWidth, this.arenaHeight, seed);
+
+    const centerX = (this.playableArenaBounds.left + this.playableArenaBounds.right) * 0.5;
+    const centerY = (this.playableArenaBounds.top + this.playableArenaBounds.bottom) * 0.5;
+
+    if (this.players[0]) {
+      this.players[0].x = centerX - (this.players.length > 1 ? 28 : 0);
+      this.players[0].y = centerY;
+    }
+    if (this.players[1]) {
+      this.players[1].x = centerX + 28;
+      this.players[1].y = centerY;
+    }
+  }
+
+  get playableArenaBounds(): ArenaPlayableBounds {
+    return this.arenaBorder?.playable ?? {
+      left: 20,
+      top: 20,
+      right: this.arenaWidth - 20,
+      bottom: this.arenaHeight - 20,
+    };
+  }
+
+  randomArenaPoint(padding: number = 0) {
+    const bounds = this.playableArenaBounds;
+    const left = bounds.left + padding;
+    const top = bounds.top + padding;
+    const right = bounds.right - padding;
+    const bottom = bounds.bottom - padding;
+    return {
+      x: left + Math.random() * Math.max(1, right - left),
+      y: top + Math.random() * Math.max(1, bottom - top),
+    };
   }
 
   destroy() {
@@ -266,13 +313,10 @@ export class Game {
     const angle = Math.random() * Math.PI * 2;
     const x = p.x + Math.cos(angle) * 130;
     const y = p.y + Math.sin(angle) * 130;
-    const sizes: Partial<Record<string, [number, number]>> = {
-      sandbag: [24, 24], electric_fence: [8, 50], explosive_barrel: [22, 22],
-      tombstone: [30, 40], vending_machine: [32, 48], container: [64, 32],
-      altar: [40, 40], monolith: [16, 60], wall: [40, 20], streetlight: [12, 12],
-    };
-    const [w, h] = sizes[type] ?? [30, 30];
-    const obs = new Obstacle(x - w/2, y - h/2, w, h, type as any);
+    const size = getGeneratedObstacleSize(type, Math.random, Date.now() + angle);
+    const w = size.width;
+    const h = size.height;
+    const obs = new Obstacle(x - w / 2, y - h / 2, w, h, type as any);
     const CHUNK_SIZE = 800;
     const key = `${Math.floor(x / CHUNK_SIZE)},${Math.floor(y / CHUNK_SIZE)}`;
     const list = this.mapManager.obstacles.get(key) ?? [];
@@ -282,6 +326,7 @@ export class Game {
 
   debugSetWave(wave: number) {
     this.waveManager.currentWave = Math.max(1, Math.min(99, wave));
+    this.waveManager.isInfinite = false; // 手動跳波次時重置無限模式，避免深色背景
   }
 
   debugClearSlime() {
@@ -291,10 +336,10 @@ export class Game {
   debugToggleStatus(pid: number, key: 'shield' | 'speedBoost' | 'slowDebuff' | 'glow') {
     const p = this.players.find(pl => pl.id === pid);
     if (!p) return;
-    if (key === 'shield')     p.shieldTimer > 0 ? (p.shieldTimer = 0, p.shield = false) : p.activateShield(3000);
+    if (key === 'shield') p.shieldTimer > 0 ? (p.shieldTimer = 0, p.shield = false) : p.activateShield(3000);
     if (key === 'speedBoost') p.speedBoostTimer = p.speedBoostTimer > 0 ? 0 : 6000;
-    if (key === 'slowDebuff') p.slowDebuffTimer  = p.slowDebuffTimer  > 0 ? 0 : 5000;
-    if (key === 'glow')       p.isInfiniteGlow  = !p.isInfiniteGlow;
+    if (key === 'slowDebuff') p.slowDebuffTimer = p.slowDebuffTimer > 0 ? 0 : 5000;
+    if (key === 'glow') p.isInfiniteGlow = !p.isInfiniteGlow;
   }
 
   debugTogglePause() {
@@ -324,11 +369,11 @@ export class Game {
     } else {
       // 被動
       switch (card.key) {
-        case 'damage':   player.damageMultiplier      += 0.15; break;
-        case 'haste':    player.attackSpeedMultiplier += 0.15; break;
-        case 'agility':  player.speed                 += player.speed * 0.10; break;
+        case 'damage': player.damageMultiplier += 0.15; break;
+        case 'haste': player.attackSpeedMultiplier += 0.15; break;
+        case 'agility': player.speed += player.speed * 0.10; break;
         case 'vitality': player.maxHp += 25; player.hp = Math.min(player.hp + 25, player.maxHp); break;
-        case 'magnet':   player.pickupRadiusMultiplier += 0.5; break;
+        case 'magnet': player.pickupRadiusMultiplier += 0.5; break;
         case 'recovery': player.hp = Math.min(player.hp + 30, player.maxHp); break;
       }
     }
@@ -449,9 +494,9 @@ export class Game {
       if (localPlayer && localPlayer.hp > 0) {
         // 每幀重新計算鍵盤輸入（WASD / 方向鍵均有效，不依賴 player.id）
         let dx = 0, dy = 0;
-        if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp'])    dy -= 1;
-        if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown'])  dy += 1;
-        if (this.keys['a'] || this.keys['A'] || this.keys['ArrowLeft'])  dx -= 1;
+        if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp']) dy -= 1;
+        if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown']) dy += 1;
+        if (this.keys['a'] || this.keys['A'] || this.keys['ArrowLeft']) dx -= 1;
         if (this.keys['d'] || this.keys['D'] || this.keys['ArrowRight']) dx += 1;
         const kbLen = Math.sqrt(dx * dx + dy * dy);
         if (kbLen > 0) { dx /= kbLen; dy /= kbLen; }
@@ -706,11 +751,11 @@ export class Game {
       }
       cx /= alivePlayers.length;
       cy /= alivePlayers.length;
-      
+
       // Smooth camera follow
       this.camera.x += (cx - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
       this.camera.y += (cy - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
-      
+
       if (this.mode === 'arena') {
         const minCamX = 0;
         const minCamY = 0;
@@ -733,14 +778,14 @@ export class Game {
         const obstacles = this.mapManager.getNearbyObstacles(player.x, player.y);
         const playerIdx = this.players.indexOf(player);
         player.update(dt, this.keys, obstacles, this.joystickInputs[playerIdx] || undefined);
-        
+
         if (player.isRegenerating) {
           const now = Date.now();
           if (now - player.lastRegenVfxTime > 1200) {
-            this.healVFX.push({ 
-              x: player.x + (Math.random() - 0.5) * 10, 
-              y: player.y - 35, 
-              alpha: 0.8, 
+            this.healVFX.push({
+              x: (Math.random() - 0.5) * 10,
+              y: 0,
+              alpha: 0.8,
               startTime: now,
               ownerId: player.id,
             });
@@ -777,17 +822,17 @@ export class Game {
         // Normalize angle difference to [-PI, PI]
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-        
+
         // Constant rotation speed (2 radians per second)
         const rotationSpeed = 2;
         const maxRotation = rotationSpeed * (dt / 1000);
-        
+
         if (Math.abs(angleDiff) <= maxRotation) {
           player.aimAngle = targetAngle;
         } else {
           player.aimAngle += Math.sign(angleDiff) * maxRotation;
         }
-        
+
         // Keep aimAngle within [-PI, PI]
         while (player.aimAngle > Math.PI) player.aimAngle -= Math.PI * 2;
         while (player.aimAngle < -Math.PI) player.aimAngle += Math.PI * 2;
@@ -806,7 +851,7 @@ export class Game {
     if (!this.waveManager.isResting && !this.debugPaused) {
       this.zombieSpawnTimer += dt;
       let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
-      
+
       // Tombstone spawn boost
       const nearbyObstacles = this.mapManager.getNearbyObstacles(this.camera.x + CONSTANTS.CANVAS_WIDTH / 2, this.camera.y + CONSTANTS.CANVAS_HEIGHT / 2);
       const activeTombstones = nearbyObstacles.filter(obs => obs.type === 'tombstone' && !obs.isDestroyed);
@@ -834,7 +879,7 @@ export class Game {
         this.slimeTrails.splice(i, 1);
         continue;
       }
-      
+
       // Check player collision
       for (const player of this.players) {
         if (player.hp > 0) {
@@ -855,7 +900,7 @@ export class Game {
         this.queueZombieDeath(zombie, null, 1);
         continue;
       }
-      
+
       // Update glow state based on intro timer
       if (this.waveManager.isInfinite) {
         zombie.isInfiniteGlow = isIntro;
@@ -886,19 +931,19 @@ export class Game {
 
     // ── Arena Mode Boundaries ──
     if (this.mode === 'arena') {
-      const margin = 20;
+      const bounds = this.playableArenaBounds;
       for (const p of this.players) {
         if (p.hp <= 0) continue;
-        if (p.x < margin) p.x = margin;
-        if (p.x > this.arenaWidth - margin) p.x = this.arenaWidth - margin;
-        if (p.y < margin) p.y = margin;
-        if (p.y > this.arenaHeight - margin) p.y = this.arenaHeight - margin;
+        if (p.x < bounds.left) p.x = bounds.left;
+        if (p.x > bounds.right) p.x = bounds.right;
+        if (p.y < bounds.top) p.y = bounds.top;
+        if (p.y > bounds.bottom) p.y = bounds.bottom;
       }
       for (const z of this.zombies) {
-        if (z.x < z.radius) z.x = z.radius;
-        if (z.x > this.arenaWidth - z.radius) z.x = this.arenaWidth - z.radius;
-        if (z.y < z.radius) z.y = z.radius;
-        if (z.y > this.arenaHeight - z.radius) z.y = this.arenaHeight - z.radius;
+        if (z.x < bounds.left + z.radius) z.x = bounds.left + z.radius;
+        if (z.x > bounds.right - z.radius) z.x = bounds.right - z.radius;
+        if (z.y < bounds.top + z.radius) z.y = bounds.top + z.radius;
+        if (z.y > bounds.bottom - z.radius) z.y = bounds.bottom - z.radius;
       }
     }
 
@@ -936,18 +981,31 @@ export class Game {
       for (const obs of obstacles) {
         if (obs.isDestroyed) continue;
         if (obs.collidesWithCircle(proj.x, proj.y, proj.radius)) {
-          if (obs.type === 'monolith' && proj.type === 'bullet' && proj.level === 5) {
+          if (obs.type === 'monolith' && proj.type === 'bullet') {
             // Reflect to nearest zombie
             const nearestZombie = this.findNearestZombie(obs.x + obs.width / 2, obs.y + obs.height / 2, 500);
+            const currentSpeed = Math.hypot(proj.vx, proj.vy) || 1;
             if (nearestZombie) {
               const dx = nearestZombie.x - proj.x;
               const dy = nearestZombie.y - proj.y;
               const dist = Math.hypot(dx, dy);
-              proj.vx = (dx / dist) * Math.hypot(proj.vx, proj.vy);
-              proj.vy = (dy / dist) * Math.hypot(proj.vx, proj.vy);
-              this.hitEffects.push({ x: proj.x, y: proj.y, type: 'white_sparks', lifetime: 200, maxLifetime: 200 });
-              continue; // Don't destroy projectile on reflection
+              if (dist > 0) {
+                proj.vx = (dx / dist) * currentSpeed;
+                proj.vy = (dy / dist) * currentSpeed;
+              } else {
+                proj.vx *= -1;
+                proj.vy *= -1;
+              }
+            } else {
+              proj.vx *= -1;
+              proj.vy *= -1;
             }
+            const reflectDist = obs.width * 0.5 + proj.radius + 6;
+            const reflectLen = Math.hypot(proj.vx, proj.vy) || 1;
+            proj.x = obs.x + obs.width / 2 + (proj.vx / reflectLen) * reflectDist;
+            proj.y = obs.y + obs.height / 2 + (proj.vy / reflectLen) * reflectDist;
+            this.hitEffects.push({ x: proj.x, y: proj.y, type: 'white_sparks', lifetime: 200, maxLifetime: 200 });
+            continue; // Don't destroy projectile on reflection
           }
 
           if (obs.type === 'sandbag' || obs.type === 'explosive_barrel' || obs.type === 'tombstone' || obs.type === 'vending_machine') {
@@ -1010,7 +1068,7 @@ export class Game {
               let angleDiff = angleToZombie - slashAngle;
               while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
               while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-              
+
               let hitArc = Math.PI / 4; // default 90 degrees (±45)
               if (proj.level === 2) hitArc = Math.PI / 4; // 90 degrees (±45)
               else if (proj.level === 3) hitArc = 50 * Math.PI / 180; // 100 degrees (±50)
@@ -1028,16 +1086,16 @@ export class Game {
         if (hit) {
           audioManager.playHit();
           proj.hitZombies.add(zombie);
-          
+
           zombie.hp -= proj.damage;
-          
+
           if (proj.type === 'slash') {
             this.hitStopTimer = 20; // 0.02s hit stop
           }
 
           if (proj.knockback) {
             const angle = Math.atan2(zombie.y - proj.y, zombie.x - proj.x);
-            
+
             // Check if big zombie ignores knockback from low level weapons
             let ignoreKnockback = false;
             if (zombie.type === 'big' && proj.level <= 3) {
@@ -1097,7 +1155,7 @@ export class Game {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const item = this.items[i];
       item.update(dt);
-      
+
       if (item.lifetime <= 0) {
         this.items.splice(i, 1);
         continue;
@@ -1125,17 +1183,17 @@ export class Game {
           if (item.attractedByPlayerId === player.id) {
             const angle = Math.atan2(player.y - item.y, player.x - item.x);
             const speed = 400 * (dt / 1000); // Magnetic speed
-            
+
             // Wave motion: add a sine wave perpendicular to the movement direction
             const time = Date.now() / 100;
             const waveAmplitude = 10;
             const waveFrequency = 0.5;
             const waveOffset = Math.sin(time * waveFrequency) * waveAmplitude;
-            
+
             // Perpendicular vector
             const perpX = -Math.sin(angle);
             const perpY = Math.cos(angle);
-            
+
             item.x += Math.cos(angle) * speed + perpX * waveOffset * 0.1;
             item.y += Math.sin(angle) * speed + perpY * waveOffset * 0.1;
           }
@@ -1169,7 +1227,7 @@ export class Game {
               p.materials += val;
             }
           }
-          
+
           this.items.splice(i, 1);
           break;
         }
@@ -1186,7 +1244,7 @@ export class Game {
         return false;
       }
 
-      vfx.y -= 1; // 向上漂浮
+      vfx.y -= 1; // 相對玩家向上漂浮
       vfx.alpha -= 0.02; // 逐漸淡出
       return vfx.alpha > 0;
     });
@@ -1311,9 +1369,9 @@ export class Game {
 
   draw(ctx: CanvasRenderingContext2D) {
     ctx.clearRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
-    
+
     ctx.save();
-    
+
     // Screen Shake
     if (this.shakeTimer > 0) {
       const intensity = 5;
@@ -1333,11 +1391,9 @@ export class Game {
     });
 
     if (this.mode === 'arena') {
-      ctx.strokeStyle = '#ff3d00';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(0, 0, this.arenaWidth, this.arenaHeight);
-      ctx.fillStyle = 'rgba(255, 61, 0, 0.05)';
-      ctx.fillRect(0, 0, this.arenaWidth, this.arenaHeight);
+      if (this.arenaBorder) {
+        drawArenaBorder(ctx, this.arenaWidth, this.arenaHeight, this.arenaBorder);
+      }
     }
 
     // Draw slime trails
@@ -1384,18 +1440,9 @@ export class Game {
       }
       drawHitEffect(effect, ctx);
     }
-    
+
     ctx.restore(); // Restore camera translation
 
-    // Draw vignette effect
-    const gradient = ctx.createRadialGradient(
-      CONSTANTS.CANVAS_WIDTH / 2, CONSTANTS.CANVAS_HEIGHT / 2, CONSTANTS.CANVAS_HEIGHT * 0.3,
-      CONSTANTS.CANVAS_WIDTH / 2, CONSTANTS.CANVAS_HEIGHT / 2, CONSTANTS.CANVAS_WIDTH * 0.7
-    );
-    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CONSTANTS.CANVAS_WIDTH, CONSTANTS.CANVAS_HEIGHT);
 
   }
 

@@ -101,7 +101,7 @@ export class Obstacle {
 
     if (this.type === 'pillar' || this.type === 'rock' || this.type === 'building' || 
         this.type === 'sandbag' || this.type === 'explosive_barrel' || this.type === 'streetlight' || 
-        this.type === 'altar' || this.type === 'monolith' || this.type === 'tombstone') {
+        this.type === 'monolith' || this.type === 'tombstone') {
       const px = this.x + this.width / 2;
       const py = this.y + this.height / 2;
       const dist = Math.hypot(cx - px, cy - py);
@@ -137,7 +137,7 @@ export class Obstacle {
 
     if (this.type === 'pillar' || this.type === 'rock' || this.type === 'building' || 
         this.type === 'sandbag' || this.type === 'explosive_barrel' || this.type === 'streetlight' || 
-        this.type === 'altar' || this.type === 'monolith' || this.type === 'tombstone') {
+        this.type === 'monolith' || this.type === 'tombstone') {
       const px = this.x + this.width / 2;
       const py = this.y + this.height / 2;
       const dist = Math.hypot(cx - px, cy - py);

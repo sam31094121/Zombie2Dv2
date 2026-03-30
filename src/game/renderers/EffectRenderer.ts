@@ -3,6 +3,7 @@
 // 新增特效：在 drawHitEffect() 加 case，其他邏輯零修改
 // ─────────────────────────────────────────────────────────────────────────────
 import type { ActiveEffect } from '../types';
+import type { Player } from '../Player';
 
 export interface HitEffect {
   x: number; y: number;
@@ -569,14 +570,26 @@ export function drawPixelExplosion(
   ctx.restore(); // translate
 }
 
-export function drawHealVFX(vfxList: HealVFX[], ctx: CanvasRenderingContext2D): void {
+export function drawHealVFX(vfxList: HealVFX[], ctx: CanvasRenderingContext2D, players: Player[] = []): void {
   ctx.save();
   for (const vfx of vfxList) {
+    const owner = vfx.ownerId != null ? players.find((player) => player.id === vfx.ownerId) : null;
+    const drawX = owner ? owner.x + vfx.x : vfx.x;
+    const drawY = owner ? owner.y + vfx.y : vfx.y;
+
     ctx.globalAlpha = vfx.alpha;
-    ctx.fillStyle = '#00ff00'; ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('+', vfx.x, vfx.y);
+    ctx.fillStyle = '#00ff00'; 
+    ctx.font = 'bold 20px Arial'; 
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle'; // 基準線設為正中央
+
+    // 文字與光環直接以玩家的中心 (drawX, drawY) 為基礎
+    ctx.fillText('+', drawX, drawY);
     ctx.strokeStyle = `rgba(0,255,0,${vfx.alpha})`;
-    ctx.beginPath(); ctx.arc(vfx.x, vfx.y+20, 15*(1.5-vfx.alpha), 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); 
+    // 外圈光環從中心擴散
+    ctx.arc(drawX, drawY, 15 * (1.5 - vfx.alpha), 0, Math.PI * 2); 
+    ctx.stroke();
   }
   ctx.restore();
 }

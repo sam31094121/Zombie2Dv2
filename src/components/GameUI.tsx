@@ -17,6 +17,7 @@ import { UpgradePanel, UpgradeCard } from './UpgradePanel';
 import { LobbyCanvas } from './lobby/LobbyCanvas';
 import { ShopPanel } from './arena/ShopPanel';
 import { ManagementView } from './arena/ManagementView';
+import { VictoryScreen } from './screens/VictoryScreen';
 
 const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
@@ -26,14 +27,14 @@ export const GameUI: React.FC = () => {
   const [isFSVisible, setIsFSVisible] = useState(true);
   const fsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fsBtnRef = useRef<HTMLButtonElement>(null);
-  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
+  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
   const [p2State, setP2State] = useState<Player | null>(null);
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const gameRef = useRef<Game | null>(null);
-  const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover'>('start');
+  const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const arenaShopEnteredRef = useRef(false);
 
   // ── 線上模式狀態 ──────────────────────────────────────────
@@ -152,9 +153,15 @@ export const GameUI: React.FC = () => {
       if (waveManager.isResting) {
         if (!arenaShopEnteredRef.current) {
           arenaShopEnteredRef.current = true;
-          gameRef.current.clearEntitiesForShop(); // 結算素質點數 + 清空怪物
-          gameStateRef.current = 'shopping';
-          setGameState('shopping');
+          gameRef.current.clearEntitiesForShop();
+          if (waveManager.currentWave >= 10) {
+            // 競技場第 10 波通關 → 勝利畫面
+            gameStateRef.current = 'victory';
+            setGameState('victory');
+          } else {
+            gameStateRef.current = 'shopping';
+            setGameState('shopping');
+          }
         }
       } else {
         arenaShopEnteredRef.current = false;
@@ -461,15 +468,14 @@ export const GameUI: React.FC = () => {
       <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '32px 32px' }}></div>
 
       <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-        {/* ── 主畫布 (High-DPI 2x Upsampling) ── */}
         <canvas
           ref={canvasRef}
           width={dimensions.width * 2}
           height={dimensions.height * 2}
           className="bg-neutral-900 shadow-[0_0_40px_rgba(0,0,0,0.5)] border border-neutral-800 w-full h-full object-cover"
           style={{ 
-            width: dimensions.width,
-            height: dimensions.height,
+            width: '100%',
+            height: '100%',
             touchAction: gameState === 'playing' ? 'none' : 'auto' 
           }}
         />
@@ -558,6 +564,15 @@ export const GameUI: React.FC = () => {
             onPlayAgain={() => startGame(playerCount, 'normal', gameRef.current?.mode || 'endless')}
             onMainMenu={handleMainMenu}
             onReadyRematch={handleReadyRematch}
+          />
+        )}
+
+        {/* ── 競技場通關畫面 ──────────────────────────────────── */}
+        {gameState === 'victory' && (
+          <VictoryScreen
+            kills={(p1State?.kills ?? 0) + (p2State?.kills ?? 0)}
+            playerCount={playerCount}
+            onMainMenu={handleMainMenu}
           />
         )}
 

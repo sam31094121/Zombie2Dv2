@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAnimatedBarState } from './useAnimatedBarState';
+import { HudLayout } from './hudLayout';
 
 const HUD_BAR_EFFECT_STYLES = `
   @keyframes hudWaveForward {
@@ -29,6 +30,7 @@ interface AnimatedHudBarProps {
   variant: HudBarVariant;
   side: HudBarSide;
   compact?: boolean;
+  layout?: HudLayout;
 }
 
 export const HudBarEffectStyles: React.FC = () => <style>{HUD_BAR_EFFECT_STYLES}</style>;
@@ -41,6 +43,7 @@ export const AnimatedHudBar: React.FC<AnimatedHudBarProps> = ({
   variant,
   side,
   compact = false,
+  layout,
 }) => {
   const mirror = side === 'right';
   const { mainRatio, lagRatio, mode, pulseKey, intensity } = useAnimatedBarState({
@@ -55,7 +58,7 @@ export const AnimatedHudBar: React.FC<AnimatedHudBarProps> = ({
   const isDamage = mode === 'damage';
   const isHeal = mode === 'heal';
   const isXpGain = mode === 'xp_gain';
-  const height = compact ? 10 : 18;
+  const height = compact ? layout?.xpHeight ?? 10 : layout?.hpHeight ?? 18;
   const accent = variant === 'hp' ? '#ff525f' : '#65d9ff';
   const baseFill =
     variant === 'hp'
@@ -81,17 +84,32 @@ export const AnimatedHudBar: React.FC<AnimatedHudBarProps> = ({
     : { left: '-8%', transformOrigin: 'left center' };
 
   return (
-    <div className="w-full mb-1">
-      <div className={`flex justify-between items-end mb-0.5 ${mirror ? 'flex-row-reverse' : ''}`}>
+    <div className="w-full" style={{ marginBottom: layout?.barGap ?? 4 }}>
+      <div
+        className={`flex justify-between items-end ${mirror ? 'flex-row-reverse' : ''}`}
+        style={{ marginBottom: Math.max(2, Math.round((layout?.barGap ?? 4) * 0.5)) }}
+      >
         <span
-          className={`font-black ${compact ? 'text-[9px] sm:text-xs' : 'text-xs sm:text-sm'}`}
-          style={{ color: variant === 'hp' ? 'rgba(255,245,245,0.92)' : 'rgba(181,239,255,0.9)' }}
+          className="font-black"
+          style={{
+            fontSize: compact
+              ? layout?.compactBarLabelFontSize ?? 9
+              : layout?.barLabelFontSize ?? 12,
+            lineHeight: 1,
+            color: variant === 'hp' ? 'rgba(255,245,245,0.92)' : 'rgba(181,239,255,0.9)',
+          }}
         >
           {label}
         </span>
         <span
-          className={`font-bold ${compact ? 'text-[9px] sm:text-xs' : 'text-xs sm:text-sm'}`}
-          style={{ color: variant === 'hp' ? 'rgba(255,245,245,0.9)' : 'rgba(202,242,255,0.86)' }}
+          className="font-bold"
+          style={{
+            fontSize: compact
+              ? layout?.compactBarValueFontSize ?? 9
+              : layout?.barValueFontSize ?? 12,
+            lineHeight: 1,
+            color: variant === 'hp' ? 'rgba(255,245,245,0.9)' : 'rgba(202,242,255,0.86)',
+          }}
         >
           {valueText}
         </span>

@@ -3,19 +3,20 @@ import { CONSTANTS } from './Constants';
 export interface Wave {
   id: number;
   composition: { normal: number; big: number; slime: number; spitter: number };
-  effect: string;
 }
 
+// 競技場：Wave 1–10（固定）  無盡模式：Wave 1–9 後轉無限
 export const WAVES: Wave[] = [
-  { id: 1, composition: { normal: 1.0, big: 0.0, slime: 0.0, spitter: 0.0 }, effect: "草地明亮。" },
-  { id: 2, composition: { normal: 0.8, big: 0.2, slime: 0.0, spitter: 0.0 }, effect: "雲層陰影掠過。" },
-  { id: 3, composition: { normal: 0.7, big: 0.0, slime: 0.3, spitter: 0.0 }, effect: "綠色雲層陰影掠過。" },
-  { id: 4, composition: { normal: 0.6, big: 0.2, slime: 0.2, spitter: 0.0 }, effect: "雲層陰影掠過。" },
-  { id: 5, composition: { normal: 0.5, big: 0.2, slime: 0.0, spitter: 0.3 }, effect: "雲層陰影掠過。" },
-  { id: 6, composition: { normal: 0.4, big: 0.2, slime: 0.2, spitter: 0.2 }, effect: "深綠色調：雲層陰影掠過。" },
-  { id: 7, composition: { normal: 0.3, big: 0.3, slime: 0.2, spitter: 0.2 }, effect: "紅色雲層陰影掠過：殭屍攻擊力提升 15%。" },
-  { id: 8, composition: { normal: 0.2, big: 0.4, slime: 0.2, spitter: 0.2 }, effect: "雲層陰影掠過地面裂痕處會噴發黑色液體，造成緩速。" },
-  { id: 9, composition: { normal: 0.2, big: 0.2, slime: 0.3, spitter: 0.3 }, effect: "優化閃電特效重新設計。" },
+  { id:  1, composition: { normal: 1.00, big: 0.00, slime: 0.00, spitter: 0.00 } },
+  { id:  2, composition: { normal: 0.80, big: 0.20, slime: 0.00, spitter: 0.00 } },
+  { id:  3, composition: { normal: 0.70, big: 0.00, slime: 0.30, spitter: 0.00 } },
+  { id:  4, composition: { normal: 0.60, big: 0.20, slime: 0.20, spitter: 0.00 } },
+  { id:  5, composition: { normal: 0.50, big: 0.20, slime: 0.00, spitter: 0.30 } },
+  { id:  6, composition: { normal: 0.40, big: 0.20, slime: 0.20, spitter: 0.20 } },
+  { id:  7, composition: { normal: 0.30, big: 0.30, slime: 0.20, spitter: 0.20 } },
+  { id:  8, composition: { normal: 0.20, big: 0.40, slime: 0.20, spitter: 0.20 } },
+  { id:  9, composition: { normal: 0.20, big: 0.20, slime: 0.30, spitter: 0.30 } },
+  { id: 10, composition: { normal: 0.00, big: 0.40, slime: 0.25, spitter: 0.35 } }, // FINAL
 ];
 
 export class WaveManager {
@@ -24,7 +25,7 @@ export class WaveManager {
   isResting: boolean = false;
   isInfinite: boolean = false;
   difficultyMultiplier: number = 1.0;
-  activeMechanics: string[] = [];
+  activeMechanics: string[] = []; // 保留欄位供外部相容讀取，值恆為空
   infiniteTimer: number = 0;
   waveIntroTimer: number = 0;
   mode: 'endless' | 'arena' = 'endless';
@@ -35,26 +36,26 @@ export class WaveManager {
   }
 
   update(dt: number) {
-    if (this.isResting && this.mode === 'arena') return; // Arena mode rest state is fully managed manually (Shop Phase)
+    if (this.isResting && this.mode === 'arena') return;
 
     this.timer -= dt / 1000;
     if (this.waveIntroTimer > 0) {
       this.waveIntroTimer -= dt;
     }
-    
+
+    // 無盡模式：每 20 秒強化難度
     if (this.isInfinite && !this.isResting) {
       this.infiniteTimer += dt / 1000;
       if (this.infiniteTimer >= 20) {
         this.infiniteTimer = 0;
         this.difficultyMultiplier += 0.1;
-        this.randomizeMechanics();
       }
     }
 
     if (this.timer <= 0) {
       if (this.mode === 'arena') {
         this.timer = 0;
-        this.isResting = true; // Wait for external signal to proceed
+        this.isResting = true;
       } else {
         if (this.isResting) {
           this.startCombat();
@@ -67,16 +68,24 @@ export class WaveManager {
 
   startCombat() {
     this.isResting = false;
-    this.timer = this.mode === 'arena' ? 30 + Math.floor(Math.random() * 21) : 30; // 30~50 seconds for arena
-    this.waveIntroTimer = 3000; // 3 seconds intro
-    if (!this.isInfinite) {
-      if (this.currentWave < 9) {
+    this.timer = this.mode === 'arena' ? 30 + Math.floor(Math.random() * 21) : 30;
+    this.waveIntroTimer = 3000;
+
+    if (this.mode === 'arena') {
+      // 競技場：最多到第 10 波，不轉無限
+      if (this.currentWave < 10) {
         this.currentWave++;
-      } else {
-        this.isInfinite = true;
-        this.infiniteTimer = 0;
-        this.difficultyMultiplier = 1.0;
-        this.randomizeMechanics();
+      }
+    } else {
+      // 無盡模式：第 9 波後轉無限（原有行為不變）
+      if (!this.isInfinite) {
+        if (this.currentWave < 9) {
+          this.currentWave++;
+        } else {
+          this.isInfinite = true;
+          this.infiniteTimer = 0;
+          this.difficultyMultiplier = 1.0;
+        }
       }
     }
   }
@@ -86,23 +95,15 @@ export class WaveManager {
     this.timer = 5;
   }
 
-  randomizeMechanics() {
-    const allMechanics = ['attack_boost', 'slow_liquid', 'lightning'];
-    // Shuffle and pick 2
-    this.activeMechanics = allMechanics.sort(() => 0.5 - Math.random()).slice(0, 2);
-  }
-  
   getComposition() {
     if (this.isInfinite) {
-        return { normal: 0.25, big: 0.25, slime: 0.25, spitter: 0.25 };
+      return { normal: 0.25, big: 0.25, slime: 0.25, spitter: 0.25 };
     }
-    return WAVES[this.currentWave - 1].composition;
+    return WAVES[Math.min(this.currentWave - 1, WAVES.length - 1)].composition;
   }
 
   getHint(): string {
-    if (this.isInfinite) {
-      return "純黑底色：僅玩家與殭屍發光，[機制]每過20秒殭屍強化並隨機切換機制。";
-    }
-    return WAVES[this.currentWave - 1].effect;
+    if (this.isInfinite) return '無盡模式：每 20 秒殭屍強化。';
+    return `Wave ${this.currentWave}`;
   }
 }

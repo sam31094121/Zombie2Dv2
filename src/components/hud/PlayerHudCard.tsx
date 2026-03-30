@@ -1,6 +1,7 @@
 import React from 'react';
 import { Player } from '../../game/Player';
 import { AnimatedHudBar, HudBarEffectStyles } from './AnimatedHudBar';
+import { useHudLayout } from './hudLayout';
 
 interface PlayerHudCardProps {
   player: Player;
@@ -20,26 +21,38 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
   levelBadgeColor,
 }) => {
   const isRight = side === 'right';
+  const layout = useHudLayout();
 
   return (
     <div
-      className={`absolute top-4 w-[250px] sm:w-[350px] select-none pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] ${isRight ? 'right-4 text-right' : 'left-4'}`}
+      className={`absolute select-none pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)] ${isRight ? 'text-right' : ''}`}
+      style={{
+        top: layout.topOffset,
+        width: layout.cardWidth,
+        [isRight ? 'right' : 'left']: layout.sideOffset,
+      }}
     >
       <HudBarEffectStyles />
 
-      <div className={`flex items-center mb-1 gap-2 ${isRight ? 'justify-end' : ''}`}>
+      <div
+        className={`flex items-center ${isRight ? 'justify-end' : ''}`}
+        style={{ marginBottom: layout.headerMarginBottom, gap: layout.headerGap }}
+      >
         {!isRight && (
           <div
-            className="font-black text-base sm:text-2xl tracking-tighter italic"
-            style={{ color: accentColor }}
+            className="font-black tracking-tighter italic"
+            style={{ color: accentColor, fontSize: layout.labelFontSize, lineHeight: 1 }}
           >
             {label}
           </div>
         )}
 
         <div
-          className="px-2 py-1 rounded text-xs sm:text-base font-bold border"
+          className="rounded font-bold border"
           style={{
+            fontSize: layout.badgeFontSize,
+            lineHeight: 1,
+            padding: `${layout.badgePaddingY}px ${layout.badgePaddingX}px`,
             color: '#ffffff',
             background: levelBadgeColor,
             borderColor: `${accentColor}44`,
@@ -51,8 +64,8 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
 
         {isRight && (
           <div
-            className="font-black text-base sm:text-2xl tracking-tighter italic"
-            style={{ color: accentColor }}
+            className="font-black tracking-tighter italic"
+            style={{ color: accentColor, fontSize: layout.labelFontSize, lineHeight: 1 }}
           >
             {label}
           </div>
@@ -60,8 +73,14 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
       </div>
 
       {respawnCountdown > 0 ? (
-        <div className={`w-full h-4 rounded-sm mb-1 flex items-center ${isRight ? 'justify-end' : 'justify-start'}`}>
-          <span className="text-xs font-bold text-red-500 animate-pulse">
+        <div
+          className={`w-full rounded-sm flex items-center ${isRight ? 'justify-end' : 'justify-start'}`}
+          style={{ height: layout.respawnHeight, marginBottom: layout.respawnMarginBottom }}
+        >
+          <span
+            className="font-bold text-red-500 animate-pulse"
+            style={{ fontSize: layout.respawnFontSize, lineHeight: 1 }}
+          >
             RESPAWNING: {respawnCountdown}s
           </span>
         </div>
@@ -73,6 +92,7 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
           valueText={`${Math.ceil(player.hp)} / ${player.maxHp}`}
           variant="hp"
           side={side}
+          layout={layout}
         />
       )}
 
@@ -84,6 +104,7 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
         variant="xp"
         side={side}
         compact
+        layout={layout}
       />
     </div>
   );
