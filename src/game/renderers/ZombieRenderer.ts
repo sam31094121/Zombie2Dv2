@@ -106,7 +106,6 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
       else if (zombie.type === 'spitter')     ctx.fillStyle = '#9c27b0';
       else                                    ctx.fillStyle = '#4caf50';
       if (zombie.flashWhiteTimer > 0) ctx.fillStyle = '#ffffff';
-      if (zombie.isInfiniteGlow) { ctx.shadowColor = ctx.fillStyle as string; ctx.shadowBlur = 15; }
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#000'; ctx.stroke(); ctx.closePath();

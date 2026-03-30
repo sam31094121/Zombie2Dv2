@@ -72,21 +72,11 @@ export class WaveManager {
     this.waveIntroTimer = 3000;
 
     if (this.mode === 'arena') {
-      // 競技場：最多到第 10 波，不轉無限
-      if (this.currentWave < 10) {
-        this.currentWave++;
-      }
+      // 競技場：波次自然增長
+      this.currentWave++;
     } else {
-      // 無盡模式：第 9 波後轉無限（原有行為不變）
-      if (!this.isInfinite) {
-        if (this.currentWave < 9) {
-          this.currentWave++;
-        } else {
-          this.isInfinite = true;
-          this.infiniteTimer = 0;
-          this.difficultyMultiplier = 1.0;
-        }
-      }
+      // 無盡模式：波次自然增長，不再強制切換 isInfinite 狀態
+      this.currentWave++;
     }
   }
 
@@ -96,9 +86,7 @@ export class WaveManager {
   }
 
   getComposition() {
-    if (this.isInfinite) {
-      return { normal: 0.25, big: 0.25, slime: 0.25, spitter: 0.25 };
-    }
+    // 移除硬編碼的 25% 比例，回歸 WAVES 配置陣列
     return WAVES[Math.min(this.currentWave - 1, WAVES.length - 1)].composition;
   }
 

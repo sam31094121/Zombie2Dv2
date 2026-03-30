@@ -103,24 +103,6 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
         }
       }
     }
-
-    // Altar
-    if (obs.type === 'altar' && game.waveManager.currentWave >= 7) {
-      const centerX = obs.x + obs.width / 2;
-      const centerY = obs.y + obs.height / 2;
-      const standHalfWidth = obs.width * 0.34;
-      const standHalfHeight = obs.height * 0.2;
-
-      for (const player of game.players) {
-        const withinPlatform =
-          Math.abs(player.x - centerX) <= standHalfWidth &&
-          Math.abs(player.y - centerY) <= standHalfHeight + player.radius * 0.35;
-
-        if (player.hp > 0 && withinPlatform) {
-          player.isAtAltar = true;
-        }
-      }
-    }
   }
 }
 
@@ -130,7 +112,7 @@ export function handlePlayerAttacks(game: Game, player: Player, dt: number = 16)
     : [{ id: 'main', type: player.weapon, level: player.weaponLevels[player.weapon] || 1, lastAttackTime: player.lastAttackTime, branch: player.weaponBranches[player.weapon] }];
 
   const now = Date.now();
-  const dmgMult = player.damageMultiplier * (player.isAtAltar ? 1.4 : 1);
+  const dmgMult = player.damageMultiplier;
 
   // 劍系：只有裝備 1 把「主武器」時阻擋（無盡模式）
   // 競技場模式允許劍氣齊發，不受 _swordOut 阻擋

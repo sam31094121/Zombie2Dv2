@@ -773,7 +773,7 @@ export class Game {
     for (const player of this.players) {
       if (player.hp > 0) {
         if (this.waveManager.isInfinite) {
-          player.isInfiniteGlow = isIntro;
+          // 移除強制發光
         }
         const obstacles = this.mapManager.getNearbyObstacles(player.x, player.y);
         const playerIdx = this.players.indexOf(player);
@@ -903,7 +903,7 @@ export class Game {
 
       // Update glow state based on intro timer
       if (this.waveManager.isInfinite) {
-        zombie.isInfiniteGlow = isIntro;
+        // 移除殭屍強制發光
       }
 
       const obstacles = this.mapManager.getNearbyObstacles(zombie.x, zombie.y);
