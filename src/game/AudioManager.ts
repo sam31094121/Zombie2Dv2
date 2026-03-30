@@ -35,7 +35,8 @@ export class AudioManager {
       this.sfxGain.connect(this.masterGain);
 
       this.isInitialized = true;
-      void this.preloadBuffer('/audio/weapons/sword/slash_01.wav.mp3');
+      void this.preloadBuffer('audio/weapons/sword/slash_01.mp3');
+      void this.preloadBuffer('audio/fx/coin_pickup.mp3');
     } catch (e) {
       console.warn('Web Audio API not supported', e);
     }
@@ -158,8 +159,8 @@ export class AudioManager {
   }
 
   public playSlash(level: number) {
-    if (level === 1) {
-      this.playBufferedSfx('/audio/weapons/sword/slash_01.wav.mp3', 0.9);
+    if (level <= 4) {
+      this.playBufferedSfx('audio/weapons/sword/slash_01.mp3', 0.9);
       return;
     }
 
@@ -203,17 +204,7 @@ export class AudioManager {
   }
 
   public playPickup() {
-    if (!this.ctx || !this.sfxGain) return;
-    const time = this.ctx.currentTime;
-    // Pleasant chime (arpeggio)
-    const notes = [440, 554.37, 659.25, 880]; // A4, C#5, E5, A5
-    notes.forEach((freq, i) => {
-      const node = this.createOscillator('sine', freq, time + i * 0.05, 0.2, 0.2);
-      if (node) {
-        node.gain.gain.setValueAtTime(0.2, time + i * 0.05);
-        node.gain.gain.exponentialRampToValueAtTime(0.01, time + i * 0.05 + 0.2);
-      }
-    });
+    this.playBufferedSfx('audio/fx/coin_pickup.mp3', 0.8);
   }
 
   public playPlayerHit() {
