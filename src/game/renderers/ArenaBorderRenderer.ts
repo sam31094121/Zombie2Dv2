@@ -137,14 +137,7 @@ export function drawArenaBorder(
 
   ctx.save();
 
-  ctx.fillStyle = 'rgba(18, 15, 15, 0.82)';
-  ctx.fillRect(0, 0, width, playable.top);
-  ctx.fillRect(0, playable.bottom, width, height - playable.bottom);
-  ctx.fillRect(0, playable.top, playable.left, playable.bottom - playable.top);
-  ctx.fillRect(playable.right, playable.top, width - playable.right, playable.bottom - playable.top);
-
-  ctx.fillStyle = 'rgba(42, 28, 24, 0.14)';
-  ctx.fillRect(playable.left, playable.top, playable.right - playable.left, playable.bottom - playable.top);
+  // ── 移除黑幕效果 ──
 
   for (const stain of stains) {
     ctx.save();
@@ -157,19 +150,7 @@ export function drawArenaBorder(
     ctx.restore();
   }
 
-  const fog = ctx.createRadialGradient(
-    width * 0.5,
-    height * 0.5,
-    Math.min(width, height) * 0.22,
-    width * 0.5,
-    height * 0.5,
-    Math.max(width, height) * 0.7,
-  );
-  fog.addColorStop(0, 'rgba(0,0,0,0)');
-  fog.addColorStop(0.72, 'rgba(0,0,0,0.05)');
-  fog.addColorStop(1, 'rgba(0,0,0,0.34)');
-  ctx.fillStyle = fog;
-  ctx.fillRect(0, 0, width, height);
+  // ── 移除全螢幕徑向霧氣 (Fog Gradient) ──
 
   ctx.strokeStyle = 'rgba(255, 156, 108, 0.2)';
   ctx.lineWidth = 2;

@@ -644,7 +644,7 @@ export const GameUI: React.FC = () => {
 
         {/* ── HUD ─────────────────────────────────────────────── */}
         {gameState === 'playing' && waveState && (
-          <div className={`absolute inset-0 pointer-events-none z-10 transition-colors duration-500 ${waveState.wave >= 10 ? 'bg-black/90' : ''}`}
+          <div className="absolute inset-0 pointer-events-none z-10 transition-colors duration-500"
             style={{ padding: 'max(8px, env(safe-area-inset-top, 8px)) max(8px, env(safe-area-inset-right, 8px)) max(8px, env(safe-area-inset-bottom, 8px)) max(8px, env(safe-area-inset-left, 8px))' }}>
             <div className="relative flex justify-center items-start w-full">
               {p1State && <P1Card p1State={p1State} p1RespawnCountdown={p1RespawnCountdown} />}
