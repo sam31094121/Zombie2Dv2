@@ -33,6 +33,7 @@ export const GameUI: React.FC = () => {
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [isPausedUI, setIsPausedUI] = useState(false); // 新增暫停 UI 狀態
+  const [isTestModeEnabled, setIsTestModeEnabled] = useState(false); // 控制測試面板是否顯示
   const gameRef = useRef<Game | null>(null);
   const gameStateRef = useRef<'start' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const arenaShopEnteredRef = useRef(false);
@@ -132,14 +133,14 @@ export const GameUI: React.FC = () => {
     };
 
     window.addEventListener('mousemove', handleFSActivity);
-    window.addEventListener('touchstart', handleFSActivity);
+    window.addEventListener('touchstart', handleFSActivity, { capture: true }); // 使用 capture 強制在攔截前收到信號
     triggerFSShow();
 
     return () => {
       window.removeEventListener('resize', updateDimensions);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('mousemove', handleFSActivity);
-      window.removeEventListener('touchstart', handleFSActivity);
+      window.removeEventListener('touchstart', handleFSActivity, { capture: true } as any);
       if (fsTimerRef.current) clearTimeout(fsTimerRef.current);
     };
   }, []);
@@ -604,12 +605,69 @@ export const GameUI: React.FC = () => {
           ) : null;
         })()}
 
-        {/* ── 測試面板 ─────────────────────────────────────────── */}
-        {gameState === 'playing' && <TestModePanel gameRef={gameRef} />}
+        {/* ── 測試面板 (預設隱藏，須由暫停選單開啟) ────────────────── */}
+        {gameState === 'playing' && isTestModeEnabled && <TestModePanel gameRef={gameRef} />}
+
+        {/* ── 暫停選單 (Pause Modal) ────────────────────────────── */}
+        {isPausedUI && gameState === 'playing' && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl w-80 max-w-[90%] p-6 flex flex-col gap-4 shadow-2xl overflow-hidden relative">
+              <div className="text-center pb-4 border-b border-neutral-800">
+                <h2 className="text-white text-2xl font-black tracking-widest">PAUSED</h2>
+                <div className="text-neutral-500 text-sm mt-1">遊戲暫停</div>
+              </div>
+
+              <button 
+                onClick={() => {
+                  setIsPausedUI(false);
+                  if (gameRef.current) gameRef.current.isPaused = false;
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl active:scale-95 transition-all outline-none"
+              >
+                繼續遊戲
+              </button>
+
+              <button 
+                onClick={() => startGame(playerCount, 'normal', gameRef.current?.mode || 'endless')}
+                className="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-bold py-3 rounded-xl active:scale-95 transition-all outline-none"
+              >
+                重新開始
+              </button>
+
+              <button 
+                onClick={() => {
+                  setIsPausedUI(false);
+                  if (gameRef.current) {
+                    gameRef.current.isPaused = false;
+                    gameRef.current.destroy();
+                  }
+                  gameStateRef.current = 'start';
+                  setGameState('start');
+                }}
+                className="w-full bg-red-900/50 hover:bg-red-800/80 text-red-200 font-bold py-3 rounded-xl active:scale-95 transition-all outline-none"
+              >
+                回到首頁
+              </button>
+
+              <div className="mt-2 pt-4 border-t border-neutral-800 flex items-center justify-between">
+                <span className="text-neutral-400 text-sm font-medium">啟用測試模式</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={isTestModeEnabled} 
+                    onChange={(e) => setIsTestModeEnabled(e.target.checked)} 
+                  />
+                  <div className="w-11 h-6 bg-neutral-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── HUD ─────────────────────────────────────────────── */}
         {gameState === 'playing' && waveState && (
-          <div className="absolute inset-0 pointer-events-none z-10 transition-colors duration-500"
+          <div className="absolute inset-0 pointer-events-none z-30 transition-colors duration-500"
             style={{ padding: 'max(8px, env(safe-area-inset-top, 8px)) max(8px, env(safe-area-inset-right, 8px)) max(8px, env(safe-area-inset-bottom, 8px)) max(8px, env(safe-area-inset-left, 8px))' }}>
             <div className="relative flex justify-center items-start w-full">
               {p1State && <P1Card p1State={p1State} p1RespawnCountdown={p1RespawnCountdown} />}

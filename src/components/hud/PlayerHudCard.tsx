@@ -78,7 +78,7 @@ export const PlayerHudCard: React.FC<PlayerHudCardProps> = ({
           style={{ height: layout.respawnHeight, marginBottom: layout.respawnMarginBottom }}
         >
           <span
-            className="font-bold text-red-500 animate-pulse"
+            className="font-bold text-red-500"
             style={{ fontSize: layout.respawnFontSize, lineHeight: 1 }}
           >
             RESPAWNING: {respawnCountdown}s

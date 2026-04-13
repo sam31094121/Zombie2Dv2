@@ -43,6 +43,16 @@ export const HomeScreen: React.FC<Props> = ({
   }, [onlineStep]);
 
   useEffect(() => {
+    const ua = navigator.userAgent.toLowerCase();
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const touchDevice = navigator.maxTouchPoints > 0;
+    const mobileUA = /android|iphone|ipad|ipod|mobile/.test(ua);
+    const detectedPlatform: 'pc' | 'mobile' =
+      mobileUA || (coarsePointer && touchDevice) ? 'mobile' : 'pc';
+    setPlatform(detectedPlatform);
+  }, [setPlatform]);
+
+  useEffect(() => {
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
     onResize();
     window.addEventListener('resize', onResize);
