@@ -32,6 +32,7 @@ export const GameUI: React.FC = () => {
   const [p2State, setP2State] = useState<Player | null>(null);
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [isPausedUI, setIsPausedUI] = useState(false); // 新增暫停 UI 狀態
   const gameRef = useRef<Game | null>(null);
   const gameStateRef = useRef<'start' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const arenaShopEnteredRef = useRef(false);
@@ -612,7 +613,22 @@ export const GameUI: React.FC = () => {
             style={{ padding: 'max(8px, env(safe-area-inset-top, 8px)) max(8px, env(safe-area-inset-right, 8px)) max(8px, env(safe-area-inset-bottom, 8px)) max(8px, env(safe-area-inset-left, 8px))' }}>
             <div className="relative flex justify-center items-start w-full">
               {p1State && <P1Card p1State={p1State} p1RespawnCountdown={p1RespawnCountdown} />}
-              <WaveDisplay wave={waveState.wave} isResting={waveState.isResting} timer={waveState.timer} />
+              <div className="relative flex items-center">
+                <WaveDisplay wave={waveState.wave} isResting={waveState.isResting} timer={waveState.timer} />
+                
+                {/* 遊戲暫停按鈕 (置於波次右側) */}
+                <button 
+                  onClick={() => {
+                    const next = !isPausedUI;
+                    setIsPausedUI(next);
+                    if (gameRef.current) gameRef.current.isPaused = next;
+                  }}
+                  className="pointer-events-auto absolute -right-12 top-1/2 -translate-y-1/2 bg-neutral-800/80 border border-neutral-600 text-white rounded p-2 hover:bg-neutral-600 active:scale-95 transition-all w-10 h-10 flex items-center justify-center shadow-lg"
+                  title="暫停遊戲"
+                >
+                  {isPausedUI ? '▶️' : '⏸️'}
+                </button>
+              </div>
               {p2State && <P2Card p2State={p2State} p2RespawnCountdown={p2RespawnCountdown} />}
             </div>
           </div>

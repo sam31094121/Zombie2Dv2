@@ -56,6 +56,7 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
     const H = canvas.height;
     const cx = W * 0.5;
     const cy = H * 0.48;
+    const mouse = { x: cx, y: cy };
 
     const particles = Array.from({ length: 26 }, () => ({
       x: Math.random() * W,
@@ -68,6 +69,22 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
     }));
 
     let lastNow = 0;
+
+    const updateMouseFromClient = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = W / rect.width;
+      const sy = H / rect.height;
+      mouse.x = (clientX - rect.left) * sx;
+      mouse.y = (clientY - rect.top) * sy;
+    };
+
+    const onMouseMove = (e: MouseEvent) => updateMouseFromClient(e.clientX, e.clientY);
+    const onMouseLeave = () => {
+      mouse.x = cx;
+      mouse.y = cy;
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseleave', onMouseLeave);
 
     const draw = (now: number) => {
       const dt = Math.min(now - (lastNow || now), 50);
@@ -162,6 +179,58 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
       ctx.fill();
       ctx.shadowBlur = 0;
 
+      // Taunting face based on the user's sketch: flat black brow, raised blue brow.
+      const eyeY = cy - 1;
+      const leftEyeX = cx - 17;
+      const rightEyeX = cx + 17;
+
+      const drawBrow = (x: number, y: number, side: 'left' | 'right') => {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(side === 'left' ? -0.08 : 0.28);
+        ctx.strokeStyle = side === 'left' ? '#000000' : '#2d5be3';
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4.8;
+        ctx.beginPath();
+        ctx.moveTo(-11, 0);
+        ctx.lineTo(11, 0);
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      const drawEye = (x: number, y: number) => {
+        const dx = mouse.x - x;
+        const dy = mouse.y - y;
+        const len = Math.hypot(dx, dy) || 1;
+        const maxOffset = 4.5;
+        const factor = Math.min(maxOffset, len / 18) / len;
+        const px = dx * factor;
+        const py = dy * factor;
+
+        ctx.beginPath();
+        ctx.arc(x, y, 10.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = '#000000';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x + px, y + py, 4.3, 0, Math.PI * 2);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x + px - 1.3, y + py - 1.2, 1.15, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      };
+
+      drawBrow(leftEyeX, eyeY - 16, 'left');
+      drawBrow(rightEyeX, eyeY - 20, 'right');
+      drawEye(leftEyeX, eyeY);
+      drawEye(rightEyeX, eyeY);
+
       const pulse = 0.5 + 0.5 * Math.sin(t * 1.5);
       ctx.strokeStyle = `rgba(255,255,255,${0.12 + pulse * 0.16})`;
       ctx.lineWidth = 2.5;
@@ -173,7 +242,11 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
     };
 
     rafRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseleave', onMouseLeave);
+      cancelAnimationFrame(rafRef.current);
+    };
   }, [playerColor]);
 
   return (

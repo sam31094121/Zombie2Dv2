@@ -145,12 +145,13 @@ export class Game {
     this.players = [];
     if (playerCount >= 1) {
       const p1 = new Player(1, 400, 300, '#3498db');
-      if (this.mode === 'arena') p1.isFloatingWeapons = true;
+      // [模組化調整] 所有的模式現在都預設使用懸浮武器邏輯，提供更一致的體驗
+      p1.isFloatingWeapons = true;
       this.players.push(p1);
     }
     if (playerCount >= 2) {
       const p2 = new Player(2, 450, 300, '#e74c3c');
-      if (this.mode === 'arena') p2.isFloatingWeapons = true;
+      p2.isFloatingWeapons = true;
       this.players.push(p2);
     }
     this.zombies = [];
@@ -248,6 +249,7 @@ export class Game {
 
   testMode: boolean = false;
   debugPaused: boolean = false;
+  isPaused: boolean = false; // 新增全局暫停狀態
   debugHpLocked: boolean = false;
   debugInfiniteCoins: boolean = false; // 測試用：無限金幣
 
@@ -261,8 +263,14 @@ export class Game {
     if (e.key === 'h' || e.key === 'H') this.players.forEach(p => { p.hp = p.maxHp; });
     const lvl = parseInt(e.key);
     if (lvl >= 1 && lvl <= 5 && this.players[0]) this.players[0].level = lvl;
-    if ((e.key === 'q' || e.key === 'Q') && this.players[0]) this.players[0].weapon = 'sword';
-    if ((e.key === 'e' || e.key === 'E') && this.players[0]) this.players[0].weapon = 'gun';
+    if ((e.key === 'q' || e.key === 'Q') && this.players[0]) {
+      this.players[0].weapon = 'sword';
+      this.players[0].syncWeaponToSlot();
+    }
+    if ((e.key === 'e' || e.key === 'E') && this.players[0]) {
+      this.players[0].weapon = 'gun';
+      this.players[0].syncWeaponToSlot();
+    }
   };
 
   handleKeyUp = (e: KeyboardEvent) => {
@@ -377,7 +385,20 @@ export class Game {
         case 'recovery': player.hp = Math.min(player.hp + 30, player.maxHp); break;
       }
     }
+
+    // ── 模組化同步 ──
+    // 套用升級後立即同步到武器槽位，解決無線模式武器不更新的問題
+    player.syncWeaponToSlot();
+    
+    // 升級完成後給予保護與加速
+    player.activateShield(2500); 
+    player.speedBoostTimer = 4000;
+
     player.pendingLevelUp = false;
+
+    // ── 立即觸發 UI 更新 ──
+    // 確保彈窗立即關閉，避免「不會動」的凍結感
+    this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
   }
 
   // ── Arena Mode Logic ────────────────────────────────────────────────────────
@@ -485,6 +506,15 @@ export class Game {
 
   update(dt: number) {
     if (this.isGameOver) return;
+    
+    // 發生升級選擇或主動暫停時，凍結所有邏輯更新
+    if (this.isPaused || this.upgradePendingPlayer !== null) {
+      if (this.upgradePendingPlayer !== null) {
+        // 確保升級期間依舊觸發 UI 以顯示面板
+        this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
+      }
+      return; 
+    }
 
     // ── 網路模式：只處理本地玩家預測 + 傳送輸入 ──
     if (this.networkMode) {
@@ -1161,6 +1191,8 @@ export class Game {
         continue;
       }
 
+      let isBeingStepped = false;
+
       // Item-Player collision
       for (const player of this.players) {
         if (player.hp <= 0) continue;
@@ -1206,31 +1238,50 @@ export class Game {
         const dist = Math.hypot(player.x - item.x, player.y - item.y);
 
         if (dist < player.radius + item.radius) {
-          audioManager.playPickup();
-          if (item.type === 'weapon_sword') {
-            player.weapon = 'sword';
-            player.weaponSwitchTimer = 500;
-            player.weaponSwitchType = 'sword';
-          } else if (item.type === 'weapon_gun') {
-            player.weapon = 'gun';
-            player.weaponSwitchTimer = 500;
-            player.weaponSwitchType = 'gun';
-          } else if (item.type === 'speed') {
-            player.speedBoostTimer = 5000;
-          } else if (item.type === 'shield') {
-            player.activateShield(3000);
-          } else if (item.type === 'energy_orb') {
-            const val = item.value || 1;
-            this.awardOrbXp(player, val);
-            // ── 共同薪資：所有存活玩家各自獲得相同金幣（獨立錢包）──
-            for (const p of this.players) {
-              p.materials += val;
+          if (item.type === 'weapon_sword' || item.type === 'weapon_gun') {
+            isBeingStepped = true;
+            item.targetedByPlayerId = player.id;
+            item.pickupProgress += dt;
+            
+            // 蓄力達到 3000ms (3秒) 拾取成功
+            if (item.pickupProgress >= 3000) {
+              audioManager.playPickup();
+              player.weapon = item.type === 'weapon_sword' ? 'sword' : 'gun';
+              player.syncWeaponToSlot(); // 立即同步等級與狀態
+              player.weaponSwitchTimer = 500;
+              player.weaponSwitchType = player.weapon;
+              
+              item.pickupProgress = 0;
+              item.targetedByPlayerId = null;
+              this.items.splice(i, 1);
+              break; 
             }
-          }
+          } else {
+            // 普通道具立即拾取
+            audioManager.playPickup();
+            if (item.type === 'speed') {
+              player.speedBoostTimer = 5000;
+            } else if (item.type === 'shield') {
+              player.activateShield(3000);
+            } else if (item.type === 'energy_orb') {
+              const val = item.value || 1;
+              this.awardOrbXp(player, val);
+              // ── 共同薪資：所有存活玩家各自獲得相同金幣（獨立錢包）──
+              for (const p of this.players) {
+                p.materials += val;
+              }
+            }
 
-          this.items.splice(i, 1);
-          break;
+            this.items.splice(i, 1);
+            break;
+          }
         }
+      }
+
+      // 如果無人踩在該武器上，進度瞬間歸零
+      if (!isBeingStepped && (item.type === 'weapon_sword' || item.type === 'weapon_gun')) {
+        item.pickupProgress = 0;
+        item.targetedByPlayerId = null;
       }
     }
 

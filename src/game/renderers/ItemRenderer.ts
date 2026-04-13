@@ -66,12 +66,59 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
       ctx.fillStyle = '#d4af37'; ctx.beginPath(); ctx.arc(0,25,4,0,Math.PI*2); ctx.fill();
 
     } else if (item.type === 'weapon_gun') {
-      ctx.fillStyle = '#2a2a2a';
-      ctx.fillRect(0,-5,18,6); ctx.fillRect(-10,-5,10,8);
-      ctx.fillStyle = '#1a1a1a';
-      ctx.beginPath(); ctx.moveTo(-8,3); ctx.lineTo(-2,3); ctx.lineTo(-4,12); ctx.lineTo(-10,12); ctx.fill();
-      ctx.fillStyle = '#555'; ctx.fillRect(2,-4,15,2);
-      ctx.fillStyle = '#888'; ctx.fillRect(-8,-3,6,2);
+      // ── 沙漠之鷹 (Desert Eagle) 帶局部木頭握把/護木 ──
+      
+      // 上機匣與巨型滑套 (深邃銀灰/鐵灰)
+      ctx.fillStyle = '#6b7280';
+      ctx.fillRect(-8, -6, 20, 8); // 寬大的滑套
+      
+      // 滑套前端的特色倒角與槍口 (更亮的銀色凸顯金屬感)
+      ctx.fillStyle = '#9ca3af';
+      ctx.beginPath();
+      ctx.moveTo(12, -6);
+      ctx.lineTo(16, -2);
+      ctx.lineTo(16, 2);
+      ctx.lineTo(12, 2);
+      ctx.fill();
+
+      // 滑套上方的溝槽細節 (深色縫隙)
+      ctx.fillStyle = '#374151';
+      ctx.fillRect(-2, -6, 2, 8);
+      ctx.fillRect(4, -6, 2, 8);
+
+      // 下機匣與扳機護弓 (純黑戰術色)
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(-6, 2, 14, 3);
+      ctx.beginPath();
+      ctx.moveTo(-1, 5);
+      ctx.lineTo(3, 5);
+      ctx.lineTo(3, 10);
+      ctx.lineTo(1, 10);
+      ctx.fill();
+
+      // 沙漠之鷹招牌的粗壯握把 (包含木紋色護木)
+      ctx.fillStyle = '#8B5A2B'; // 胡桃木色
+      ctx.beginPath();
+      ctx.moveTo(-6, 3);
+      ctx.lineTo(0, 3);
+      ctx.lineTo(-2, 14);
+      ctx.lineTo(-8, 14);
+      ctx.fill();
+
+      // 握把上的防滑刻紋 (深色木紋)
+      ctx.fillStyle = '#5C3A21';
+      ctx.beginPath();
+      ctx.moveTo(-5, 5); ctx.lineTo(-1, 5);
+      ctx.moveTo(-5.5, 8); ctx.lineTo(-1.5, 8);
+      ctx.moveTo(-6, 11); ctx.lineTo(-2, 11);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#5C3A21';
+      ctx.stroke();
+
+      // 準星與照門
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(10, -8, 2, 2); // 準星
+      ctx.fillRect(-6, -8, 3, 2); // 照門
 
     } else if (item.type === 'speed') {
       ctx.fillStyle = '#00e5ff';
@@ -88,6 +135,28 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
       ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(6,-1); ctx.lineTo(5,6); ctx.lineTo(0,10); ctx.lineTo(-5,6); ctx.lineTo(-6,-1); ctx.fill();
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0,2,3,0,Math.PI*2); ctx.fill();
     }
+  }
+
+  // ── 新增：繪製拾取蓄力進度條 (Progress Ring) ──
+  if (item.pickupProgress && item.pickupProgress > 0) {
+    ctx.shadowBlur = 0; // 關閉發光避免模糊進度條
+    const progress = Math.min(item.pickupProgress / 3000, 1);
+    const radius = item.radius * 1.5;
+
+    // 背景淺色圓環
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // 蓄力進度實心環 (綠色/黃色漸變)
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+    ctx.strokeStyle = progress > 0.8 ? '#4ade80' : '#facc15'; // 末端變綠色
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.stroke();
   }
 
   ctx.restore();

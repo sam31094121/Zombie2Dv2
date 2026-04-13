@@ -84,12 +84,14 @@ export class Player {
     this.y = y;
     this.color = color;
     this.weapon = Math.random() > 0.5 ? 'sword' : 'gun';
+    // 初期初始化一個武器槽位
     this.weapons = [{
       id: Math.random().toString(36).substr(2, 9),
       type: this.weapon,
       level: 1,
       branch: null,
-      lastAttackTime: 0
+      lastAttackTime: 0,
+      aimAngle: 0
     }];
   }
 
@@ -100,7 +102,39 @@ export class Player {
       this.xp -= this.maxXp;
       this.level++;
       this.maxXp = Math.round(this.maxXp * 1.35); // 每級需求 ×1.35
+
+      // 無限模式下，武器等級隨角色等級一同成長（最高 8 級）
+      this.weaponLevels['sword'] = Math.min(8, this.level);
+      this.weaponLevels['gun'] = Math.min(8, this.level);
+      this.syncWeaponToSlot();
+
       this.pendingLevelUp = true;
+    }
+  }
+
+  /**
+   * ── 模組化：同步主武器狀態到懸浮武器槽位 ────────────────────────
+   * 無限模式下只會有一個 Slot，此方法確保顯示與邏輯一致
+   */
+  syncWeaponToSlot() {
+    if (!this.isFloatingWeapons) return;
+    
+    // 確保至少有一個槽位
+    if (this.weapons.length === 0) {
+      this.weapons.push({
+        id: Math.random().toString(36).substr(2, 9),
+        type: this.weapon,
+        level: this.weaponLevels[this.weapon],
+        branch: this.weaponBranches[this.weapon],
+        lastAttackTime: 0,
+        aimAngle: this.aimAngle
+      });
+    } else {
+      // 同步第一個槽位（無限模式主武器）
+      const mainSlot = this.weapons[0];
+      mainSlot.type = this.weapon;
+      mainSlot.level = this.weaponLevels[this.weapon];
+      mainSlot.branch = this.weaponBranches[this.weapon];
     }
   }
 
@@ -128,7 +162,7 @@ export class Player {
     }
   }
 
-  activateShield(durationMs: number = 3000) {
+  activateShield(durationMs: number = 2500) {
     this.shieldTimer = Math.max(this.shieldTimer, durationMs);
     this.shield = true;
   }
@@ -169,14 +203,21 @@ export class Player {
     }
 
     let currentSpeed = this.speed;
-    if (this.slowDebuffTimer > 0) {
-      currentSpeed *= 0.7; // 30% slow
-      this.slowDebuffTimer -= dt;
-    }
     if (this.speedBoostTimer > 0) {
+      // 加速期間無視所有減速效果
       currentSpeed *= 1.5;
       this.speedBoostTimer -= dt;
+      // 緩速計時器照樣遞減，但效果不發作
+      if (this.slowDebuffTimer > 0) {
+        this.slowDebuffTimer -= dt;
+      }
+    } else {
+      if (this.slowDebuffTimer > 0) {
+        currentSpeed *= 0.7; // 30% slow
+        this.slowDebuffTimer -= dt;
+      }
     }
+
     if (this.shieldTimer > 0) {
       this.shieldTimer = Math.max(0, this.shieldTimer - dt);
     }

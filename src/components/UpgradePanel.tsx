@@ -25,11 +25,10 @@ const PASSIVE_POOL: PassiveCard[] = [
 // ── 產生 3 個升級選項 ────────────────────────────────────────────────────────
 export function generateUpgradeOptions(player: Player): UpgradeCard[] {
   const cards: UpgradeCard[] = [];
-  const wLv    = player.weaponLevels[player.weapon];
   const branch = player.weaponBranches[player.weapon];
 
-  // 分支選擇（武器 Lv4 且尚未選擇）
-  if (wLv === 4 && !branch) {
+  // 分支選擇（玩家等級 >= 5 且尚未選擇）
+  if (player.level >= 5 && !branch) {
     cards.push({ kind: 'branch', weapon: player.weapon, branch: 'A' });
     cards.push({ kind: 'branch', weapon: player.weapon, branch: 'B' });
     // 第 3 張給被動
@@ -38,27 +37,11 @@ export function generateUpgradeOptions(player: Player): UpgradeCard[] {
     return cards;
   }
 
-  // 當前武器升級（尚未滿 8 級）
-  if (wLv < 8 && (wLv < 5 || branch)) {
-    cards.push({ kind: 'weapon_level', weapon: player.weapon, fromLv: wLv });
-  }
-
-  // 另一把武器升級
-  const other = player.weapon === 'sword' ? 'gun' : 'sword';
-  const otherLv     = player.weaponLevels[other];
-  const otherBranch = player.weaponBranches[other];
-  if (otherLv < 8 && (otherLv < 5 || otherBranch)) {
-    cards.push({ kind: 'weapon_level', weapon: other, fromLv: otherLv });
-  }
-
   // 填滿到 3 張（隨機被動，避免重複）
-  const existingPassiveKeys = new Set(
-    cards.filter(c => c.kind === 'passive').map(c => (c as { kind: 'passive'; key: string }).key)
-  );
   const shuffled = [...PASSIVE_POOL].sort(() => Math.random() - 0.5);
   for (const p of shuffled) {
     if (cards.length >= 3) break;
-    if (!existingPassiveKeys.has(p.key)) cards.push(p);
+    cards.push(p);
   }
 
   // 洗牌順序
@@ -106,7 +89,10 @@ interface Props {
 
 // ── 主元件 ──────────────────────────────────────────────────────────────────
 export function UpgradePanel({ player, onSelect }: Props) {
-  const options = useMemo(() => generateUpgradeOptions(player), [player.level]);
+  // [修正] 移除對 player.level 的過度依賴，改用玩家當前主武器的等級與分支狀態作為快取鍵值
+  // 這樣即使等級沒變（如 debug 觸發或重複升級），只要武器狀態不同就會重新計算
+  const weaponStateKey = `${player.level}-${player.weapon}-${player.weaponLevels[player.weapon]}-${player.weaponBranches[player.weapon]}`;
+  const options = useMemo(() => generateUpgradeOptions(player), [weaponStateKey]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center"
@@ -123,14 +109,14 @@ export function UpgradePanel({ player, onSelect }: Props) {
       </div>
 
       {/* 3 張卡片 */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 w-full max-w-sm sm:max-w-none px-4 sm:px-0">
+      <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-3 sm:gap-6 w-full max-w-xs sm:max-w-4xl mx-auto px-4 sm:px-0">
         {options.map((card, i) => {
           const c = cardContent(card);
           return (
             <button
               key={i}
               onClick={() => onSelect(card)}
-              className="w-full sm:w-44 p-3 sm:p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 hover:scale-105 hover:brightness-110 active:scale-95 flex flex-row sm:flex-col items-center gap-3 sm:gap-2 select-none touch-manipulation text-left sm:text-center"
+              className="w-full sm:w-56 p-4 sm:p-6 rounded-2xl border-2 cursor-pointer transition-all duration-150 hover:scale-105 hover:brightness-110 active:scale-95 flex flex-row sm:flex-col items-center gap-4 sm:gap-3 select-none touch-manipulation text-left sm:text-center"
               style={{
                 background: 'rgba(20,20,30,0.95)',
                 borderColor: c.color,
