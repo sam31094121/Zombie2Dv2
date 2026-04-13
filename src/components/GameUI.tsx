@@ -7,14 +7,13 @@ import { audioManager } from '../game/AudioManager';
 import { MobileControls } from './MobileControls';
 import { NetworkManager } from '../game/NetworkManager';
 import { useGameLoop } from '../hooks/useGameLoop';
-import { StartScreen } from './screens/StartScreen';
+import { HomeScreen } from './screens/HomeScreen';
 import { GameOverScreen } from './screens/GameOverScreen';
 import { P1Card } from './hud/P1Card';
 import { P2Card } from './hud/P2Card';
 import { WaveDisplay } from './hud/WaveDisplay';
 import { TestModePanel } from './debug/TestModePanel';
 import { UpgradePanel, UpgradeCard } from './UpgradePanel';
-import { LobbyCanvas } from './lobby/LobbyCanvas';
 import { ShopPanel } from './arena/ShopPanel';
 import { ManagementView } from './arena/ManagementView';
 import { VictoryScreen } from './screens/VictoryScreen';
@@ -27,18 +26,17 @@ export const GameUI: React.FC = () => {
   const [isFSVisible, setIsFSVisible] = useState(true);
   const fsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fsBtnRef = useRef<HTMLButtonElement>(null);
-  const [gameState, setGameState] = useState<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
+  const [gameState, setGameState] = useState<'start' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
   const [p2State, setP2State] = useState<Player | null>(null);
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const gameRef = useRef<Game | null>(null);
-  const gameStateRef = useRef<'start' | 'lobby' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
+  const gameStateRef = useRef<'start' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const arenaShopEnteredRef = useRef(false);
 
   // ── 線上模式狀態 ──────────────────────────────────────────
-  const [selectionStep, setSelectionStep] = useState<'platform' | 'players' | 'online'>('platform');
   const [onlineStep, setOnlineStep] = useState<'menu' | 'waiting' | 'joining'>('menu');
   const [roomCode, setRoomCode] = useState('');
   const [joinInput, setJoinInput] = useState('');
@@ -48,7 +46,7 @@ export const GameUI: React.FC = () => {
   const networkRef = useRef<NetworkManager | null>(null);
 
   const [playerCount, setPlayerCount] = useState<number>(1);
-  const [platform, setPlatform] = useState<'pc' | 'mobile' | null>(null);
+  const [platform, setPlatform] = useState<'pc' | 'mobile'>('pc');
 
   // ── 復活倒計時 ────────────────────────────────────────────
   const [p1RespawnCountdown, setP1RespawnCountdown] = useState(0);
@@ -206,14 +204,6 @@ export const GameUI: React.FC = () => {
     startLoop();
   };
 
-  // StartScreen → 進大廳（單人/雙人本地）
-  const enterLobby = (count: number) => {
-    setPlayerCount(count);
-    audioManager.init();
-    audioManager.resume();
-    setGameState('lobby');
-  };
-
   // ── 線上遊戲開始 ──────────────────────────────────────────
   const startOnlineGame = (nm: NetworkManager, pid: number, mode: 'endless' | 'arena' = onlineLobbyMode) => {
     audioManager.init();
@@ -322,7 +312,7 @@ export const GameUI: React.FC = () => {
   };
 
   // ── 建立 / 加入房間 ───────────────────────────────────────
-  const handleCreateRoom = async () => {
+  const handleCreateRoom = async (mode: 'endless' | 'arena') => {
     setOnlineError('正在連線伺服器...');
     await wakeUpServer();
     setOnlineError('');
@@ -341,12 +331,13 @@ export const GameUI: React.FC = () => {
     nm.onRoomJoined = (code, pid) => { localPid = pid; setRoomCode(code); setMyPlayerId(pid); setOnlineStep('waiting'); };
     nm.onPeerConnected = () => {
       setPlayerCount(2);
-      setOnlineLobbyMode('endless');
-      gameStateRef.current = 'lobby';
-      setGameState('lobby');
+      setOnlineLobbyMode(mode);
+      // 直接開始遊戲，不再經過大廳
+      nm.sendControl({ t: 'START', mode });
+      startOnlineGame(nm, localPid, mode);
     };
-    nm.onGameStart  = (mode) => {
-      const nextMode = mode ?? gameRef.current?.mode ?? 'endless';
+    nm.onGameStart  = (m) => {
+      const nextMode = m ?? gameRef.current?.mode ?? 'endless';
       setOnlineLobbyMode(nextMode);
       startOnlineGame(nm, localPid, nextMode);
     };
@@ -358,6 +349,7 @@ export const GameUI: React.FC = () => {
     setOnlineError('正在連線伺服器...');
     await wakeUpServer();
     setOnlineError('');
+    setOnlineStep('joining'); // 顯示連線中 spinner
     const nm = new NetworkManager();
     networkRef.current = nm;
     nm.onError = (msg) => setOnlineError(msg);
@@ -368,13 +360,12 @@ export const GameUI: React.FC = () => {
         setGameState('start');
       }
     };
-    try { await nm.connect(WS_URL); } catch { setOnlineError('無法連線到伺服器，請稍後再試'); return; }
+    try { await nm.connect(WS_URL); } catch { setOnlineError('無法連線到伺服器，請稍後再試'); setOnlineStep('menu'); return; }
     let localPid = 2;
     nm.onRoomJoined = (code, pid) => { localPid = pid; setMyPlayerId(pid); setRoomCode(code); };
     nm.onPeerConnected = () => {
       setPlayerCount(2);
-      gameStateRef.current = 'lobby';
-      setGameState('lobby');
+      // 留在 HomeScreen，等 P1 發送 START 訊息後由 nm.onGameStart 觸發
     };
     nm.onGameStart  = (mode) => {
       const nextMode = mode ?? gameRef.current?.mode ?? 'endless';
@@ -388,7 +379,7 @@ export const GameUI: React.FC = () => {
   const handleCancelWait = () => { networkRef.current?.disconnect(); setOnlineStep('menu'); setRoomCode(''); };
 
   const handleMainMenu = () => {
-    setGameState('start'); setSelectionStep('platform'); setOnlineStep('menu');
+    setGameState('start'); setOnlineStep('menu');
     setRoomCode(''); setJoinInput(''); setOnlineError('');
     setOnlineLobbyMode('endless');
     setReadyState({ myReady: false, otherReady: false });
@@ -507,44 +498,17 @@ export const GameUI: React.FC = () => {
           )}
         </button>
 
-        {/* ── 大廳 ────────────────────────────────────────────── */}
-        {gameState === 'lobby' && (
-          <div className="absolute inset-0 z-30">
-            <LobbyCanvas
-              playerColor={myPlayerId === 1 ? '#4fc3f7' : '#f97316'}
-              platform={platform}
-              readOnly={!!networkRef.current && myPlayerId !== 1}
-              statusText={
-                networkRef.current
-                  ? myPlayerId === 1
-                    ? '1 號玩家可以選擇模式，2 號玩家只能觀看'
-                    : '等待 1 號玩家選擇模式'
-                  : undefined
-              }
-              onStartGame={(diff, mode) => {
-                if (networkRef.current) {
-                  if (myPlayerId !== 1) return;
-                  setOnlineLobbyMode(mode);
-                  networkRef.current.sendControl({ t: 'START', mode });
-                  startOnlineGame(networkRef.current, myPlayerId, mode);
-                  return;
-                }
-                startGame(playerCount, diff, mode);
-              }}
-            />
-          </div>
-        )}
-
-        {/* ── 開始畫面 ───────────────────────────────────────── */}
+        {/* ── 首頁 ────────────────────────────────────────────── */}
         {gameState === 'start' && (
-          <StartScreen
-            selectionStep={selectionStep} setSelectionStep={setSelectionStep}
-            platform={platform}           setPlatform={setPlatform}
-            onlineStep={onlineStep}       setOnlineStep={setOnlineStep}
+          <HomeScreen
+            platform={platform}
+            setPlatform={setPlatform}
+            onlineStep={onlineStep}
             roomCode={roomCode}
-            joinInput={joinInput}         setJoinInput={setJoinInput}
-            onlineError={onlineError}     setOnlineError={setOnlineError}
-            onStartGame={enterLobby}
+            joinInput={joinInput}
+            setJoinInput={setJoinInput}
+            onlineError={onlineError}
+            onStartGame={(count, mode) => startGame(count, 'normal', mode)}
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}
             onCancelWait={handleCancelWait}

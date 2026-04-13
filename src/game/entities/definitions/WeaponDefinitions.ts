@@ -1,11 +1,11 @@
-// ── WeaponDefinitions.ts ────────────────────────────────────────────────────
-// 武器型別登錄表（Registry Pattern / Open-Closed Principle）
+﻿// ?? WeaponDefinitions.ts ????????????????????????????????????????????????????
+// 甇血??駁?銵剁?Registry Pattern / Open-Closed Principle嚗?
 //
-// 新增武器方式：
-//   1. 在 WEAPON_REGISTRY 加一個 key（或在 sword/gun 加新 level entry）
-//   2. 實作 fire() + drawWeapon()
-//   ✅ Game.ts handlePlayerAttacks / Player.ts draw() 主邏輯零修改
-// ────────────────────────────────────────────────────────────────────────────
+// ?啣?甇血?孵?嚗?
+//   1. ??WEAPON_REGISTRY ????key嚗???sword/gun ? level entry嚗?
+//   2. 撖虫? fire() + drawWeapon()
+//   ??Game.ts handlePlayerAttacks / Player.ts draw() 銝駁?頛舫靽格
+// ????????????????????????????????????????????????????????????????????????????
 import type { Player } from '../../Player';
 import type { Game } from '../../Game';
 import { ProjectileSpec } from '../../types';
@@ -17,28 +17,28 @@ import { drawMuzzleFlash } from '../../renderers/EffectRenderer';
 import { MissileProjectile } from '../MissileProjectile';
 import { ArcProjectile } from '../ArcProjectile';
 
-// ── 武器等級定義介面 ─────────────────────────────────────────────────────────
+// ?? 甇血蝑?摰儔隞 ?????????????????????????????????????????????????????????
 export interface IWeaponLevelDef {
-  readonly attackInterval: number;   // ms 攻擊間隔
-  readonly attackRange?: number;     // px 攻擊射程（以武器中心為原點）；未設定用預設：sword=150, gun=300
-  readonly burstCount?: number;      // 連發次數（只有 gun lv5 = 2）
-  readonly burstDelay?: number;      // 連發間隔 ms
+  readonly attackInterval: number;   // ms ?餅???
+  readonly attackRange?: number;     // px ?餅?撠?嚗誑甇血銝剖??箏?暺?嚗閮剖??券?閮哨?sword=150, gun=300
+  readonly burstCount?: number;      // ??甈⊥嚗??gun lv5 = 2嚗?
+  readonly burstDelay?: number;      // ???? ms
 
-  // 產生這次攻擊的所有子彈規格
-  // dmgMult = player.damageMultiplier × altar boost（由 caller 計算）
+  // ?Ｙ??活?餅?????敶???
+  // dmgMult = player.damageMultiplier ? altar boost嚗 caller 閮?嚗?
   fire(player: Player, dmgMult: number, origin?: {x: number, y: number, aimAngle: number}): ProjectileSpec[];
 
-  // 進階攻擊（Branch A/B 劍系使用）：直接操作 game，fire() 回傳空陣列
+  // ?脤??餅?嚗ranch A/B ?頂雿輻嚗??湔?? game嚗ire() ?蝛粹??
   fireDirect?: (game: Game, player: Player, dmgMult: number, origin?: {x: number, y: number, aimAngle: number}) => void;
 
-  // 繪製武器（ctx 已由 caller 做 rotate(aimAngle)）
-  // 函式內自己 save/restore
+  // 蝜芾ˊ甇血嚗tx 撌脩 caller ??rotate(aimAngle)嚗?
+  // ?賢??扯撌?save/restore
   drawWeapon(ctx: CanvasRenderingContext2D, player: Player, slot?: import('../../Player').WeaponSlot): void;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SWORD 攻擊函式
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
+// SWORD ?餅??賢?
+// ????????????????????????????????????????????????????????????????????????????
 function makeSwordSpec(player: Player, dmgMult: number, radius: number, damage: number, origin?: {x: number, y: number, aimAngle: number}): ProjectileSpec {
   const angle = origin?.aimAngle ?? player.aimAngle;
   const dir = { x: Math.cos(angle), y: Math.sin(angle) };
@@ -53,9 +53,9 @@ function makeSwordSpec(player: Player, dmgMult: number, radius: number, damage: 
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// GUN 攻擊函式
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
+// GUN ?餅??賢?
+// ????????????????????????????????????????????????????????????????????????????
 function makeBullet(
   player: Player, dmgMult: number,
   vx: number, vy: number,
@@ -64,12 +64,12 @@ function makeBullet(
   bulletType = 'blue_ellipse',
   origin?: {x: number, y: number, aimAngle: number}
 ): ProjectileSpec {
-  // 動態計算子彈在 280px 處消失所需的時間 (假設基準 60 FPS: 16.66ms per tick)
+  // ??閮?摮???280px ??憭望??????(?身?箸? 60 FPS: 16.66ms per tick)
   const maxRange = 280;
   const lifetime = (maxRange / speed) * (1000 / 60);
 
   const angle = origin?.aimAngle ?? player.aimAngle;
-  // 將槍口偏移 (ox, oy) 進行旋轉，與武器指向對齊
+  // 撠????蝘?(ox, oy) ?脰???嚗?甇血??撠?
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   const rotatedOx = ox * cos - oy * sin;
@@ -89,9 +89,9 @@ function makeBullet(
 
 function angleVec(a: number) { return { x: Math.cos(a), y: Math.sin(a) }; }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
 // SWORD DRAW HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
 function swordSwingOffset(player: Player, slot?: import('../../Player').WeaponSlot): number {
   if ((player as any).isPreview) return 0;
   const t = Date.now() - (slot?.lastAttackTime ?? player.lastAttackTime);
@@ -99,11 +99,11 @@ function swordSwingOffset(player: Player, slot?: import('../../Player').WeaponSl
   return t < dur ? -Math.PI / 2 + (t / dur) * Math.PI : -Math.PI / 4;
 }
 
-// ── 突刺刺刀 drawWeapon 輔助（玩家手持時的外觀）──────────────────────────────
-// 刀丟出去時（_swordOut = true）：顯示空拳，不顯示刀
-// 刀回到手上時：顯示刀
+// ?? 蝒?箏? drawWeapon 頛嚗摰嗆?????閫嚗??????????????????????????????
+// ?銝?餅?嚗swordOut = true嚗?憿舐內蝛箸嚗?憿舐內?
+// ??????憿舐內?
 function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: number = 2, slot?: import('../../Player').WeaponSlot): void {
-  // 浮空武器不使用玩家全域 _swordOut 狀態（避免多把武器互相干擾導致黑拳）
+  // 瘚桃征甇血銝蝙?函摰嗅??_swordOut ????踹?憭?甇血鈭撟脫撠暺嚗?
   if (!slot && (player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   ctx.save();
   ctx.translate(14, 8);
@@ -115,9 +115,9 @@ function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: num
   ctx.restore();
 }
 
-// ── 飛刀 fireDirect 參數（base branch）──────────────────────────────────────
+// ?? 憌? fireDirect ?嚗ase branch嚗??????????????????????????????????????
 function _mkBase(level: number, p: Player, dmgMult: number, origin?: {x: number, y: number, aimAngle: number}): SwordConfig {
-  // maxRange 隨等級微增；damage = 等級數；冷卻統一 800ms
+  // maxRange ?函?蝝凝憓?damage = 蝑??賂??瑕蝯曹? 800ms
   const ranges = [160, 180, 200, 220];
   const speed = 0.42;
   const maxRange = ranges[level - 1];
@@ -136,9 +136,9 @@ function _mkBase(level: number, p: Player, dmgMult: number, origin?: {x: number,
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// WEAPON REGISTRY（劍 Lv1-4：Brotato 回旋飛刀）
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
+// WEAPON REGISTRY嚗? Lv1-4嚗rotato ??憌?嚗?
+// ????????????????????????????????????????????????????????????????????????????
 export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
 
   1: {
@@ -189,7 +189,7 @@ export const SWORD_LEVELS: Record<number, IWeaponLevelDef> = {
 
 export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
 
-  // Lv1：左輪手槍（單發直射）
+  // Lv1嚗椰頛芣?瑽??桃?游?嚗?
   1: {
     attackInterval: 800,
     fire: (player, dmgMult, origin) => {
@@ -200,7 +200,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
-      // 原始設計 44×44，offset (-14, -22) 將握柄對齊玩家手部，槍管朝右
+      // ??閮剛? 44?44嚗ffset (-14, -22) 撠??朣摰嗆??剁?瑽恣?
       const ox = -14, oy = -22;
       const r = (x: number, y: number, w: number, h: number) =>
         ctx.fillRect(x + ox, y + oy, w, h);
@@ -212,56 +212,56 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
         brass: '#fbbf24', black: '#000000',
       };
 
-      // 1. 槍管
+      // 1. 瑽恣
       ctx.fillStyle = C.silver; r(18, 16, 21, 3);
       ctx.fillStyle = C.white; r(18, 16, 21, 1);
       ctx.fillStyle = C.shadow; r(18, 18, 21, 1);
-      ctx.fillStyle = C.shadow; r(36, 15, 2, 1); // 準星
+      ctx.fillStyle = C.shadow; r(36, 15, 2, 1); // 皞?
 
-      // 2. 轉輪
+      // 2. 頧憚
       ctx.fillStyle = C.silver; r(10, 16, 8, 7);
       ctx.fillStyle = C.white; r(10, 16, 8, 1);
-      ctx.fillStyle = C.deep; r(11, 18, 6, 1); // 溝槽
+      ctx.fillStyle = C.deep; r(11, 18, 6, 1); // 皞局
       ctx.fillStyle = C.deep; r(11, 21, 6, 1);
 
-      // 3. 槍身框架
+      // 3. 瑽澈獢
       ctx.fillStyle = C.silver; r(6, 16, 4, 7);
       ctx.fillStyle = C.white; r(6, 16, 4, 1);
 
-      // 4. 擊錘
+      // 4. ??
       ctx.fillStyle = C.shadow; r(4, 13, 2, 2);
       ctx.fillStyle = C.deep; r(5, 15, 2, 2);
 
-      // 5. 握柄（木製）
+      // 5. ?⊥?嚗鋆踝?
       ctx.fillStyle = C.wood; r(2, 23, 6, 8);
       ctx.fillStyle = C.wood; r(3, 31, 5, 2);
       ctx.fillStyle = C.wood; r(4, 33, 4, 1);
-      ctx.fillStyle = C.woodDark; r(2, 23, 1, 9); // 木紋
+      ctx.fillStyle = C.woodDark; r(2, 23, 1, 9); // ?函?
       ctx.fillStyle = C.woodDark; r(4, 27, 1, 1);
-      ctx.fillStyle = C.brass; r(4, 28, 1, 1); // 飾釘
+      ctx.fillStyle = C.brass; r(4, 28, 1, 1); // 憌暸?
 
-      // 6. 護圈 + 板機
-      ctx.fillStyle = C.shadow; r(9, 23, 9, 1); // 護圈上緣
-      ctx.fillStyle = C.shadow; r(17, 23, 1, 4); // 護圈前緣
-      ctx.fillStyle = C.shadow; r(10, 27, 7, 1); // 護圈底緣
-      ctx.fillStyle = C.white; r(11, 28, 5, 1); // 底部反光
-      ctx.fillStyle = C.black; r(12, 23, 2, 1); // 板機根部陰影
-      ctx.fillStyle = C.triggerSteel; r(12, 24, 1, 2); // 板機主體
-      ctx.fillStyle = C.triggerSteel; r(13, 25, 1, 1); // 板機鉤尖
-      ctx.fillStyle = C.shadow; r(12, 24, 1, 1); // 板機高光
-      ctx.fillStyle = C.deep; r(13, 24, 1, 1); // 板機內陰影
+      // 6. 霅瑕? + ?踵?
+      ctx.fillStyle = C.shadow; r(9, 23, 9, 1); // 霅瑕?銝楠
+      ctx.fillStyle = C.shadow; r(17, 23, 1, 4); // 霅瑕??楠
+      ctx.fillStyle = C.shadow; r(10, 27, 7, 1); // 霅瑕?摨楠
+      ctx.fillStyle = C.white; r(11, 28, 5, 1); // 摨??
+      ctx.fillStyle = C.black; r(12, 23, 2, 1); // ?踵??寥?啣蔣
+      ctx.fillStyle = C.triggerSteel; r(12, 24, 1, 2); // ?踵?銝駁?
+      ctx.fillStyle = C.triggerSteel; r(13, 25, 1, 1); // ?踵??文?
+      ctx.fillStyle = C.shadow; r(12, 24, 1, 1); // ?踵?擃?
+      ctx.fillStyle = C.deep; r(13, 24, 1, 1); // ?踵??折敶?
 
-      // 7. 槍管接縫
+      // 7. 瑽恣?亦葦
       ctx.fillStyle = C.black; r(18, 16, 1, 4);
 
-      // 8. 槍口火光（模組化 2-frame flash）
+      // 8. 瑽?怠?嚗芋蝯? 2-frame flash嚗?
       drawMuzzleFlash(ctx, 25, -5, slot?.lastAttackTime ?? player.lastAttackTime);
 
       ctx.restore();
     },
   },
 
-  // Lv2：單發直射（更高傷害）
+  // Lv2嚗?潛撠??湧??瑕拿嚗?
   2: {
     attackInterval: 605,
     fire: (player, dmgMult, origin) => {
@@ -272,15 +272,15 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
-      // 以 (0,0) 為武器視覺中心，槍管朝右
+      // 隞?(0,0) ?箸郎?刻?閬箔葉敹?瑽恣?
       ctx.translate(2, 0);
       ctx.lineWidth = 2; ctx.strokeStyle = '#1e293b';
-      // 滑套（銀鋼色）
+      // 皛?嚗??潸嚗?
       ctx.fillStyle = '#94a3b8'; ctx.fillRect(0, -4, 22, 8); ctx.strokeRect(0, -4, 22, 8);
-      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(0, -4, 22, 1); // 高光邊
-      // 槍管延伸 + 框架（深鋼色）
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(0, -4, 22, 1); // 擃???
+      // 瑽恣撱嗡撓 + 獢嚗楛?潸嚗?
       ctx.fillStyle = '#475569'; ctx.fillRect(22, -2, 6, 4); ctx.fillRect(8, 4, 4, 10);
-      // 握把（深灰）
+      // ?⊥?嚗楛?堆?
       ctx.fillStyle = '#374151';
       ctx.beginPath(); ctx.moveTo(-2, 4); ctx.lineTo(4, 4); ctx.lineTo(2, 14); ctx.lineTo(-4, 14); ctx.closePath(); ctx.fill();
       drawMuzzleFlash(ctx, 28, 0, slot?.lastAttackTime ?? player.lastAttackTime);
@@ -288,7 +288,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     },
   },
 
-  // Lv3：左右雙管齊發
+  // Lv3嚗椰?喲?蝞⊿???
   3: {
     attackInterval: 600,
     fire: (player, dmgMult, origin) => {
@@ -303,16 +303,16 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
-      // 以 (0,0) 為武器視覺中心，槍管朝右，上下對稱雙管設計
+      // 隞?(0,0) ?箸郎?刻?閬箔葉敹?瑽恣?嚗?銝?蝔梢?蝞∟身閮?
       ctx.translate(2, 0);
       ctx.lineWidth = 2; ctx.strokeStyle = '#1e293b';
-      // 上管（銀藍鋼）
+      // 銝恣嚗??嚗?
       ctx.fillStyle = '#8bacc4'; ctx.fillRect(0, -7, 28, 5); ctx.strokeRect(0, -7, 28, 5);
-      ctx.fillStyle = '#dce8f2'; ctx.fillRect(0, -7, 28, 1); // 高光
-      // 下管（稍深銀藍）
+      ctx.fillStyle = '#dce8f2'; ctx.fillRect(0, -7, 28, 1); // 擃?
+      // 銝恣嚗?瘛梢???
       ctx.fillStyle = '#7a9eb8'; ctx.fillRect(0, 2, 28, 5); ctx.strokeRect(0, 2, 28, 5);
-      ctx.fillStyle = '#ccdde8'; ctx.fillRect(0, 2, 28, 1); // 高光
-      // 握把（深灰）
+      ctx.fillStyle = '#ccdde8'; ctx.fillRect(0, 2, 28, 1); // 擃?
+      // ?⊥?嚗楛?堆?
       ctx.fillStyle = '#374151'; ctx.fillRect(-12, -5, 12, 10);
       ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(5, 5); ctx.lineTo(3, 13); ctx.lineTo(-2, 13); ctx.closePath(); ctx.fill();
       drawMuzzleFlash(ctx, 28, -5, slot?.lastAttackTime ?? player.lastAttackTime);
@@ -321,7 +321,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     },
   },
 
-  // Lv4：前大後小三角陣型（1 大 + 2 小）
+  // Lv4嚗?憭批?撠?閫??1 憭?+ 2 撠?
   4: {
     attackInterval: 600,
     fire: (player, dmgMult, origin) => {
@@ -329,10 +329,10 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       const angle = origin?.aimAngle ?? player.aimAngle;
       const v = angleVec(angle);
       const perp = { x: -v.y, y: v.x };
-      // 大子彈（槍口中央）
+      // 憭批?敶?瑽銝剖亢嚗?
       const front = makeBullet(player, dmgMult, v.x, v.y, 3, 2, 10, 8,
         32, 0, 'blue_ellipse', origin);
-      // 兩顆小子彈（雙槍管槍口）
+      // ?拚?撠?敶???蝞⊥????
       const left = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
         32, -5, 'blue_ellipse', origin);
       const right = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
@@ -341,18 +341,18 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
-      // 以 (0,0) 為武器視覺中心，槍管朝右，上下對稱三管設計
+      // 隞?(0,0) ?箸郎?刻?閬箔葉敹?瑽恣?嚗?銝?蝔曹?蝞∟身閮?
       ctx.translate(2, 0);
       ctx.lineWidth = 2; ctx.strokeStyle = '#1e293b';
-      // 上管（鋼藍銀）
+      // 銝恣嚗??嚗?
       ctx.fillStyle = '#7496b0'; ctx.fillRect(0, -7, 32, 5); ctx.strokeRect(0, -7, 32, 5);
-      ctx.fillStyle = '#c8d9e8'; ctx.fillRect(0, -7, 32, 1); // 高光
-      // 下管（鋼藍銀）
+      ctx.fillStyle = '#c8d9e8'; ctx.fillRect(0, -7, 32, 1); // 擃?
+      // 銝恣嚗??嚗?
       ctx.fillStyle = '#7496b0'; ctx.fillRect(0, 2, 32, 5); ctx.strokeRect(0, 2, 32, 5);
-      ctx.fillStyle = '#c8d9e8'; ctx.fillRect(0, 2, 32, 1); // 高光
-      // 槍管中段連接件（深鋼色）
+      ctx.fillStyle = '#c8d9e8'; ctx.fillRect(0, 2, 32, 1); // 擃?
+      // 瑽恣銝剜挾??隞塚?瘛梢?莎?
       ctx.fillStyle = '#4a6a80'; ctx.fillRect(20, -8, 4, 16);
-      // 握把 + 扳機
+      // ?⊥? + ?單?
       ctx.fillStyle = '#374151'; ctx.fillRect(-14, -5, 14, 10);
       ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(6, 5); ctx.lineTo(4, 13); ctx.lineTo(-2, 13); ctx.closePath(); ctx.fill();
       drawMuzzleFlash(ctx, 32, -5, slot?.lastAttackTime ?? player.lastAttackTime);
@@ -362,10 +362,10 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SWORD 分支：Lv5A-8A（旋風流）— 回旋鏢 + 旋轉場 + 回飛
-// 使用 fireDirect 直接創建 SwordProjectile，fire() 回傳空陣列
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
+// SWORD ?嚗v5A-8A嚗?憸冽?嚗?????+ ????+ ??
+// 雿輻 fireDirect ?湔?萄遣 SwordProjectile嚗ire() ?蝛粹??
+// ????????????????????????????????????????????????????????????????????????????
 
 function makeSwordConfigA(
   level: number,
@@ -410,7 +410,7 @@ function makeSwordConfigB(
   };
 }
 
-// ── 空拳（刀丟出去時的手部）─────────────────────────────────────────────────
+// ?? 蝛箸嚗?銝?餅????剁??????????????????????????????????????????????????
 function _drawEmptyFist(ctx: CanvasRenderingContext2D): void {
   ctx.save();
   ctx.translate(14, 8);
@@ -423,7 +423,7 @@ function _drawEmptyFist(ctx: CanvasRenderingContext2D): void {
   ctx.restore();
 }
 
-// ── Branch A/B 手持輔助（呼叫 SwordRenderer 的共用 shape）───────────────────
+// ?? Branch A/B ??頛嚗??SwordRenderer ???shape嚗???????????????????
 function _drawHeldBranchA(ctx: CanvasRenderingContext2D, player: Player, slot?: import('../../Player').WeaponSlot): void {
   if (!slot && (player as any)._swordOut) { _drawEmptyFist(ctx); return; }
   const colors = getBranchColors('A', player.weaponLevels[player.weapon]);
@@ -495,9 +495,9 @@ const SWORD_BRANCH_A: Record<string, IWeaponLevelDef> = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SWORD 分支：Lv5B-8B（審判流）— 飛出 → 嵌入目標 → AOE 大爆炸
-// ═══════════════════════════════════════════════════════════════════════════
+// ????????????????????????????????????????????????????????????????????????????
+// SWORD ?嚗v5B-8B嚗祟?斗?嚗?憌 ??撋?格? ??AOE 憭抒???
+// ????????????????????????????????????????????????????????????????????????????
 const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
   '5B': {
     attackInterval: 2000,
@@ -549,10 +549,10 @@ const SWORD_BRANCH_B: Record<string, IWeaponLevelDef> = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// GUN 分支：Lv5A-8A（連射流） / Lv5B-8B（狙擊流）
-// ═══════════════════════════════════════════════════════════════════════════
-// ── 導彈輔助：建立 MissileProjectile 設定 ─────────────────────────────────────
+// ????????????????????????????????????????????????????????????????????????????
+// GUN ?嚗v5A-8A嚗??瘚? / Lv5B-8B嚗???嚗?
+// ????????????????????????????????????????????????????????????????????????????
+// ?? 撠?頛嚗遣蝡?MissileProjectile 閮剖? ?????????????????????????????????????
 function _makeMissile(
   p: Player, dmgMult: number,
   damage: number, splitAfter: number,
@@ -563,7 +563,7 @@ function _makeMissile(
   const lifetime = (maxRange / speed) * (1000 / 60);
 
   const angle = origin?.aimAngle ?? p.aimAngle;
-  // 導彈發射口偏移 (計算自 _drawMissileLauncher 的 MuzzleFlash 位置)
+  // 撠??澆????蝘?(閮???_drawMissileLauncher ??MuzzleFlash 雿蔭)
   const mx = 29;
   const my = -6;
   const cos = Math.cos(angle);
@@ -578,11 +578,11 @@ function _makeMissile(
     angle,
     speed,
     damage: damage * dmgMult,
-    turnSpeed: 0.005,   // rad/ms 軟追蹤
+    turnSpeed: 0.005,   // rad/ms 頠蕭頩?
     radius: 10,
     isSmall: false,
     splitAfter,
-    groundFireRadius: 70,  // 跟龍捲風差不多大
+    groundFireRadius: 70,  // 頝??脤◢撌桐?憭之
     groundFireDuration: 3000,
   });
   proj.lifetime = lifetime;
@@ -590,19 +590,19 @@ function _makeMissile(
   return proj;
 }
 
-// ── 火箭炮外觀（5A-8A 共用；用戶設計 64×64 → offset dx=-14, dy=-32 對齊玩家中心）──
-// 砲管中心在 game(16, 0)；砲口尖在 game(42, 0)；握把在 game(8, 4)
+// ?? ?怎悌?桀?閫嚗?A-8A ?梁嚗?嗉身閮?64?64 ??offset dx=-14, dy=-32 撠??拙振銝剖?嚗??
+// ?脩恣銝剖???game(16, 0)嚗?????game(42, 0)嚗? game(8, 4)
 function _drawMissileLauncher(
   ctx: CanvasRenderingContext2D,
   player: Player,
   slot?: import('../../Player').WeaponSlot
 ): void {
-  const ox = 10, oy = 28, len = 38; // 縮短一點點主砲管，為強化砲口騰出空間
-  const dx = -14, dy = -32; // 坐標偏移：user + offset = game
+  const ox = 10, oy = 28, len = 38; // 蝮桃銝暺?銝餌蝞∴??箏撥???辰?箇征??
+  const dx = -14, dy = -32; // ???宏嚗ser + offset = game
   const r = (x: number, y: number, w: number, h: number) =>
     ctx.fillRect(x + dx, y + dy, w, h);
 
-  // 精煉高對比調色盤
+  // 蝎曄?擃?瘥矽?脩
   const C = {
     steelDark: '#334155',
     steelMid: '#64748b',
@@ -622,21 +622,21 @@ function _drawMissileLauncher(
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
-  // --- 1. 砲管主體 (Polished Barrel) ---
+  // --- 1. ?脩恣銝駁? (Polished Barrel) ---
   ctx.fillStyle = C.steelMid; r(ox, oy, len, 8);
 
-  // 頂部與底部光影
+  // ????典?敶?
   ctx.fillStyle = C.steelLight; r(ox, oy, len, 2);
   ctx.fillStyle = C.steelHigh; r(ox + 2, oy, len - 4, 1);
   ctx.fillStyle = C.steelDark; r(ox, oy + 6, len, 2);
 
-  // 機械細節：鉚釘與面板線
+  // 璈１蝝啁?嚗????Ｘ蝺?
   ctx.fillStyle = C.black; r(ox + 8, oy, 1, 8);
   ctx.fillStyle = C.black; r(ox + 25, oy, 1, 8);
   ctx.fillStyle = C.brass; r(ox + 10, oy + 1, 1, 1);
   ctx.fillStyle = C.brass; r(ox + 10, oy + 6, 1, 1);
 
-  // --- 2. 流暢強化砲口 (Smooth Reinforced Muzzle) ---
+  // --- 2. 瘚撘瑕??脣 (Smooth Reinforced Muzzle) ---
   const mx = ox + len;
   const my = oy - 1;
   const mw = 8;
@@ -651,37 +651,37 @@ function _drawMissileLauncher(
   ctx.fillStyle = C.bloodMain; r(mx + 2, my + 3, mw - 2, 4);
   ctx.fillStyle = C.bloodGlow; r(mx + 4, my + 4, mw - 4, 2);
 
-  // --- 3. 能量導管組件 (Energy System) ---
-  ctx.fillStyle = C.steelDark; r(ox + 6, oy - 2, 4, 4); // 接口 A
+  // --- 3. ?賡?撠恣蝯辣 (Energy System) ---
+  ctx.fillStyle = C.steelDark; r(ox + 6, oy - 2, 4, 4); // ?亙 A
   ctx.fillStyle = C.bloodDeep; r(ox + 7, oy - 2, 22, 2);
   ctx.fillStyle = C.bloodMain; r(ox + 7, oy - 1, 20, 1);
   ctx.fillStyle = C.bloodHigh; r(ox + 12, oy - 1, 4, 1);
 
-  // --- 4. 戰術瞄準器 (Tactical Scope) ---
+  // --- 4. ?啗?????(Tactical Scope) ---
   ctx.fillStyle = C.black; r(ox + 14, oy - 11, 10, 11);
   ctx.fillStyle = C.steelMid; r(ox + 15, oy - 10, 8, 9);
   ctx.fillStyle = C.bloodDeep; r(ox + 16, oy - 9, 6, 7);
   ctx.fillStyle = C.eyeRed; r(ox + 17, oy - 8, 4, 5);
   ctx.fillStyle = C.white; r(ox + 17, oy - 8, 1, 1);
 
-  // --- 5. 握把與板機 (Ergo Grip) ---
+  // --- 5. ?⊥??璈?(Ergo Grip) ---
   ctx.fillStyle = C.black; r(ox + 12, oy + 8, 5, 11);
   ctx.fillStyle = C.steelDark; r(ox + 13, oy + 8, 3, 11);
-  ctx.fillStyle = C.bloodMain; r(ox + 20, oy + 9, 1, 3); // 板機
+  ctx.fillStyle = C.bloodMain; r(ox + 20, oy + 9, 1, 3); // ?踵?
 
-  // --- 6. 後部平衡裝置 (Rear Stock) ---
+  // --- 6. 敺撟唾﹛鋆蔭 (Rear Stock) ---
   ctx.fillStyle = C.steelMid; r(ox - 6, oy - 1, 6, 11);
   ctx.fillStyle = C.steelHigh; r(ox - 6, oy - 1, 6, 1);
   ctx.fillStyle = C.steelDark; r(ox - 6, oy + 8, 6, 2);
 
-  // 槍口火光（對齊新砲口）
+  // 瑽?怠?嚗?朣?脣嚗?
   drawMuzzleFlash(ctx, mx + mw + dx, oy + 4 + dy, slot?.lastAttackTime ?? player.lastAttackTime);
 
   ctx.restore();
 }
 
 const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
-  // ── 5A：單發追蹤導彈 ────────────────────────────────────────────────────
+  // ?? 5A嚗?潸蕭頩文?敶?????????????????????????????????????????????????????
   '5A': {
     attackInterval: 1200,
     fire: () => [],
@@ -692,7 +692,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 
-  // ── 6A：連射 ×2 追蹤導彈 ─────────────────────────────────────────────
+  // ?? 6A嚗?? ?2 餈質馱撠? ?????????????????????????????????????????????
   '6A': {
     attackInterval: 1100,
     burstCount: 2,
@@ -705,7 +705,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 
-  // ── 7A：連射 ×3 追蹤導彈 ─────────────────────────────────────────────
+  // ?? 7A嚗?? ?3 餈質馱撠? ?????????????????????????????????????????????
   '7A': {
     attackInterval: 1100,
     burstCount: 3,
@@ -718,7 +718,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
 
-  // ── 8A：連射 ×3 分裂彈（0.3s 後裂成 3 顆小導彈）────────────────────
+  // ?? 8A嚗?? ?3 ??敶?0.3s 敺???3 憿?撠?嚗????????????????????
   '8A': {
     attackInterval: 1100,
     burstCount: 3,
@@ -742,7 +742,7 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
 
   const t = Date.now() / 1000;
   const pulse = (Math.sin(t * 8) + 1) / 2;
-  const lvlExt = (level - 5) * 5; // 隨等級延長的尺寸
+  const lvlExt = (level - 5) * 5; // ?函?蝝辣?瑞?撠箏站
 
   const poly = (pts: number[], fill?: string | CanvasGradient, stroke?: string, lw?: number) => {
     ctx.beginPath();
@@ -757,7 +757,7 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
     ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.stroke();
   };
 
-  // 漸層定義
+  // 瞍詨惜摰儔
   const armorWhite = ctx.createLinearGradient(0, 30, 0, 95);
   armorWhite.addColorStop(0, '#ffffff');
   armorWhite.addColorStop(1, '#d1d5db');
@@ -777,37 +777,37 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
   steadyEnergy.addColorStop(0.4, '#38bdf8');
   steadyEnergy.addColorStop(1, 'rgba(3,105,161,0)');
 
-  // 1. 戰術握把 (Grip)
-  poly([24, 58, 45, 58, 40, 94, 18, 94], armorWhite, '#000', 0.2); // 外殼
+  // 1. ?啗??⊥? (Grip)
+  poly([24, 58, 45, 58, 40, 94, 18, 94], armorWhite, '#000', 0.2); // 憭挺
   ctx.globalAlpha = 0.9;
-  poly([22, 64, 38, 64, 36, 90, 20, 90], frameDark); // 防滑區
+  poly([22, 64, 38, 64, 36, 90, 20, 90], frameDark); // ?脫??
   ctx.globalAlpha = 1.0;
-  ctx.fillStyle = '#0f172a'; ctx.fillRect(16, 94, 26, 3); // 底座
-  ctx.beginPath(); ctx.arc(21, 95.5, 0.6, 0, Math.PI * 2); ctx.fillStyle = goldTrim; ctx.fill(); // 金飾點
+  ctx.fillStyle = '#0f172a'; ctx.fillRect(16, 94, 26, 3); // 摨漣
+  ctx.beginPath(); ctx.arc(21, 95.5, 0.6, 0, Math.PI * 2); ctx.fillStyle = goldTrim; ctx.fill(); // ?ˇ暺?
 
-  // 2. 板機與護圈
+  // 2. ?踵??風??
   ctx.beginPath(); ctx.moveTo(45, 58); ctx.bezierCurveTo(45, 80, 60, 80, 60, 65);
   ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 2.5; ctx.stroke();
   poly([48, 60, 46, 72, 50, 72, 52, 60], goldTrim);
 
-  // 3. 槍身主機匣 (Receiver)
-  poly([12, 42, 70, 42, 70, 64, 20, 64, 12, 56], frameDark, '#000', 0.3); // 下層架構
-  poly([15, 40, 65, 40, 65, 54, 18, 54, 15, 48], armorWhite, '#94a3b8', 0.2); // 上層裝甲
+  // 3. 瑽澈銝餅???(Receiver)
+  poly([12, 42, 70, 42, 70, 64, 20, 64, 12, 56], frameDark, '#000', 0.3); // 銝惜?嗆?
+  poly([15, 40, 65, 40, 65, 54, 18, 54, 15, 48], armorWhite, '#94a3b8', 0.2); // 銝惜鋆
   ctx.globalAlpha = 0.6;
   line(25, 44, 55, 44, '#94a3b8', 0.3);
   line(25, 48, 50, 48, '#94a3b8', 0.3);
   ctx.globalAlpha = 1.0;
 
-  // 機械面板螺絲
+  // 璈１?Ｘ?箇結
   ctx.fillStyle = '#334155';
   [20, 24, 60].forEach(x => { ctx.beginPath(); ctx.arc(x, 42, 0.6, 0, Math.PI * 2); ctx.fill(); });
 
-  // 4. 後置擊錘 (Hammer)
+  // 4. 敺蔭?? (Hammer)
   ctx.beginPath(); ctx.moveTo(12, 48); ctx.bezierCurveTo(2, 48, -2, 38, 8, 34); ctx.lineTo(16, 42); ctx.closePath();
   ctx.fillStyle = frameDark; ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 0.4; ctx.stroke();
   ctx.beginPath(); ctx.arc(8, 34, 2.5, 0, Math.PI * 2); ctx.fillStyle = goldTrim; ctx.fill();
 
-  // 5. 能源核心觀測窗 (穩定冰藍)
+  // 5. ?賣??詨?閫皜祉? (蝛拙??啗?)
   ctx.fillStyle = '#020617';
   if ((ctx as any).roundRect) {
     ctx.beginPath(); (ctx as any).roundRect(40, 46, 16, 12, 3); ctx.fill();
@@ -821,37 +821,37 @@ function _drawThreeClawArcGun(ctx: CanvasRenderingContext2D, player: Player, lev
   ctx.beginPath(); ctx.arc(48, 52, 5, 0, Math.PI * 2); ctx.fillStyle = steadyEnergy; ctx.fill();
   ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
 
-  // 6. 統合式：強化槍管與三刃槍口
+  // 6. 蝯勗?撘?撘瑕?瑽恣??????
   const blExt = lvlExt; // Blade extension
-  poly([70, 42, 95 + blExt, 42, 105 + blExt, 48, 105 + blExt, 58, 95 + blExt, 64, 70, 64], frameDark, '#000', 0.5); // 槍管護木
+  poly([70, 42, 95 + blExt, 42, 105 + blExt, 48, 105 + blExt, 58, 95 + blExt, 64, 70, 64], frameDark, '#000', 0.5); // 瑽恣霅瑟
   ctx.globalAlpha = 0.8; ctx.fillStyle = armorWhite; ctx.fillRect(75, 44, 15 + blExt * 0.5, 16); ctx.globalAlpha = 1.0;
 
-  // 上刃 A
+  // 銝? A
   poly([95 + blExt, 42, 125 + blExt, 28, 105 + blExt, 48, 100 + blExt, 46], armorWhite, '#94a3b8', 0.4);
   ctx.lineCap = 'round'; line(100 + blExt, 44, 118 + blExt, 34, goldTrim, 0.8); ctx.lineCap = 'butt';
 
-  // 下刃 B
+  // 銝? B
   poly([95 + blExt, 64, 125 + blExt, 78, 105 + blExt, 58, 100 + blExt, 60], armorWhite, '#94a3b8', 0.4);
   ctx.lineCap = 'round'; line(100 + blExt, 62, 118 + blExt, 70, goldTrim, 0.8); ctx.lineCap = 'butt';
 
-  // 中央導軌 C
+  // 銝剖亢撠? C
   poly([85, 53, 135 + blExt, 53, 110 + blExt, 57, 85, 57], '#94a3b8', '#1e293b', 0.4);
   ctx.globalAlpha = 0.9; line(95, 53, 130 + blExt, 53, '#ffffff', 1.2); ctx.globalAlpha = 1.0;
 
-  // 穩定能量導流
+  // 蝛拙??賡?撠?
   ctx.globalAlpha = 0.2; line(65, 53, 120 + blExt, 53, '#7dd3fc', 1.0); ctx.globalAlpha = 1.0;
   ctx.beginPath(); ctx.moveTo(70, 53); ctx.lineTo(110 + blExt, 53);
   ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.4; ctx.globalAlpha = 0.4;
   ctx.setLineDash([3, 6]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1.0;
 
-  // 槍口放電共振火光 (在最前端開火)
+  // 瑽?暸?望?怠? (?冽??垢?)
   drawMuzzleFlash(ctx, 135 + blExt, 53, slot?.lastAttackTime ?? player.lastAttackTime);
 
   ctx.restore();
 }
 
 function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: number, paralyze: number, origin?: {x: number, y: number, aimAngle: number, muzzleOffset?: {x: number, y: number}}) {
-  audioManager.playShoot(5); // 觸發電弧手槍發射音效
+  audioManager.playShoot(5); // 閫貊?餃憫???澆??單?
   const speed = level >= 8 ? 20 : 16;
   const angle = origin?.aimAngle ?? p.aimAngle;
   const vx = Math.cos(angle) * speed;
@@ -867,7 +867,7 @@ function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: n
     oy += rotatedOffsetY;
   }
   
-  const lifetime = (280 / speed) * (1000 / 60);
+  const lifetime = (360 / speed) * (1000 / 60);
   const proj = new ArcProjectile(p.id, level, ox, oy, vx, vy, damage, jumps, paralyze);
   proj.lifetime = lifetime;
   proj.maxLifetime = lifetime;
@@ -901,7 +901,7 @@ const GUN_BRANCH_B: Record<string, IWeaponLevelDef> = {
   },
 };
 
-// ── 分支資訊（給 UpgradePanel 顯示用）────────────────────────────────────────
+// ?? ?鞈?嚗策 UpgradePanel 憿舐內?剁?????????????????????????????????????????
 export interface IWeaponBranchInfo {
   name: string;
   emoji: string;
@@ -909,29 +909,30 @@ export interface IWeaponBranchInfo {
 }
 export const WEAPON_BRANCH_INFO: Record<'sword' | 'gun', Record<'A' | 'B', IWeaponBranchInfo>> = {
   sword: {
-    A: { name: '旋風流', emoji: '🌪️', description: '高速連斬，5方向清場' },
-    B: { name: '審判流', emoji: '⚡', description: '超重單斬，傷害暴增' },
+    A: { name: '旋刃', emoji: '🗡️', description: '強化直線穿刺與持續輸出' },
+    B: { name: '爆裂', emoji: '💥', description: '命中後造成範圍爆發傷害' },
   },
   gun: {
-    A: { name: '連射流', emoji: '🔥', description: '子彈倍增，超高射速' },
-    B: { name: '電弧流', emoji: '⚡', description: '連鎖電弧，群體麻痺' },
+    A: { name: '導彈', emoji: '🚀', description: '追蹤飛彈，重視壓制與區域控場' },
+    B: { name: '電漿', emoji: '⚡', description: '電漿彈鏈鎖打擊，偏向清群與控場' },
   },
 };
 
-// ── 統一登錄表 ───────────────────────────────────────────────────────────────
+// ?? 蝯曹??駁?銵????????????????????????????????????????????????????????????????
 export const WEAPON_REGISTRY: Record<'sword' | 'gun', Record<number | string, IWeaponLevelDef>> = {
   sword: { ...SWORD_LEVELS, ...SWORD_BRANCH_A, ...SWORD_BRANCH_B },
   gun: { ...GUN_LEVELS, ...GUN_BRANCH_A, ...GUN_BRANCH_B },
 };
 
-// ── 武器等級鍵值（依玩家 weaponLevel + branch 計算）──────────────────────────
+// ?? 甇血蝑??萄潘?靘摰?weaponLevel + branch 閮?嚗??????????????????????????
 export function getWeaponKey(
   weapon: 'sword' | 'gun',
   level: number,
   branch: 'A' | 'B' | null,
 ): number | string {
   if (level >= 5 && branch) return `${level}${branch}`;
-  // 槍基礎線只到 Lv4（無 Lv5 過渡），劍基礎線也到 Lv4（Lv5 只有分支）
+  // 瑽蝷??芸 Lv4嚗 Lv5 ?腹嚗??蝷?銋 Lv4嚗v5 ?芣??嚗?
   const maxBase = 4;
   return Math.min(level, maxBase);
 }
+
