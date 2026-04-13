@@ -111,7 +111,7 @@ function drawHeldKnife(ctx: CanvasRenderingContext2D, player: Player, level: num
   if (level === 1) drawWoodenStakeShape(ctx);
   else if (level === 2) drawRustyDirkShape(ctx);
   else if (level === 3) drawSoldierDirkShape(ctx);
-  else drawBlackSteelKatanaShape(ctx);
+  else drawBlackSteelKatanaShape(ctx, Boolean((player as any).disableWeaponGlow));
   ctx.restore();
 }
 

@@ -410,7 +410,7 @@ export function getBranchColors(branch: 'A' | 'B', level: number): { glow: strin
 // 黑鋼日輪刀（Black Steel Katana）── Lv4，從 SVG 44×44 轉換，90° CCW
 // 日本刀微弧刃 + 銀色刃紋 + 菱格紋柄，全長約 40px（x:-22 ~ x:18）
 // ─────────────────────────────────────────────────────────────────────────────
-export function drawBlackSteelKatanaShape(ctx: CanvasRenderingContext2D): void {
+export function drawBlackSteelKatanaShape(ctx: CanvasRenderingContext2D, disableGlow: boolean = false): void {
   ctx.scale(1.5, 1.5); // uniform — 60px，保持圓形 Tsuba 與曲線比例
 
   // ── 刀身基底（Sori 弧度，深黑鋼）──
@@ -447,8 +447,10 @@ export function drawBlackSteelKatanaShape(ctx: CanvasRenderingContext2D): void {
     const phase = (hamonNow + i / 3) % 1;
     const alpha = 0.25 + Math.sin(phase * Math.PI * 2) * 0.35 + 0.35;
     ctx.globalAlpha = alpha;
-    ctx.shadowBlur  = 6;
-    ctx.shadowColor = '#7C3AED';
+    if (!disableGlow) {
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = '#7C3AED';
+    }
     ctx.strokeStyle = '#C084FC';
     ctx.beginPath();
     ctx.moveTo(x1, y1);

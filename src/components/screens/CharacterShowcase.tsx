@@ -1,11 +1,24 @@
-// ── CharacterShowcase.tsx ─────────────────────────────────────────────────────
-// 首頁左側動畫角色 Canvas：真實遊戲武器（刀lv4、槍lv1、導彈槍）環繞角色
-// ─────────────────────────────────────────────────────────────────────────────
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef } from 'react';
 import { WEAPON_REGISTRY, getWeaponKey } from '../../game/entities/definitions/WeaponDefinitions';
 
-// 只用到 lastAttackTime，其餘欄位以 any 補足
-const MOCK_PLAYER = { lastAttackTime: -9_999_999 } as any;
+const makeMockPlayer = (
+  type: 'sword' | 'gun',
+  level: number,
+  branch: 'A' | 'B' | null,
+) => ({
+  lastAttackTime: -9_999_999,
+  disableWeaponGlow: true,
+  isPreview: true, // keep sword at neutral pose so handle stays inward and tip points outward
+  weapon: type,
+  weaponLevels: {
+    sword: type === 'sword' ? level : 1,
+    gun: type === 'gun' ? level : 1,
+  },
+  weaponBranches: {
+    sword: type === 'sword' ? branch : null,
+    gun: type === 'gun' ? branch : null,
+  },
+}) as any;
 
 const makeMockSlot = (
   type: 'sword' | 'gun',
@@ -16,30 +29,15 @@ const makeMockSlot = (
   type,
   level,
   branch,
-  lastAttackTime: -9_999_999, // 確保不顯示槍口火光
+  lastAttackTime: -9_999_999,
   aimAngle: 0,
 } as any);
 
-// 展示的三件武器
 const WEAPONS = [
-  {
-    type: 'sword' as const, level: 4, branch: null as null,
-    orbitOff: 0,
-    dist: 95, scale: 1.25,
-    glowColor: '#c084fc', // 紫色（Lv4）
-  },
-  {
-    type: 'gun' as const, level: 1, branch: null as null,
-    orbitOff: (Math.PI * 2) / 3,
-    dist: 88, scale: 2.6,
-    glowColor: '#94a3b8', // 銀灰（Lv1）
-  },
-  {
-    type: 'gun' as const, level: 5, branch: 'A' as const,
-    orbitOff: (Math.PI * 4) / 3,
-    dist: 100, scale: 1.7,
-    glowColor: '#fbbf24', // 金色（Lv5+）
-  },
+  { type: 'sword' as const, level: 4, branch: null as null, orbitOff: 0, dist: 95, scale: 1.25 },
+  { type: 'gun' as const, level: 1, branch: null as null, orbitOff: Math.PI / 2, dist: 95, scale: 1.25 },
+  { type: 'gun' as const, level: 5, branch: 'A' as const, orbitOff: Math.PI, dist: 95, scale: 1.25 },
+  { type: 'sword' as const, level: 6, branch: 'B' as const, orbitOff: (Math.PI * 3) / 2, dist: 95, scale: 1.25 },
 ];
 
 interface Props {
@@ -48,58 +46,53 @@ interface Props {
 
 export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef    = useRef<number>(0);
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    const W   = canvas.width;
-    const H   = canvas.height;
-    const cx  = W * 0.50;
-    const cy  = H * 0.48;
+    const W = canvas.width;
+    const H = canvas.height;
+    const cx = W * 0.5;
+    const cy = H * 0.48;
 
-    // 粒子
     const particles = Array.from({ length: 26 }, () => ({
-      x:     Math.random() * W,
-      y:     Math.random() * H,
-      r:     Math.random() * 1.6 + 0.4,
-      vx:    (Math.random() - 0.5) * 0.15,
-      vy:    -(Math.random() * 0.42 + 0.14),
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.6 + 0.4,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: -(Math.random() * 0.42 + 0.14),
       alpha: Math.random() * 0.28 + 0.05,
-      life:  Math.random(),
+      life: Math.random(),
     }));
 
     let lastNow = 0;
 
     const draw = (now: number) => {
       const dt = Math.min(now - (lastNow || now), 50);
-      lastNow  = now;
-      const t  = now * 0.001;
+      lastNow = now;
+      const t = now * 0.001;
 
       ctx.clearRect(0, 0, W, H);
 
-      // ── 背景（暖灰棕底色）──────────────────────────────────
       ctx.fillStyle = '#141210';
       ctx.fillRect(0, 0, W, H);
 
-      // 角色位置大範圍暗紅暈光（主要氛圍）
       const atmo = ctx.createRadialGradient(cx * 0.85, cy, 0, cx * 0.85, cy, W * 0.85);
-      atmo.addColorStop(0,   'rgba(160, 22, 22, 0.28)');
-      atmo.addColorStop(0.35,'rgba(110, 14, 14, 0.14)');
-      atmo.addColorStop(0.7, 'rgba(60,  8,  8,  0.06)');
-      atmo.addColorStop(1,   'rgba(0,0,0,0)');
+      atmo.addColorStop(0, 'rgba(160, 22, 22, 0.28)');
+      atmo.addColorStop(0.35, 'rgba(110, 14, 14, 0.14)');
+      atmo.addColorStop(0.7, 'rgba(60, 8, 8, 0.06)');
+      atmo.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = atmo;
       ctx.fillRect(0, 0, W, H);
 
-      // 底部淡出
       const btm = ctx.createLinearGradient(0, H * 0.62, 0, H);
       btm.addColorStop(0, 'rgba(0,0,0,0)');
       btm.addColorStop(1, '#141210');
       ctx.fillStyle = btm;
       ctx.fillRect(0, H * 0.62, W, H * 0.38);
 
-      // ── 粒子 ──────────────────────────────────────────────
       particles.forEach(p => {
         p.x += p.vx * (dt / 16);
         p.y += p.vy * (dt / 16);
@@ -117,46 +110,38 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
         ctx.fill();
       });
 
-      // ── 外層光暈環 ─────────────────────────────────────────
       for (let i = 0; i < 3; i++) {
         const pulse = 0.5 + 0.5 * Math.sin(t * 1.05 + i * 1.2);
         ctx.beginPath();
         ctx.arc(cx, cy, 62 + i * 20 + pulse * 6, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(79,195,247,${(0.08 - i * 0.02) * pulse})`;
-        ctx.lineWidth   = 1.2;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       }
 
-      // ── 真實武器（環繞旋轉）────────────────────────────────
       WEAPONS.forEach(w => {
         const key = getWeaponKey(w.type, w.level, w.branch);
         const def = WEAPON_REGISTRY[w.type]?.[key as any];
         if (!def) return;
 
-        const angle    = t * 0.36 + w.orbitOff;
-        const wx       = cx + Math.cos(angle) * w.dist;
-        const wy       = cy + Math.sin(angle) * w.dist;
+        const angle = t * 0.36 + w.orbitOff;
+        const wx = cx + Math.cos(angle) * w.dist;
+        const wy = cy + Math.sin(angle) * w.dist;
         const mockSlot = makeMockSlot(w.type, w.level, w.branch);
+        const mockPlayer = makeMockPlayer(w.type, w.level, w.branch);
 
         ctx.save();
         ctx.translate(wx, wy);
-        ctx.rotate(angle);          // 指向軌道外側
+        ctx.rotate(angle);
         ctx.scale(w.scale, w.scale);
-
-        // 陰影發光
-        ctx.shadowColor = w.glowColor;
-        ctx.shadowBlur  = 18;
-
         try {
-          def.drawWeapon(ctx, MOCK_PLAYER, mockSlot);
-        } catch { /* 忽略邊緣情況 */ }
-
-        ctx.shadowBlur  = 0;
+          def.drawWeapon(ctx, mockPlayer, mockSlot);
+        } catch {
+          // ignore preview draw failures
+        }
         ctx.restore();
       });
 
-      // ── 角色主體 ───────────────────────────────────────────
-      // 底部大光暈
       const outerG = ctx.createRadialGradient(cx, cy, 30, cx, cy, 110);
       outerG.addColorStop(0, `${playerColor}22`);
       outerG.addColorStop(1, 'rgba(0,0,0,0)');
@@ -165,23 +150,21 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
       ctx.arc(cx, cy, 110, 0, Math.PI * 2);
       ctx.fill();
 
-      // 角色圓形
       ctx.shadowColor = playerColor;
-      ctx.shadowBlur  = 36;
+      ctx.shadowBlur = 36;
       const bodyG = ctx.createRadialGradient(cx - 10, cy - 12, 0, cx, cy, 50);
-      bodyG.addColorStop(0,   '#ffffff');
+      bodyG.addColorStop(0, '#ffffff');
       bodyG.addColorStop(0.25, playerColor);
-      bodyG.addColorStop(1,   playerColor + '55');
+      bodyG.addColorStop(1, `${playerColor}55`);
       ctx.fillStyle = bodyG;
       ctx.beginPath();
       ctx.arc(cx, cy, 46, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // 描邊脈衝
       const pulse = 0.5 + 0.5 * Math.sin(t * 1.5);
       ctx.strokeStyle = `rgba(255,255,255,${0.12 + pulse * 0.16})`;
-      ctx.lineWidth   = 2.5;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.arc(cx, cy, 48 + pulse * 3, 0, Math.PI * 2);
       ctx.stroke();
