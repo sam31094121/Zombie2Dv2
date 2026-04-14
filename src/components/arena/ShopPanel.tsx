@@ -33,7 +33,9 @@ export type ShopCard = WeaponCard | ItemCard;
 
 export function getWeaponLevel(wave: number): number {
   const r = Math.random();
-  if (wave <= 3) {
+  if (wave === 1) {
+    return 1;
+  } else if (wave <= 3) {
     if (r < 0.60) return 1;
     if (r < 0.90) return 2;
     return 3;

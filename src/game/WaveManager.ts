@@ -18,7 +18,7 @@ export const WAVES: Wave[] = [
   { id:  6, composition: { normal: 0.40, big: 0.20, slime: 0.20, spitter: 0.20 }, arenaDuration: 40, spawnRateMultiplier: 0.5 },
   { id:  7, composition: { normal: 0.30, big: 0.30, slime: 0.20, spitter: 0.20 }, arenaDuration: 40, spawnRateMultiplier: 0.5 },
   { id:  8, composition: { normal: 0.20, big: 0.40, slime: 0.20, spitter: 0.20 }, arenaDuration: 40, spawnRateMultiplier: 0.5 },
-  { id:  9, composition: { normal: 0.60, big: 0.00, slime: 0.00, spitter: 0.40 }, arenaDuration: 40, spawnRateMultiplier: 0.7 }, // W9 大量普通與吐酸
+  { id:  9, composition: { normal: 0.60, big: 0.00, slime: 0.00, spitter: 0.40 }, arenaDuration: 40, spawnRateMultiplier: 0.2 }, // W9 海量普通與吐酸
   { id: 10, composition: { normal: 0.00, big: 0.40, slime: 0.25, spitter: 0.35 }, arenaDuration: 'objective', arenaObjective: 'boss' }, // FINAL
 ];
 
