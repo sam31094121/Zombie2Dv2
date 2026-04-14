@@ -156,7 +156,8 @@ export const GameUI: React.FC = () => {
   // ── HUD 更新 callback（共用）──────────────────────────────
   const makeOnUpdate = () => (p1: Player | null, p2: Player | null, waveManager: any) => {
     if (gameRef.current?.mode === 'arena') {
-      if (waveManager.isResting) {
+      const canOpenArenaOverlay = gameRef.current.isArenaShopReady && !gameRef.current.hasArenaGroundOrbs;
+      if (waveManager.isResting && canOpenArenaOverlay) {
         if (!arenaShopEnteredRef.current) {
           arenaShopEnteredRef.current = true;
           gameRef.current.clearEntitiesForShop();
@@ -688,6 +689,16 @@ export const GameUI: React.FC = () => {
               {p1State && <P1Card p1State={p1State} p1RespawnCountdown={p1RespawnCountdown} />}
               <div className="relative flex items-center">
                 <WaveDisplay wave={waveState.wave} isResting={waveState.isResting} timer={waveState.timer} />
+                {gameRef.current?.mode === 'arena' && gameRef.current.isArenaBagAbsorbing && (
+                  <div className="absolute left-1/2 top-full mt-3 -translate-x-1/2 rounded-full border border-amber-400/40 bg-black/70 px-4 py-1 text-xs font-bold tracking-wide text-amber-200">
+                    戰利品封袋中
+                  </div>
+                )}
+                {gameRef.current?.mode === 'arena' && !gameRef.current.isArenaBagAbsorbing && gameRef.current.pendingBagRewardValue > 0 && (
+                  <div className="absolute left-1/2 top-full mt-3 -translate-x-1/2 rounded-full border border-yellow-400/40 bg-black/70 px-4 py-1 text-xs font-bold tracking-wide text-yellow-200">
+                    袋子怪攜帶 {gameRef.current.pendingBagRewardValue}
+                  </div>
+                )}
                 
                 {/* 遊戲暫停按鈕 (置於波次右側) */}
                 <button 

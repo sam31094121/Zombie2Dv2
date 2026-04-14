@@ -1,5 +1,11 @@
-Original prompt: 沒有成功有音效
-
-- 2026-03-30: 檢查刀 Lv1 音效接線失敗原因。目標是確認 slash_01.wav.mp3 是否實際被載入與播放。
-- 2026-03-30: 發現刀 Lv1~4 主要走 WeaponDefinitions.ts 的 fireDirect()，不是後來補的 CombatSystem slash 分支。
-- 2026-03-30: 將刀 Lv1 音效播放從 HTMLAudio 改為 AudioContext + decodeAudioData，並在 init() 時預載 /audio/weapons/sword/slash_01.wav.mp3。
+Original prompt: 瘝??????
+- 2026-03-30: 瑼Ｘ? Lv1 ?單??亦?憭望????璅蝣箄? slash_01.wav.mp3 ?臬撖阡?鋡怨??亥??剜??
+- 2026-03-30: ?潛? Lv1~4 銝餉?韏?WeaponDefinitions.ts ??fireDirect()嚗??臬?靘???CombatSystem slash ???
+- 2026-03-30: 撠? Lv1 ?單??剜敺?HTMLAudio ?寧 AudioContext + decodeAudioData嚗蒂??init() ??頛?/audio/weapons/sword/slash_01.wav.mp3??
+- 2026-04-15: Arena 過場改為戰利品袋流程。波次結束後不再直接自動吸到玩家，而是丟出袋子，只吸地上原本存在的 `energy_orb`。
+- 2026-04-15: 過場中剩餘怪物直接爆死，但不掉 orb，也不掉一般道具；地上的非 orb 道具會在封袋開始時直接爆掉清掉。
+- 2026-04-15: 下一波會延遲生成袋子怪（用 `normal` 殭屍外觀加 bagCarrier 標記實作），打死後掉回上一波封袋值的 80% 金色 orb；如果拖到清場才死，不返還。
+- 2026-04-15: UI 補了兩個提示：`戰利品封袋中` 與 `袋子怪攜帶 X`。
+- 2026-04-15: 補修 `TestModePanel.tsx` 的 `ghost` 半徑對照，讓 `npm run lint` 可通過。
+- 2026-04-15: 驗證結果：`npm run lint`、`npm run build` 通過。Playwright client 需要額外安裝 `playwright` 與 Chromium，已完成；自動點擊可成功進入遊戲並產生截圖於 `output/web-game*`。
+- 2026-04-15: 目前限制：專案還沒有針對競技場過場的自動化 hook / 狀態輸出，這次只驗證了頁面載入、開始遊戲、無新增 console error，尚未自動走到「封袋 -> 商店 -> 下一波袋子怪」完整鏈路。

@@ -40,9 +40,9 @@ export const STAT_REGISTRY: Record<string, StatDef> = {
   },
   pickupRadius: {
     id: 'pickupRadius', name: '吸取範圍', icon: '🧲',
-    description: '+40% 拾取範圍',
+    description: '+10% 拾取範圍',
     maxLevel: 10,
-    apply: (p) => { p.pickupRadiusMultiplier *= 1.40; },
+    apply: (p) => { p.pickupRadiusMultiplier *= 1.10; },
   },
   armor: {
     id: 'armor', name: '護甲', icon: '🛡️',

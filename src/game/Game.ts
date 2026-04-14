@@ -1,4 +1,4 @@
-﻿import { CONSTANTS } from './Constants';
+import { CONSTANTS } from './Constants';
 import { Player } from './Player';
 import { Zombie, ZombieType } from './Zombie';
 import { ObstacleType, GameMode } from './types';
@@ -33,6 +33,30 @@ import { ArenaBorderLayout, ArenaPlayableBounds, createArenaBorderLayout, drawAr
 import { getGeneratedObstacleSize } from './map/MapManager';
 import { updateTombstones } from './systems/TombstoneSystem';
 
+type KillZombieOptions = {
+  suppressOrbDrops?: boolean;
+  suppressItemDrop?: boolean;
+  suppressBagReward?: boolean;
+};
+
+type ArenaLootBagState = {
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  phase: 'throw' | 'suck' | 'settle';
+  timer: number;
+  storedValue: number;
+};
+
+type PendingArenaBagReward = {
+  value: number;
+  sourceWave: number;
+  spawned: boolean;
+};
+
 export class Game {
   players: Player[] = [];
   zombies: Zombie[] = [];
@@ -64,9 +88,12 @@ export class Game {
   arenaWidth: number = 1500;
   arenaHeight: number = 1500;
   arenaBorder: ArenaBorderLayout | null = null;
-  baggedMaterials: number = 0;
   private _arenaWaveStartLevels: number[] = []  // 瘥??拙振?郭甈⊿?憪?蝝?
   sharedStatPoints: number = 0;   // ?砍?犖璅∪??曹澈蝝釭暺瘙?
+  arenaLootBag: ArenaLootBagState | null = null;
+  pendingArenaBagReward: PendingArenaBagReward | null = null;
+  activeBagCarrierId: number | null = null;
+  bagCarrierSpawnTimer: number = 0;
 
   // 蝬脰楝憭犖璅∪?
   networkMode: boolean = false;
@@ -164,6 +191,10 @@ export class Game {
     this.hitEffects = [];
     this.activeEffects = [];
     this.slimeTrails = [];
+    this.arenaLootBag = null;
+    this.pendingArenaBagReward = null;
+    this.activeBagCarrierId = null;
+    this.bagCarrierSpawnTimer = 0;
     this.keys = {};
     this.score = 0;
     this.startTime = Date.now();
@@ -390,9 +421,9 @@ export class Game {
     // ?? 璅∠???甇???
     // 憟??敺??喳?甇亙甇血瑽賭?嚗圾瘙箇蝺芋撘郎?其??湔??憿?
     player.syncWeaponToSlot();
-    
+
     // ??摰?敺策鈭?霅瑁???
-    player.activateShield(2500); 
+    player.activateShield(2500);
     player.speedBoostTimer = 4000;
 
     player.pendingLevelUp = false;
@@ -406,14 +437,6 @@ export class Game {
   clearEntitiesForShop() {
     if (this._shopEntryHandled) return;
     this._shopEntryHandled = true;
-
-    let uncollected = 0;
-    for (const item of this.items) {
-      if (item.type === 'energy_orb') {
-        uncollected += (item.value || 1);
-      }
-    }
-    this.baggedMaterials = Math.floor(uncollected * 0.5); // 50% risk mechanics
 
     // ?? 蝡嗆??渡?鞈芷??貊?蝞?瘥郭?箏? 1 暺?+ ?祆郭??甈⊥ ??????????????????????
     if (this.mode === 'arena') {
@@ -443,9 +466,11 @@ export class Game {
     this.slimeTrails = []; // explicitly clear these
     this.items = [];
     this.pendingSwordKills.clear();
+    this.arenaLootBag = null;
+    this._shopReadyToOpen = false;
   }
 
-    activeTombstones: Obstacle[] = [];
+  activeTombstones: Obstacle[] = [];
   activeBoss: Zombie | null = null;
 
   addObstacleToMap(obs: Obstacle) {
@@ -459,20 +484,24 @@ export class Game {
   nextArenaWave() {
     if (this.mode !== "arena") return;
     this._arenaWaveStartLevels = this.players.map(p => p.level);
-    
+
     this.activeTombstones = [];
     this.activeBoss = null;
 
     this.waveManager.startCombat();
     this._shopEntryHandled = false;
     this._shopCleared = false;
+    this._shopReadyToOpen = false;
+    this.arenaLootBag = null;
+    this.activeBagCarrierId = null;
+    this.bagCarrierSpawnTimer = this.pendingArenaBagReward && !this.pendingArenaBagReward.spawned ? 3000 : 0;
 
     const waveId = this.waveManager.currentWaveConfig.id;
     if (waveId === 5) {
       for (let i = 0; i < 3; i++) {
         const pt = this.randomArenaPoint(150);
         const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
-        obs.maxHp *= 2; 
+        obs.maxHp *= 2;
         obs.hp = obs.maxHp;
         this.addObstacleToMap(obs);
         this.activeTombstones.push(obs);
@@ -482,12 +511,19 @@ export class Game {
       const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
       this.addObstacleToMap(obs);
       this.activeTombstones.push(obs);
+    } else if (waveId === 9) {
+      for (let i = 0; i < 3; i++) {
+        const pt = this.randomArenaPoint(150);
+        const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+        this.addObstacleToMap(obs);
+        this.activeTombstones.push(obs);
+      }
     } else if (waveId === 10) {
       const pt = { x: this.arenaWidth / 2, y: this.arenaHeight / 2 - 100 };
       const boss = new Zombie(pt.x, pt.y, "butcher");
-      boss.maxHp *= 30; 
+      boss.maxHp *= 30;
       boss.hp = boss.maxHp;
-      (boss as any).scale = 2.5; 
+      (boss as any).scale = 2.5;
       this.zombies.push(boss);
       this.activeBoss = boss;
     }
@@ -495,6 +531,7 @@ export class Game {
 
   private _shopEntryHandled: boolean = false;
   private _shopCleared: boolean = false;
+  private _shopReadyToOpen: boolean = false;
 
   // ???閬?蝝???拙振嚗??喟洵銝??敺葉??
   get upgradePendingPlayer(): import('./Player').Player | null {
@@ -504,6 +541,22 @@ export class Game {
 
   private get isLocalSharedXpMode(): boolean {
     return !this.networkMode && !this.isHostMode && this.players.length > 1 && this.mode !== 'arena';
+  }
+
+  get isArenaShopReady(): boolean {
+    return this._shopReadyToOpen;
+  }
+
+  get isArenaBagAbsorbing(): boolean {
+    return this.mode === 'arena' && this.waveManager.isResting && !this._shopReadyToOpen;
+  }
+
+  get hasArenaGroundOrbs(): boolean {
+    return this.items.some(item => item.type === 'energy_orb');
+  }
+
+  get pendingBagRewardValue(): number {
+    return this.pendingArenaBagReward?.value ?? 0;
   }
 
   private awardOrbXp(player: Player, amount: number) {
@@ -548,6 +601,167 @@ export class Game {
     }
   }
 
+  private getArenaBagAnchor() {
+    const alivePlayers = this.players.filter(player => player.hp > 0);
+    const anchors = alivePlayers.length > 0 ? alivePlayers : this.players;
+    const sum = anchors.reduce((acc, player) => {
+      acc.x += player.x;
+      acc.y += player.y;
+      return acc;
+    }, { x: 0, y: 0 });
+    const count = Math.max(1, anchors.length);
+    return {
+      x: sum.x / count,
+      y: sum.y / count,
+    };
+  }
+
+  private startArenaLootBagSequence() {
+    const anchor = this.getArenaBagAnchor();
+    this.arenaLootBag = {
+      startX: anchor.x,
+      startY: anchor.y,
+      x: anchor.x,
+      y: anchor.y,
+      targetX: anchor.x + 34,
+      targetY: anchor.y - 52,
+      phase: 'throw',
+      timer: 220,
+      storedValue: 0,
+    };
+
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (item.type === 'energy_orb') continue;
+      this.hitEffects.push({
+        x: item.x,
+        y: item.y,
+        type: 'grey_sparks',
+        lifetime: 220,
+        maxLifetime: 220,
+      });
+      this.items.splice(i, 1);
+    }
+  }
+
+  private finalizeArenaLootBag() {
+    if (this.hasArenaGroundOrbs) return;
+
+    const storedValue = this.arenaLootBag?.storedValue ?? 0;
+    if (storedValue > 0 && this.waveManager.currentWave < 10) {
+      this.pendingArenaBagReward = {
+        value: Math.max(1, Math.floor(storedValue * 0.8)),
+        sourceWave: this.waveManager.currentWave,
+        spawned: false,
+      };
+    } else if (this.waveManager.currentWave >= 10) {
+      this.pendingArenaBagReward = null;
+    }
+
+    this.arenaLootBag = null;
+    this._shopCleared = true;
+    this._shopReadyToOpen = true;
+  }
+
+  private updateArenaLootBagSequence(dt: number) {
+    if (!this.arenaLootBag) {
+      this.startArenaLootBagSequence();
+    }
+    if (!this.arenaLootBag) return;
+
+    const bag = this.arenaLootBag;
+    if (bag.phase === 'throw') {
+      bag.timer -= dt;
+      const progress = 1 - Math.max(0, bag.timer) / 220;
+      bag.x = bag.startX + (bag.targetX - bag.startX) * progress;
+      bag.y = bag.startY + (bag.targetY - bag.startY) * progress - Math.sin(progress * Math.PI) * 12;
+      if (bag.timer <= 0) {
+        bag.phase = 'suck';
+        bag.timer = 0;
+        bag.x = bag.targetX;
+        bag.y = bag.targetY;
+      }
+      return;
+    }
+
+    if (bag.phase === 'settle') {
+      bag.timer -= dt;
+      if (bag.timer <= 0) {
+        this.finalizeArenaLootBag();
+      }
+      return;
+    }
+
+    let hasGroundOrbs = false;
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const item = this.items[i];
+      if (item.type !== 'energy_orb') continue;
+      hasGroundOrbs = true;
+
+      const dx = bag.x - item.x;
+      const dy = bag.y - item.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const pull = Math.min(52, Math.max(12, dist * 0.28)) * (dt / 16);
+      item.x += (dx / dist) * pull;
+      item.y += (dy / dist) * pull;
+
+      if (dist < item.radius + 12) {
+        bag.storedValue += item.value || 1;
+        this.hitEffects.push({
+          x: bag.x,
+          y: bag.y,
+          type: 'white_sparks',
+          lifetime: 120,
+          maxLifetime: 120,
+        });
+        this.items.splice(i, 1);
+      }
+    }
+
+    if (!hasGroundOrbs) {
+      bag.phase = 'settle';
+      bag.timer = 500;
+    }
+  }
+
+  private spawnRewardOrbs(x: number, y: number, totalValue: number, color: string) {
+    const orbCount = Math.max(1, Math.min(6, totalValue < 6 ? totalValue : Math.ceil(totalValue / 6)));
+    let remaining = totalValue;
+
+    for (let i = 0; i < orbCount; i++) {
+      const share = i === orbCount - 1 ? remaining : Math.max(1, Math.floor(remaining / (orbCount - i)));
+      remaining -= share;
+      const angle = (Math.PI * 2 * i) / orbCount;
+      const offset = 16 + (i % 2) * 6;
+      this.items.push(new Item(
+        x + Math.cos(angle) * offset,
+        y + Math.sin(angle) * offset,
+        'energy_orb',
+        15000,
+        share,
+        color,
+      ));
+    }
+  }
+
+  private spawnBagCarrier() {
+    if (!this.pendingArenaBagReward || this.pendingArenaBagReward.spawned) return;
+
+    const point = this.randomArenaPoint(120);
+    const carrier = new Zombie(point.x, point.y, 'normal');
+    carrier.id = ++this._zombieIdCounter;
+    carrier.hp = Math.max(12, 8 + this.waveManager.currentWave * 3);
+    carrier.maxHp = carrier.hp;
+    carrier.speed = Math.max(carrier.speed * 1.55, 2.8);
+    carrier.extraState.set('bagCarrier', true);
+    carrier.extraState.set('bagRewardValue', this.pendingArenaBagReward.value);
+    carrier.extraState.set('bagRewardWave', this.pendingArenaBagReward.sourceWave);
+    this.zombies.push(carrier);
+
+    this.pendingArenaBagReward.spawned = true;
+    this.activeBagCarrierId = carrier.id;
+  }
+
   resetInputState() {
     this.keys = {};
     this.joystickInputs = [null, null];
@@ -558,14 +772,14 @@ export class Game {
 
   update(dt: number) {
     if (this.isGameOver) return;
-    
+
     // ?潛????豢??蜓???嚗?蝯???頛舀??
     if (this.isPaused || this.upgradePendingPlayer !== null) {
       if (this.upgradePendingPlayer !== null) {
         // 蝣箔?????靘?閫貊 UI 隞仿＊蝷粹??
         this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
       }
-      return; 
+      return;
     }
 
     // ?? 蝬脰楝璅∪?嚗???砍?拙振?葫 + ?喲撓????
@@ -732,75 +946,56 @@ export class Game {
 
     // Objective check
     if (this.mode === 'arena' && this.waveManager.isObjectiveBased()) {
-       const waveId = this.waveManager.currentWaveConfig.id;
-       if (waveId === 5) {
-          if (this.activeTombstones.length > 0 && this.activeTombstones.every(t => t.isDestroyed || t.hp <= 0)) {
-             this.waveManager.completeObjective();
-          }
-       } else if (waveId === 10) {
-          if (this.activeBoss && this.activeBoss.hp <= 0) {
-             this.waveManager.completeObjective();
-          }
-       }
-    }
-    
-    // Smooth Transition Logic
-    if (this.mode === 'arena' && this.waveManager.isTransitioning) {
-       dt *= 0.3; // Slow motion
-       if (!(this.waveManager as any)._transitionKilled) {
-          for (const z of this.zombies) {
-             if (z.hp > 0) { 
-               z.hp = 0; 
-               this.queueZombieDeath(z, null, 1);
-             }
-          }
-          (this.waveManager as any)._transitionKilled = true;
-       }
-    } else {
-       (this.waveManager as any)._transitionKilled = false;
+      const waveId = this.waveManager.currentWaveConfig.id;
+      if (waveId === 5) {
+        if (this.activeTombstones.length > 0 && this.activeTombstones.every(t => t.isDestroyed || t.hp <= 0)) {
+          this.waveManager.completeObjective();
+        }
+      } else if (waveId === 10) {
+        if (this.activeBoss && this.activeBoss.hp <= 0) {
+          this.waveManager.completeObjective();
+        }
+      }
     }
 
-    // --- ARENA MODE WAVE END FREEZE & AUTO-LOOT ---
-    if (this.mode === 'arena' && this.waveManager.isResting) {
-      if (this.waveManager.currentWaveConfig.id === 10) {
-          this.isGameOver = true;
-          this.onGameOver(Date.now() - this.startTime, this.score);
-          return;
+    // Smooth Transition Logic
+    if (this.mode === 'arena' && this.waveManager.isTransitioning) {
+      dt *= 0.3; // Slow motion
+      if (!(this.waveManager as any)._transitionKilled) {
+        for (const z of [...this.zombies]) {
+          if (z.hp > 0) {
+            z.hp = 0;
+            this.killZombie(z, null, 1, undefined, {
+              suppressOrbDrops: true,
+              suppressItemDrop: true,
+              suppressBagReward: true,
+            });
+          }
+        }
+        (this.waveManager as any)._transitionKilled = true;
       }
+    } else {
+      (this.waveManager as any)._transitionKilled = false;
+    }
+
+    // --- ARENA MODE WAVE END FREEZE & LOOT BAG ---
+    if (this.mode === 'arena' && this.waveManager.isResting) {
       if (!this._shopCleared) {
-        this.zombies = []; // 撘瑕?瑟???悌撅?
+        this.zombies = [];
         this.projectiles = [];
         this.swordProjectiles = [];
         this.missiles = [];
         this.arcProjectiles = [];
         this.activeEffects = [];
+        this.slimeTrails = [];
+        this.pendingSwordKills.clear();
+        this.updateArenaLootBagSequence(dt);
+      }
 
-        const p = this.players[0];
-        if (p) {
-          let allLooted = true;
-          for (let i = this.items.length - 1; i >= 0; i--) {
-            const item = this.items[i];
-            const dx = p.x - item.x;
-            const dy = p.y - item.y;
-            const dist = Math.hypot(dx, dy);
-            // ?祇??豢?憭扳?
-            if (dist < 40) {
-              if (item.type === 'energy_orb') {
-                this.awardOrbXp(p, item.value || 1);
-                p.materials += (item.value || 1);
-              }
-              audioManager.playPickup();
-              this.items.splice(i, 1);
-            } else {
-              item.x += (dx / dist) * Math.min(dist, 50); // 瘥?憌?50px
-              item.y += (dy / dist) * Math.min(dist, 50);
-              allLooted = false;
-            }
-          }
-          if (allLooted) this._shopCleared = true;
-        } else {
-          this._shopCleared = true;
-        }
+      if (this.waveManager.currentWaveConfig.id === 10 && this._shopReadyToOpen) {
+        this.isGameOver = true;
+        this.onGameOver(Date.now() - this.startTime, this.score);
+        return;
       }
       this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
       return; // Freeze all normal physics and game objects during Shop Phase
@@ -950,16 +1145,23 @@ export class Game {
     // Spawn zombies
     if (!this.debugPaused) this.waveManager.update(dt);
     if (!this.waveManager.isResting && !this.debugPaused && !this.waveManager.isTransitioning) {
-        this.zombieSpawnTimer += dt;
-        let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
-        
-        if (this.mode === 'arena' && this.waveManager.currentWaveConfig.spawnRateMultiplier) {
-           spawnRate *= this.waveManager.currentWaveConfig.spawnRateMultiplier;
-        }
+      this.zombieSpawnTimer += dt;
+      let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
+
+      if (this.mode === 'arena' && this.waveManager.currentWaveConfig.spawnRateMultiplier) {
+        spawnRate *= this.waveManager.currentWaveConfig.spawnRateMultiplier;
+      }
 
       if (this.zombieSpawnTimer > spawnRate) {
         this.zombieSpawnTimer = 0;
         this.spawnZombie();
+      }
+    }
+
+    if (this.mode === 'arena' && this.pendingArenaBagReward && !this.pendingArenaBagReward.spawned && !this.debugPaused) {
+      this.bagCarrierSpawnTimer -= dt;
+      if (this.bagCarrierSpawnTimer <= 0) {
+        this.spawnBagCarrier();
       }
     }
 
@@ -1274,7 +1476,7 @@ export class Game {
           }
 
           if (item.attractedByPlayerId === null) {
-            const magneticRadius = 200 * player.pickupRadiusMultiplier;
+            const magneticRadius = 25 * player.pickupRadiusMultiplier;
             const distToPlayer = Math.hypot(player.x - item.x, player.y - item.y);
             if (distToPlayer < magneticRadius) {
               item.attractedByPlayerId = player.id;
@@ -1311,7 +1513,7 @@ export class Game {
             isBeingStepped = true;
             item.targetedByPlayerId = player.id;
             item.pickupProgress += dt;
-            
+
             // ??? 3000ms (3蝘? ?曉???
             if (item.pickupProgress >= 3000) {
               audioManager.playPickup();
@@ -1319,11 +1521,11 @@ export class Game {
               player.syncWeaponToSlot(); // 蝡?郊蝑?????
               player.weaponSwitchTimer = 500;
               player.weaponSwitchType = player.weapon;
-              
+
               item.pickupProgress = 0;
               item.targetedByPlayerId = null;
               this.items.splice(i, 1);
-              break; 
+              break;
             }
           } else {
             // ?桅??瑞??單??
@@ -1408,12 +1610,17 @@ export class Game {
    * 畾剖?甇颱滿蝯曹???嚗????orb??鋆?lime ???宏?扎???
    * ??啁???摮悌撅?靘?急??賭葉靽風 Set嚗?
    */
-  killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number, hitAngle?: number): Zombie[] {
+  killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number, hitAngle?: number, options: KillZombieOptions = {}): Zombie[] {
     const zombieIndex = this.zombies.indexOf(zombie);
     if (zombieIndex === -1) return [];
 
     audioManager.playKill();
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
+    const isBagCarrier = zombie.extraState.get('bagCarrier') === true;
+    const bagRewardValue = Number(zombie.extraState.get('bagRewardValue') ?? 0);
+    const suppressOrbDrops = options.suppressOrbDrops || isBagCarrier;
+    const suppressItemDrop = options.suppressItemDrop || isBagCarrier;
+    const suppressBagReward = options.suppressBagReward || false;
 
     // ?? 蝣??渡 (Gibbing) ?????????????????????????????????????????????????
     const burstAngle = hitAngle !== undefined ? hitAngle : Math.random() * Math.PI * 2;
@@ -1435,15 +1642,20 @@ export class Game {
     }
 
     // ??賡???
-    for (let i = 0; i < zombieDef.orbCount; i++) {
-      const ox = (Math.random() - 0.5) * 20;
-      const oy = (Math.random() - 0.5) * 20;
-      this.items.push(new Item(zombie.x + ox, zombie.y + oy, 'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor));
+    if (!suppressOrbDrops) {
+      for (let i = 0; i < zombieDef.orbCount; i++) {
+        const ox = (Math.random() - 0.5) * 20;
+        const oy = (Math.random() - 0.5) * 20;
+        this.items.push(new Item(zombie.x + ox, zombie.y + oy, 'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor));
+      }
     }
 
-    if (this.mode === 'arena' && this.baggedMaterials > 0) {
-      this.items.push(new Item(zombie.x, zombie.y, 'energy_orb', 15000, this.baggedMaterials, '#fbbf24'));
-      this.baggedMaterials = 0;
+    if (isBagCarrier) {
+      this.activeBagCarrierId = null;
+      this.pendingArenaBagReward = null;
+      if (!suppressBagReward && bagRewardValue > 0) {
+        this.spawnRewardOrbs(zombie.x, zombie.y, bagRewardValue, '#fbbf24');
+      }
     }
 
     // ??甇颱滿?寞?
@@ -1482,7 +1694,7 @@ export class Game {
     const owner = this.players.find(p => p.id === ownerId);
     if (owner) owner.kills++;
 
-    if (Math.random() < 0.10) this.spawnItemAt(zombie.x, zombie.y);
+    if (!suppressItemDrop && Math.random() < 0.10) this.spawnItemAt(zombie.x, zombie.y);
 
     return children;
   }
@@ -1542,6 +1754,7 @@ export class Game {
     drawMissiles(this.missiles, ctx);
     drawArcProjectiles(this.arcProjectiles, ctx);
     drawSwordProjectiles(this.swordProjectiles, ctx);
+    if (this.arenaLootBag) this.drawArenaLootBag(ctx, this.arenaLootBag);
     for (const zombie of this.zombies) {
       if (zombie.hp > 0) zombie.draw(ctx);
     }
@@ -1568,6 +1781,48 @@ export class Game {
 
   drawWaveFilters(ctx: CanvasRenderingContext2D) {
     _drawWaveFilters(this, ctx);
+  }
+
+  private drawArenaLootBag(ctx: CanvasRenderingContext2D, bag: ArenaLootBagState) {
+    ctx.save();
+    ctx.translate(bag.x, bag.y);
+
+    const pulse = bag.phase === 'suck' ? 1 + Math.sin(Date.now() / 90) * 0.06 : 1;
+    ctx.scale(pulse, pulse);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(4, 16, 14, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#8b5a2b';
+    ctx.strokeStyle = '#2f1b0c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-12, 10);
+    ctx.quadraticCurveTo(-16, -2, -6, -12);
+    ctx.quadraticCurveTo(0, -18, 8, -12);
+    ctx.quadraticCurveTo(16, -2, 12, 10);
+    ctx.quadraticCurveTo(2, 16, -12, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-4, -10);
+    ctx.quadraticCurveTo(0, -18, 5, -10);
+    ctx.stroke();
+
+    if (bag.storedValue > 0) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(0, -2, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
   }
 
 }

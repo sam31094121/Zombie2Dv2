@@ -12,7 +12,7 @@ interface Props { gameRef: React.RefObject<Game | null>; }
 
 // ── 每種殭屍的 radius（對應 ZombieDefinitions）───────────────────────────────
 const ZOMBIE_RADIUS: Record<ZombieType, number> = {
-  normal: 12, big: 30, slime: 16, slime_small: 10, spitter: 18, butcher: 40,
+  normal: 12, big: 30, slime: 16, slime_small: 10, spitter: 18, butcher: 40, ghost: 14,
 };
 
 // ── 建立殭屍預覽用假物件 ─────────────────────────────────────────────────────

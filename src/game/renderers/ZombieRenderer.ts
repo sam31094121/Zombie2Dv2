@@ -21,6 +21,8 @@ function getButcherFrameIndex(zombie: Zombie): number {
 export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void {
   // ???? ??鈭?謍???箸慫????????祗 ctx.save ??摰?????????????????????????????????????????????????????????
   if (zombie.type === 'butcher') drawButcherWorldFX(zombie, ctx);
+  const isBagCarrier = zombie.extraState.get('bagCarrier') === true;
+  const bagRewardValue = Number(zombie.extraState.get('bagRewardValue') ?? 0);
 
   ctx.save();
   if (zombie.isInsideContainer) ctx.globalAlpha = 0.4;
@@ -119,7 +121,7 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
     if (zombie.type === 'normal') {
       const walkCycle = Math.sin(zombie.time / 150);
       // ???
-      ctx.fillStyle = zombie.flashWhiteTimer > 0 ? '#ffffff' : '#e0e0ce';
+      ctx.fillStyle = zombie.flashWhiteTimer > 0 ? '#ffffff' : (isBagCarrier ? '#f1e4c6' : '#e0e0ce');
       ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.roundRect(-zombie.radius * 0.7, -zombie.radius * 0.9, zombie.radius * 1.4, zombie.radius * 1.2, 4);
@@ -145,7 +147,7 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
       }
       // ?????
       const armSwing = walkCycle * 5;
-      ctx.fillStyle = '#e0e0ce'; ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
+      ctx.fillStyle = isBagCarrier ? '#f1e4c6' : '#e0e0ce'; ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(-zombie.radius * 0.9,  armSwing, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.arc( zombie.radius * 0.9, -armSwing, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (zombie.type === 'big') {
@@ -215,6 +217,38 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
       ctx.fillStyle = '#33691e';
       ctx.beginPath(); ctx.arc(-4,-4,2,0,Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(4,-4,2,0,Math.PI*2); ctx.fill();
+    }
+
+    if (isBagCarrier) {
+      ctx.save();
+      ctx.rotate(-0.25);
+      ctx.fillStyle = '#8b5a2b';
+      ctx.strokeStyle = '#2f1b0c';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(5, -2);
+      ctx.quadraticCurveTo(12, -10, 14, -2);
+      ctx.quadraticCurveTo(16, 8, 8, 11);
+      ctx.quadraticCurveTo(0, 8, 1, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#facc15';
+      ctx.beginPath();
+      ctx.moveTo(5, -2);
+      ctx.quadraticCurveTo(9, -7, 12, -2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(0, -zombie.radius - 8, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.font = 'bold 8px Courier';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(Math.max(1, bagRewardValue)), 0, -zombie.radius - 8);
     }
   }
 
