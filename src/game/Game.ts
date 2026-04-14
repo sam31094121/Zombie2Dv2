@@ -730,8 +730,43 @@ export class Game {
       return;
     }
 
+    // Objective check
+    if (this.mode === 'arena' && this.waveManager.isObjectiveBased()) {
+       const waveId = this.waveManager.currentWaveConfig.id;
+       if (waveId === 5) {
+          if (this.activeTombstones.length > 0 && this.activeTombstones.every(t => t.isDestroyed || t.hp <= 0)) {
+             this.waveManager.completeObjective();
+          }
+       } else if (waveId === 10) {
+          if (this.activeBoss && this.activeBoss.hp <= 0) {
+             this.waveManager.completeObjective();
+          }
+       }
+    }
+    
+    // Smooth Transition Logic
+    if (this.mode === 'arena' && this.waveManager.isTransitioning) {
+       dt *= 0.3; // Slow motion
+       if (!(this.waveManager as any)._transitionKilled) {
+          for (const z of this.zombies) {
+             if (z.hp > 0) { 
+               z.hp = 0; 
+               this.queueZombieDeath(z, null, 1);
+             }
+          }
+          (this.waveManager as any)._transitionKilled = true;
+       }
+    } else {
+       (this.waveManager as any)._transitionKilled = false;
+    }
+
     // --- ARENA MODE WAVE END FREEZE & AUTO-LOOT ---
     if (this.mode === 'arena' && this.waveManager.isResting) {
+      if (this.waveManager.currentWaveConfig.id === 10) {
+          this.isGameOver = true;
+          this.onGameOver(Date.now() - this.startTime, this.score);
+          return;
+      }
       if (!this._shopCleared) {
         this.zombies = []; // 撘瑕?瑟???悌撅?
         this.projectiles = [];
@@ -914,9 +949,13 @@ export class Game {
 
     // Spawn zombies
     if (!this.debugPaused) this.waveManager.update(dt);
-    if (!this.waveManager.isResting && !this.debugPaused) {
-      this.zombieSpawnTimer += dt;
-      let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
+    if (!this.waveManager.isResting && !this.debugPaused && !this.waveManager.isTransitioning) {
+        this.zombieSpawnTimer += dt;
+        let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
+        
+        if (this.mode === 'arena' && this.waveManager.currentWaveConfig.spawnRateMultiplier) {
+           spawnRate *= this.waveManager.currentWaveConfig.spawnRateMultiplier;
+        }
 
       if (this.zombieSpawnTimer > spawnRate) {
         this.zombieSpawnTimer = 0;

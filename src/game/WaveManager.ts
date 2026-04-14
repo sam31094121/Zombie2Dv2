@@ -72,7 +72,7 @@ export class WaveManager {
 
   startTransition() {
     this.isTransitioning = true;
-    this.transitionTimer = 2.0; // 2 seconds slow-mo
+    this.transitionTimer = 0.6; // 配合 dt *= 0.3 達到真實時間 2 秒的慢動作
   }
 
   update(dt: number) {
