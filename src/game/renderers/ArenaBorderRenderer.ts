@@ -137,7 +137,13 @@ export function drawArenaBorder(
 
   ctx.save();
 
-  // ── 移除黑幕效果 ──
+  // 1. 繪製競技場範圍外的「淡灰色透明遮罩」
+  // 透過 evenodd 填充規則，畫一個全畫面的大矩形，再畫一個競技場內部的小矩形，就能直接在兩者之間填色（挖空內部）
+  ctx.fillStyle = 'rgba(20, 20, 25, 0.65)'; // 透明深灰/淡灰色，營造邊界外的危險與黯淡感
+  ctx.beginPath();
+  ctx.rect(0, 0, width, height); // 畫面外圍
+  ctx.rect(playable.left, playable.top, playable.right - playable.left, playable.bottom - playable.top); // 內部挖空
+  ctx.fill('evenodd');
 
   for (const stain of stains) {
     ctx.save();

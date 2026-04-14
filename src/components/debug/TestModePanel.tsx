@@ -493,12 +493,18 @@ export function TestModePanel({ gameRef }: Props) {
 
   if (!open) return (
     <button onClick={() => setOpen(true)}
-            className="fixed left-0 top-1/2 -translate-y-1/2 z-50 bg-gray-900/90 border border-gray-700 text-gray-300 text-xs px-1 py-3 rounded-r-lg hover:bg-gray-800 cursor-pointer"
+            className="fixed left-0 top-1/2 -translate-y-1/2 z-[70] bg-gray-900/90 border border-gray-700 text-gray-300 text-xs px-1 py-3 rounded-r-lg hover:bg-gray-800 cursor-pointer"
             title="測試面板 (`)">🔧</button>
   );
 
   return (
-    <div className="fixed left-0 top-0 h-full z-50 flex flex-col w-52 bg-gray-950/97 border-r border-gray-800 overflow-y-auto text-white select-none">
+    <div
+      className="fixed left-0 top-0 h-full z-[70] flex flex-col w-52 bg-gray-950/97 border-r border-gray-800 overflow-y-auto text-white select-none"
+      style={{ touchAction: 'pan-y', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+    >
 
       {/* 標題 */}
       <div className="flex items-center justify-between px-3 py-2 bg-gray-900 border-b border-gray-800 sticky top-0 z-10">

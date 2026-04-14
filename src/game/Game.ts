@@ -469,7 +469,7 @@ export class Game {
     if (this.mode === 'arena') {
       const prevLevel = player.level;
       player.pendingLevelUp = false;
-      player.addXp(amount);
+      player.addXp(amount, false);
       const levelsGained = player.level - prevLevel;
       if (levelsGained > 0) {
         player.arenaStatPoints += levelsGained;
@@ -494,6 +494,9 @@ export class Game {
       teammate.level = lead.level;
       teammate.xp = lead.xp;
       teammate.maxXp = lead.maxXp;
+      teammate.weaponLevels.sword = lead.weaponLevels.sword;
+      teammate.weaponLevels.gun = lead.weaponLevels.gun;
+      teammate.syncWeaponToSlot();
       teammate.pendingLevelUp = leveledUp;
     }
   }
@@ -501,6 +504,14 @@ export class Game {
   setJoystickInput(playerIndex: number, input: { x: number, y: number } | null) {
     if (this.joystickInputs[playerIndex] !== undefined) {
       this.joystickInputs[playerIndex] = input;
+    }
+  }
+
+  resetInputState() {
+    this.keys = {};
+    this.joystickInputs = [null, null];
+    for (const player of this.players) {
+      player.lastMoveDir = { x: 1, y: 0 };
     }
   }
 
@@ -807,7 +818,15 @@ export class Game {
         }
         const obstacles = this.mapManager.getNearbyObstacles(player.x, player.y);
         const playerIdx = this.players.indexOf(player);
-        player.update(dt, this.keys, obstacles, this.joystickInputs[playerIdx] || undefined);
+        let pKeys = this.keys;
+        if (this.players.length === 1 && player.id === 1) {
+          pKeys = { ...this.keys };
+          if (this.keys['ArrowUp']) pKeys['w'] = true;
+          if (this.keys['ArrowDown']) pKeys['s'] = true;
+          if (this.keys['ArrowLeft']) pKeys['a'] = true;
+          if (this.keys['ArrowRight']) pKeys['d'] = true;
+        }
+        player.update(dt, pKeys, obstacles, this.joystickInputs[playerIdx] || undefined);
 
         if (player.isRegenerating) {
           const now = Date.now();
@@ -842,18 +861,14 @@ export class Game {
           targetAngle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
         }
 
-        // Initialize aimAngle if it's the first time
         if (player.aimAngle === undefined) {
           player.aimAngle = targetAngle;
         }
 
-        // Smoothly interpolate aimAngle towards targetAngle
         let angleDiff = targetAngle - player.aimAngle;
-        // Normalize angle difference to [-PI, PI]
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-        // Constant rotation speed (2 radians per second)
         const rotationSpeed = 2;
         const maxRotation = rotationSpeed * (dt / 1000);
 
@@ -863,7 +878,6 @@ export class Game {
           player.aimAngle += Math.sign(angleDiff) * maxRotation;
         }
 
-        // Keep aimAngle within [-PI, PI]
         while (player.aimAngle > Math.PI) player.aimAngle -= Math.PI * 2;
         while (player.aimAngle < -Math.PI) player.aimAngle += Math.PI * 2;
 

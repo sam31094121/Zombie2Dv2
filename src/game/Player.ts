@@ -95,7 +95,7 @@ export class Player {
     }];
   }
 
-  addXp(amount: number) {
+  addXp(amount: number, syncWeaponLevels: boolean = true) {
     if (this.pendingLevelUp) return; // 等待玩家選擇升級時不累積
     this.xp += amount;
     if (this.xp >= this.maxXp) {
@@ -104,9 +104,11 @@ export class Player {
       this.maxXp = Math.round(this.maxXp * 1.35); // 每級需求 ×1.35
 
       // 無限模式下，武器等級隨角色等級一同成長（最高 8 級）
-      this.weaponLevels['sword'] = Math.min(8, this.level);
-      this.weaponLevels['gun'] = Math.min(8, this.level);
-      this.syncWeaponToSlot();
+        if (syncWeaponLevels) {
+          this.weaponLevels['sword'] = Math.min(8, this.level);
+          this.weaponLevels['gun'] = Math.min(8, this.level);
+          this.syncWeaponToSlot();
+        }
 
       this.pendingLevelUp = true;
     }

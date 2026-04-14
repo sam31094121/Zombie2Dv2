@@ -57,6 +57,7 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
     const cx = W * 0.5;
     const cy = H * 0.48;
     const mouse = { x: cx, y: cy };
+    const look = { x: cx, y: cy };
 
     const particles = Array.from({ length: 26 }, () => ({
       x: Math.random() * W,
@@ -83,13 +84,29 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
       mouse.x = cx;
       mouse.y = cy;
     };
+    const onTouchMove = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      updateMouseFromClient(touch.clientX, touch.clientY);
+    };
+    const onTouchEnd = () => {
+      mouse.x = cx;
+      mouse.y = cy;
+    };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseleave', onMouseLeave);
+    canvas.addEventListener('touchstart', onTouchMove, { passive: true });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: true });
+    canvas.addEventListener('touchcancel', onTouchEnd, { passive: true });
 
     const draw = (now: number) => {
       const dt = Math.min(now - (lastNow || now), 50);
       lastNow = now;
       const t = now * 0.001;
+      const follow = 1 - Math.pow(0.84, dt / 16);
+      look.x += (mouse.x - look.x) * follow;
+      look.y += (mouse.y - look.y) * follow;
 
       ctx.clearRect(0, 0, W, H);
 
@@ -199,11 +216,11 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
       };
 
       const drawEye = (x: number, y: number) => {
-        const dx = mouse.x - x;
-        const dy = mouse.y - y;
+        const dx = look.x - x;
+        const dy = look.y - y;
         const len = Math.hypot(dx, dy) || 1;
-        const maxOffset = 4.5;
-        const factor = Math.min(maxOffset, len / 18) / len;
+        const maxOffset = 4.2;
+        const factor = Math.min(maxOffset, len / 20) / len;
         const px = dx * factor;
         const py = dy * factor;
 
@@ -224,6 +241,12 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
         ctx.arc(x + px - 1.3, y + py - 1.2, 1.15, 0, Math.PI * 2);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x, y - 0.8, 10.2, Math.PI * 1.03, Math.PI * 1.97);
+        ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
       };
 
       drawBrow(leftEyeX, eyeY - 16, 'left');
@@ -245,6 +268,10 @@ export const CharacterShowcase: React.FC<Props> = ({ playerColor = '#4fc3f7' }) 
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseleave', onMouseLeave);
+      canvas.removeEventListener('touchstart', onTouchMove);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+      canvas.removeEventListener('touchcancel', onTouchEnd);
       cancelAnimationFrame(rafRef.current);
     };
   }, [playerColor]);

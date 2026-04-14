@@ -49,6 +49,7 @@ export const GameUI: React.FC = () => {
 
   const [playerCount, setPlayerCount] = useState<number>(1);
   const [platform, setPlatform] = useState<'pc' | 'mobile'>('pc');
+  const [mobileControlResetKey, setMobileControlResetKey] = useState(0);
 
   // ── 復活倒計時 ────────────────────────────────────────────
   const [p1RespawnCountdown, setP1RespawnCountdown] = useState(0);
@@ -147,6 +148,11 @@ export const GameUI: React.FC = () => {
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 
+  const resetPlayerInputState = () => {
+    gameRef.current?.resetInputState();
+    setMobileControlResetKey(prev => prev + 1);
+  };
+
   // ── HUD 更新 callback（共用）──────────────────────────────
   const makeOnUpdate = () => (p1: Player | null, p2: Player | null, waveManager: any) => {
     if (gameRef.current?.mode === 'arena') {
@@ -161,6 +167,7 @@ export const GameUI: React.FC = () => {
           } else {
             gameStateRef.current = 'shopping';
             setGameState('shopping');
+            resetPlayerInputState();
           }
         }
       } else {
@@ -455,6 +462,13 @@ export const GameUI: React.FC = () => {
   };
 
   const isOnlineMode = (gameRef.current?.networkMode || gameRef.current?.isHostMode) ?? false;
+  const pendingUpgradePlayer = gameRef.current?.upgradePendingPlayer ?? null;
+
+  useEffect(() => {
+    if (gameState === 'shopping' || pendingUpgradePlayer) {
+      resetPlayerInputState();
+    }
+  }, [gameState, pendingUpgradePlayer]);
 
   return (
     <div className="relative w-full h-screen bg-neutral-950 flex items-center justify-center overflow-hidden font-sans">
@@ -553,6 +567,7 @@ export const GameUI: React.FC = () => {
         {gameState === 'playing' && platform === 'mobile' && (
           <MobileControls
             playerCount={(!isOnlineMode && playerCount === 2) ? 2 : 1}
+            resetSignal={mobileControlResetKey}
             onMove={(playerIdx, input) => {
               const idx = isOnlineMode ? (myPlayerId - 1) : playerIdx;
               gameRef.current?.setJoystickInput(idx, input);
@@ -562,7 +577,7 @@ export const GameUI: React.FC = () => {
 
         {/* ── 升級選擇面板 ─────────────────────────────────────── */}
         {gameState === 'playing' && (() => {
-          const pendingPlayer = gameRef.current?.upgradePendingPlayer;
+          const pendingPlayer = pendingUpgradePlayer;
           if (!pendingPlayer) return null;
           return (
             <UpgradePanel

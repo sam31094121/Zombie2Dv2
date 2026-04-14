@@ -25,11 +25,12 @@ const DEFAULT_JOY = (): JoystickState => ({
 export interface MobileControlsProps {
   playerCount: 1 | 2;
   onMove: (playerIndex: number, input: { x: number; y: number } | null) => void;
+  resetSignal?: number;
 }
 
 
 // ── 核心搖桿管理 Hook（分離邏輯與處理，專門負責輸入更新）────────────────────────
-function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onMove']) {
+function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onMove'], resetSignal: number = 0) {
   const containerRef = useRef<HTMLDivElement>(null);
   const joysRef      = useRef<JoystickState[]>([DEFAULT_JOY(), DEFAULT_JOY()]);
   const onMoveRef    = useRef(onMove);
@@ -236,13 +237,21 @@ function useJoystickManager(playerCount: 1 | 2, onMove: MobileControlsProps['onM
     };
   }, [playerCount]);
 
+  useEffect(() => {
+    joysRef.current = [DEFAULT_JOY(), DEFAULT_JOY()];
+    updateDOM(0, joysRef.current[0]);
+    updateDOM(1, joysRef.current[1]);
+    onMoveRef.current(0, null);
+    onMoveRef.current(1, null);
+  }, [resetSignal]);
+
   return { containerRef, baseRefs, stickRefs };
 }
 
 // ── 渲染層 ───────────────────────────────────────────────────────────────────
-export function MobileControls({ playerCount, onMove }: MobileControlsProps) {
+export function MobileControls({ playerCount, onMove, resetSignal = 0 }: MobileControlsProps) {
   // 將所有核心邏輯交還給管理 Hook 處理
-  const { containerRef, baseRefs, stickRefs } = useJoystickManager(playerCount, onMove);
+  const { containerRef, baseRefs, stickRefs } = useJoystickManager(playerCount, onMove, resetSignal);
   
   const colors = ['rgba(52,152,219,0.55)', 'rgba(231,76,60,0.55)'];
   const fillColors = ['rgba(52,152,219,0.75)', 'rgba(231,76,60,0.75)'];
