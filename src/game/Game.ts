@@ -1,4 +1,4 @@
-import { CONSTANTS } from './Constants';
+﻿import { CONSTANTS } from './Constants';
 import { Player } from './Player';
 import { Zombie, ZombieType } from './Zombie';
 import { ObstacleType, GameMode } from './types';
@@ -16,7 +16,7 @@ import { resolveOverlaps } from './systems/PhysicsSystem';
 import { spawnZombie as _spawnZombie, spawnItemAt as _spawnItemAt, spawnItem as _spawnItem } from './systems/SpawnSystem';
 import { applyWaveMechanisms as _applyWaveMechanisms, drawWaveFilters as _drawWaveFilters } from './systems/WaveMechanicsSystem';
 import { serializeState as _serializeState, applyNetworkState as _applyNetworkState } from './systems/NetworkSyncSystem';
-import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestZombie as _findNearestZombie, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
+import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestZombie as _findNearestZombie, findNearestAutoTarget as _findNearestAutoTarget, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
 import { SwordProjectile } from './entities/SwordProjectile';
 import { updateSwordProjectiles } from './systems/SwordSystem';
 import { MissileProjectile } from './entities/MissileProjectile';
@@ -31,6 +31,7 @@ import { drawActiveEffects } from './renderers/EffectRenderer';
 import type { ActiveEffect } from './types';
 import { ArenaBorderLayout, ArenaPlayableBounds, createArenaBorderLayout, drawArenaBorder } from './renderers/ArenaBorderRenderer';
 import { getGeneratedObstacleSize } from './map/MapManager';
+import { updateTombstones } from './systems/TombstoneSystem';
 
 export class Game {
   players: Player[] = [];
@@ -64,49 +65,49 @@ export class Game {
   arenaHeight: number = 1500;
   arenaBorder: ArenaBorderLayout | null = null;
   baggedMaterials: number = 0;
-  private _arenaWaveStartLevels: number[] = []  // 每位玩家的波次開始等級;
-  sharedStatPoints: number = 0;   // 本地雙人模式共享素質點數池
+  private _arenaWaveStartLevels: number[] = []  // 瘥??拙振?郭甈⊿?憪?蝝?
+  sharedStatPoints: number = 0;   // ?砍?犖璅∪??曹澈蝝釭暺瘙?
 
-  // 網路多人模式
+  // 蝬脰楝憭犖璅∪?
   networkMode: boolean = false;
   networkPlayerId: number = 1;
   networkInputSendTimer: number = 0;
   onSendInput: ((dx: number, dy: number) => void) | null = null;
 
-  // ── 模組 C：環形緩衝區（最近 200 幀本地狀態，備 Rollback 用）
+  // ?? 璅∠? C嚗敶Ｙ楨銵?嚗?餈?200 撟?砍?????Rollback ?剁?
   localTick = 0;
   readonly CIRC_BUF_SIZE = 200;
   circularBuffer: Array<{ tick: number; x: number; y: number; vx: number; vy: number } | null>
     = new Array(200).fill(null);
 
-  // ── Reconciliation：Host 確認的最後一個 P2 input tick ─────
+  // ?? Reconciliation嚗ost 蝣箄???敺???P2 input tick ?????
   hostLastAckTick = 0;
 
-  // ── 模組 H：道具拾取預測（client-side prediction）
+  // ?? 璅∠? H嚗??瑟??皜穿?client-side prediction嚗?
   pendingPickups: Array<{ x: number; y: number; type: string; time: number }> = [];
 
-  // ── 模組 E / F：HardSync 旗標（背景分頁恢復 or 波次切換）
+  // ?? 璅∠? E / F嚗ardSync ??嚗??臬??敺?or 瘜Ｘ活??嚗?
   pendingHardSync = false;
 
-  // ── Feature 3/6: Stable zombie IDs
+  // ?? Feature 3/6: Stable zombie IDs
   _zombieIdCounter: number = 0;
 
-  // ── Host 模式（P2P）：本地跑完整物理後序列化送給 P2 ──────
+  // ?? Host 璅∪?嚗2P嚗??砍頝??渡??摨??策 P2 ??????
   isHostMode: boolean = false;
 
-  // ── 劍系投射物擊殺佇列（SwordSystem 填入，Game.update 結尾處理）
+  // ?? ?頂???拇?畾箔???SwordSystem 憛怠嚗ame.update 蝯偏??嚗?
   pendingSwordKills: Map<Zombie, { ownerId: number | null; level: number; hitAngle?: number }> = new Map();
 
-  // ── Feature 5: Lag compensation — hitbox expansion + backward reconciliation
+  // ?? Feature 5: Lag compensation ??hitbox expansion + backward reconciliation
   lagCompensationRadius: number = 0;
-  playerLatencies: Map<number, number> = new Map(); // playerId → one-way latency (ms)
+  playerLatencies: Map<number, number> = new Map(); // playerId ??one-way latency (ms)
 
   // Zombie position history ring buffer for backward reconciliation (30 ticks @ 60Hz = 500ms)
   private _zombieHistoryBuf: Array<Map<number, { x: number; y: number }>> = [];
   private _zombieHistoryTick: number = 0;
   private readonly _HISTORY_SIZE = 30;
 
-  // ── Feature 4: Snapshot ring buffer for timing-based interpolation (50ms render delay)
+  // ?? Feature 4: Snapshot ring buffer for timing-based interpolation (50ms render delay)
   _snapBuffer: Array<{
     ts: number;
     zs: Map<number, { x: number; y: number }>;
@@ -145,7 +146,7 @@ export class Game {
     this.players = [];
     if (playerCount >= 1) {
       const p1 = new Player(1, 400, 300, '#3498db');
-      // [模組化調整] 所有的模式現在都預設使用懸浮武器邏輯，提供更一致的體驗
+      // [璅∠??矽?弼 ???璅∪??曉?賡?閮凋蝙?冽瘚格郎?券?頛荔????港??渡?擃?
       p1.isFloatingWeapons = true;
       this.players.push(p1);
     }
@@ -228,19 +229,19 @@ export class Game {
     }
   }
 
-  // 模組 F：背景分頁恢復 — 觸發下一幀強制硬同步
+  // 璅∠? F嚗??臬??敺???閫貊銝?撟撘瑕蝖砍?甇?
   triggerHardSync() {
     this.pendingHardSync = true;
   }
 
-  // ── Host 模式：序列化遊戲狀態（供 P2P 廣播給 P2）────────
-  // 格式與舊版 server.ts serializeState 完全相同，P2 的 applyNetworkState 不需改動
+  // ?? Host 璅∪?嚗???????靘?P2P 撱?蝯?P2嚗????????
+  // ?澆?????server.ts serializeState 摰?詨?嚗2 ??applyNetworkState 銝??孵?
   serializeState(tick: number, hardSync: boolean): object {
     return _serializeState(this, tick, hardSync);
   }
 
-  // 接收伺服器狀態並更新本地實體
-  // HardSync 淡入遮罩（0 = 全透明，>0 漸出）
+  // ?交隡箸??函??蒂?湔?砍撖阡?
+  // HardSync 瘛∪?桃蔗嚗? = ?券?嚗?0 瞍詨嚗?
   _hardSyncFade = 0;
 
   applyNetworkState(state: any) {
@@ -249,9 +250,9 @@ export class Game {
 
   testMode: boolean = false;
   debugPaused: boolean = false;
-  isPaused: boolean = false; // 新增全局暫停狀態
+  isPaused: boolean = false; // ?啣??典??怠????
   debugHpLocked: boolean = false;
-  debugInfiniteCoins: boolean = false; // 測試用：無限金幣
+  debugInfiniteCoins: boolean = false; // 皜祈岫?剁??⊿??馳
 
   handleKeyDown = (e: KeyboardEvent) => {
     this.keys[e.key] = true;
@@ -286,7 +287,7 @@ export class Game {
     this.zombies.push(z);
   }
 
-  // ── Debug API（供 TestModePanel 呼叫）────────────────────────────────────
+  // ?? Debug API嚗? TestModePanel ?澆嚗????????????????????????????????????
   debugSpawnZombie(type: ZombieType, count: number = 1) {
     for (let i = 0; i < count; i++) this._debugSpawn(type);
   }
@@ -334,7 +335,7 @@ export class Game {
 
   debugSetWave(wave: number) {
     this.waveManager.currentWave = Math.max(1, Math.min(99, wave));
-    this.waveManager.isInfinite = false; // 手動跳波次時重置無限模式，避免深色背景
+    this.waveManager.isInfinite = false; // ??頝單郭甈⊥??蔭?⊿?璅∪?嚗?楛?脰???
   }
 
   debugClearSlime() {
@@ -358,13 +359,13 @@ export class Game {
   }
   debugToggleInfiniteCoins() {
     this.debugInfiniteCoins = !this.debugInfiniteCoins;
-    // 立即生效：所有玩家金幣設為極大值
+    // 蝡??嚗??摰園?撟?身?箸扔憭批?
     if (this.debugInfiniteCoins) {
       this.players.forEach(p => { p.materials = 999999; });
     }
   }
 
-  // ── 升級選擇套用 ────────────────────────────────────────────────────────────
+  // ?? ???豢?憟 ????????????????????????????????????????????????????????????
   applyUpgrade(playerId: number, card: import('../components/UpgradePanel').UpgradeCard) {
     const player = this.players.find(p => p.id === playerId);
     if (!player) return;
@@ -373,9 +374,9 @@ export class Game {
       player.weaponLevels[card.weapon] = Math.min(8, player.weaponLevels[card.weapon] + 1);
     } else if (card.kind === 'branch') {
       player.weaponBranches[card.weapon] = card.branch;
-      player.weaponLevels[card.weapon] = 5; // 選分支同時升到 Lv5
+      player.weaponLevels[card.weapon] = 5; // ?詨??臬?????Lv5
     } else {
-      // 被動
+      // 鋡怠?
       switch (card.key) {
         case 'damage': player.damageMultiplier += 0.15; break;
         case 'haste': player.attackSpeedMultiplier += 0.15; break;
@@ -386,22 +387,22 @@ export class Game {
       }
     }
 
-    // ── 模組化同步 ──
-    // 套用升級後立即同步到武器槽位，解決無線模式武器不更新的問題
+    // ?? 璅∠???甇???
+    // 憟??敺??喳?甇亙甇血瑽賭?嚗圾瘙箇蝺芋撘郎?其??湔??憿?
     player.syncWeaponToSlot();
     
-    // 升級完成後給予保護與加速
+    // ??摰?敺策鈭?霅瑁???
     player.activateShield(2500); 
     player.speedBoostTimer = 4000;
 
     player.pendingLevelUp = false;
 
-    // ── 立即觸發 UI 更新 ──
-    // 確保彈窗立即關閉，避免「不會動」的凍結感
+    // ?? 蝡閫貊 UI ?湔 ??
+    // 蝣箔?敶?蝡??嚗??????????
     this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
   }
 
-  // ── Arena Mode Logic ────────────────────────────────────────────────────────
+  // ?? Arena Mode Logic ????????????????????????????????????????????????????????
   clearEntitiesForShop() {
     if (this._shopEntryHandled) return;
     this._shopEntryHandled = true;
@@ -414,7 +415,7 @@ export class Game {
     }
     this.baggedMaterials = Math.floor(uncollected * 0.5); // 50% risk mechanics
 
-    // ── 競技場素質點數結算：每波固定 1 點 + 本波升級次數 ──────────────────────
+    // ?? 蝡嗆??渡?鞈芷??貊?蝞?瘥郭?箏? 1 暺?+ ?祆郭??甈⊥ ??????????????????????
     if (this.mode === 'arena') {
       const isLocalDuo = !this.networkMode && this.players.length === 2;
       for (let i = 0; i < this.players.length; i++) {
@@ -423,7 +424,7 @@ export class Game {
         const levelsGained = Math.max(0, p.level - startLv);
         const earned = 1 + levelsGained;
         if (isLocalDuo) {
-          // 本地雙人：共享點數池（只計算 P1 的升級，避免重複疊加）
+          // ?砍?犖嚗鈭恍??豢?嚗閮? P1 ??蝝??踹?????嚗?
           if (i === 0) this.sharedStatPoints += earned;
         } else {
           p.arenaStatPoints += earned;
@@ -444,20 +445,60 @@ export class Game {
     this.pendingSwordKills.clear();
   }
 
+    activeTombstones: Obstacle[] = [];
+  activeBoss: Zombie | null = null;
+
+  addObstacleToMap(obs: Obstacle) {
+    const CHUNK_SIZE = 800;
+    const key = `${Math.floor(obs.x / CHUNK_SIZE)},${Math.floor(obs.y / CHUNK_SIZE)}`;
+    const list = this.mapManager.obstacles.get(key) ?? [];
+    list.push(obs);
+    this.mapManager.obstacles.set(key, list);
+  }
+
   nextArenaWave() {
-    if (this.mode !== 'arena') return;
-    this._arenaWaveStartLevels = this.players.map(p => p.level); // 所有玩家波次開始等級
+    if (this.mode !== "arena") return;
+    this._arenaWaveStartLevels = this.players.map(p => p.level);
+    
+    this.activeTombstones = [];
+    this.activeBoss = null;
+
     this.waveManager.startCombat();
     this._shopEntryHandled = false;
     this._shopCleared = false;
+
+    const waveId = this.waveManager.currentWaveConfig.id;
+    if (waveId === 5) {
+      for (let i = 0; i < 3; i++) {
+        const pt = this.randomArenaPoint(150);
+        const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+        obs.maxHp *= 2; 
+        obs.hp = obs.maxHp;
+        this.addObstacleToMap(obs);
+        this.activeTombstones.push(obs);
+      }
+    } else if (waveId >= 6 && waveId <= 8) {
+      const pt = this.randomArenaPoint(150);
+      const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+      this.addObstacleToMap(obs);
+      this.activeTombstones.push(obs);
+    } else if (waveId === 10) {
+      const pt = { x: this.arenaWidth / 2, y: this.arenaHeight / 2 - 100 };
+      const boss = new Zombie(pt.x, pt.y, "butcher");
+      boss.maxHp *= 30; 
+      boss.hp = boss.maxHp;
+      (boss as any).scale = 2.5; 
+      this.zombies.push(boss);
+      this.activeBoss = boss;
+    }
   }
 
   private _shopEntryHandled: boolean = false;
   private _shopCleared: boolean = false;
 
-  // 取得需要升級選擇的玩家（回傳第一個等待中的）
+  // ???閬?蝝???拙振嚗??喟洵銝??敺葉??
   get upgradePendingPlayer(): import('./Player').Player | null {
-    if (this.mode === 'arena') return null; // 競技場模式禁用升級介面
+    if (this.mode === 'arena') return null; // 蝡嗆??湔芋撘??典?蝝???
     return this.players.find(p => p.pendingLevelUp) ?? null;
   }
 
@@ -518,22 +559,22 @@ export class Game {
   update(dt: number) {
     if (this.isGameOver) return;
     
-    // 發生升級選擇或主動暫停時，凍結所有邏輯更新
+    // ?潛????豢??蜓???嚗?蝯???頛舀??
     if (this.isPaused || this.upgradePendingPlayer !== null) {
       if (this.upgradePendingPlayer !== null) {
-        // 確保升級期間依舊觸發 UI 以顯示面板
+        // 蝣箔?????靘?閫貊 UI 隞仿＊蝷粹??
         this.onUpdateUI(this.players[0] || null, this.players[1] || null, this.waveManager);
       }
       return; 
     }
 
-    // ── 網路模式：只處理本地玩家預測 + 傳送輸入 ──
+    // ?? 蝬脰楝璅∪?嚗???砍?拙振?葫 + ?喲撓????
     if (this.networkMode) {
       const playerIdx = this.networkPlayerId - 1;
       const localPlayer = this.players[playerIdx];
 
       if (localPlayer && localPlayer.hp > 0) {
-        // 每幀重新計算鍵盤輸入（WASD / 方向鍵均有效，不依賴 player.id）
+        // 瘥??閮??萇頛詨嚗ASD / ?孵??萄???嚗?靘陷 player.id嚗?
         let dx = 0, dy = 0;
         if (this.keys['w'] || this.keys['W'] || this.keys['ArrowUp']) dy -= 1;
         if (this.keys['s'] || this.keys['S'] || this.keys['ArrowDown']) dy += 1;
@@ -542,26 +583,19 @@ export class Game {
         const kbLen = Math.sqrt(dx * dx + dy * dy);
         if (kbLen > 0) { dx /= kbLen; dy /= kbLen; }
 
-        // 手機搖桿優先；沒有搖桿則用鍵盤值（含靜止 0,0）
+        // ???▼?芸?嚗???獢踹??券?文潘??恍?甇?0,0嚗?
         const mobileInput = this.joystickInputs[playerIdx];
         const finalInput = mobileInput ?? { x: dx, y: dy };
 
         const obstacles = this.mapManager.getNearbyObstacles(localPlayer.x, localPlayer.y);
         localPlayer.update(dt, this.keys, obstacles, finalInput);
 
-        // 修復 Fix 2：本地玩家自動瞄準（網路模式也更新 aimAngle）
+        // 靽桀儔 Fix 2嚗?啁摰嗉??皞?蝬脰楝璅∪?銋??aimAngle嚗?
         {
           let targetAngle = Math.atan2(localPlayer.lastMoveDir.y, localPlayer.lastMoveDir.x);
-          let nearestEnemy = null;
-          let minDistSq = Infinity;
-          for (const z of this.zombies) {
-            if (z.hp <= 0) continue;
-            const zDx = z.x - localPlayer.x, zDy = z.y - localPlayer.y;
-            const distSq = zDx * zDx + zDy * zDy;
-            if (distSq < minDistSq) { minDistSq = distSq; nearestEnemy = z; }
-          }
+          const nearestEnemy = _findNearestAutoTarget(this, localPlayer.x, localPlayer.y, 700);
           if (nearestEnemy) {
-            targetAngle = Math.atan2((nearestEnemy as any).y - localPlayer.y, (nearestEnemy as any).x - localPlayer.x);
+            targetAngle = Math.atan2(nearestEnemy.y - localPlayer.y, nearestEnemy.x - localPlayer.x);
           }
           let angleDiff = targetAngle - localPlayer.aimAngle;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
@@ -572,12 +606,12 @@ export class Game {
           while (localPlayer.aimAngle < -Math.PI) localPlayer.aimAngle += Math.PI * 2;
         }
 
-        // 攝影機跟隨本地玩家（存活時）
+        // ?蔣璈??冽?啁摰塚?摮暑??
         this.camera.x += (localPlayer.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
         this.camera.y += (localPlayer.y - CONSTANTS.CANVAS_HEIGHT / 2 - this.camera.y) * 0.1;
         this.mapManager.update(localPlayer.x, localPlayer.y);
 
-        // 模組 A / C：每幀傳送 binary 輸入（Fix 3 零延遲）+ 寫入環形緩衝區
+        // 璅∠? A / C嚗?撟?喲?binary 頛詨嚗ix 3 ?嗅辣?莎?+ 撖怠?啣耦蝺抵??
         if (this.onSendInput) {
           this.onSendInput(finalInput.x, finalInput.y);
           this.localTick = (this.localTick + 1) >>> 0;
@@ -587,7 +621,7 @@ export class Game {
           };
         }
 
-        // 模組 H：道具拾取預測（本地立即消失 + 播音效）
+        // 璅∠? H嚗??瑟??皜穿??砍蝡瘨仃 + ?剝??
         const nowPick = Date.now();
         for (let i = this.items.length - 1; i >= 0; i--) {
           const item = this.items[i];
@@ -600,7 +634,7 @@ export class Game {
           }
         }
       } else {
-        // 本地玩家死亡時鏡頭跟隨隊友（復活等待期間）
+        // ?砍?拙振甇颱滿??剛??券???敺拇暑蝑???嚗?
         const followTarget = this.players.find(p => p.id !== this.networkPlayerId && p.hp > 0);
         if (followTarget) {
           this.camera.x += (followTarget.x - CONSTANTS.CANVAS_WIDTH / 2 - this.camera.x) * 0.1;
@@ -609,7 +643,7 @@ export class Game {
         }
       }
 
-      // ── Feature 4: Snapshot interpolation — render remote entities 50ms behind live ──
+      // ?? Feature 4: Snapshot interpolation ??render remote entities 50ms behind live ??
       const renderTime = Date.now() - this._SNAP_DELAY_MS;
       let snapA: typeof this._snapBuffer[0] | null = null;
       let snapB: typeof this._snapBuffer[0] | null = null;
@@ -625,7 +659,7 @@ export class Game {
         const _alpha = (renderTime - snapA.ts) / Math.max(1, snapB.ts - snapA.ts);
         const _t = Math.max(0, Math.min(1, _alpha));
 
-        // Interpolate zombies by stable ID — O(1) Map lookup instead of O(n) find
+        // Interpolate zombies by stable ID ??O(1) Map lookup instead of O(n) find
         for (const z of this.zombies) {
           const zA = snapA.zs.get(z.id);
           const zB = snapB.zs.get(z.id);
@@ -670,12 +704,12 @@ export class Game {
         }
       }
 
-      // 模組 E：HardSync 淡入遮罩逐幀消散
+      // 璅∠? E嚗ardSync 瘛∪?桃蔗??瘨
       if (this._hardSyncFade > 0) {
         this._hardSyncFade = Math.max(0, this._hardSyncFade - 0.03);
       }
 
-      // 更新 VFX
+      // ?湔 VFX
       this.healVFX = this.healVFX.filter(vfx => {
         vfx.y -= 1;
         vfx.alpha -= 0.02;
@@ -685,7 +719,7 @@ export class Game {
         this.hitEffects[i].lifetime -= dt;
         if (this.hitEffects[i].lifetime <= 0) this.hitEffects.splice(i, 1);
       }
-      // Fix 4 — Defensive slimeTrails lifetime cleanup in network mode.
+      // Fix 4 ??Defensive slimeTrails lifetime cleanup in network mode.
       // Prevents unbounded growth if any code path adds trails on the client side.
       for (let i = this.slimeTrails.length - 1; i >= 0; i--) {
         this.slimeTrails[i].lifetime -= dt;
@@ -699,7 +733,7 @@ export class Game {
     // --- ARENA MODE WAVE END FREEZE & AUTO-LOOT ---
     if (this.mode === 'arena' && this.waveManager.isResting) {
       if (!this._shopCleared) {
-        this.zombies = []; // 強制銷毀所有殭屍
+        this.zombies = []; // 撘瑕?瑟???悌撅?
         this.projectiles = [];
         this.swordProjectiles = [];
         this.missiles = [];
@@ -714,7 +748,7 @@ export class Game {
             const dx = p.x - item.x;
             const dy = p.y - item.y;
             const dist = Math.hypot(dx, dy);
-            // 瞬間吸星大法
+            // ?祇??豢?憭扳?
             if (dist < 40) {
               if (item.type === 'energy_orb') {
                 this.awardOrbXp(p, item.value || 1);
@@ -723,7 +757,7 @@ export class Game {
               audioManager.playPickup();
               this.items.splice(i, 1);
             } else {
-              item.x += (dx / dist) * Math.min(dist, 50); // 每幀飛 50px
+              item.x += (dx / dist) * Math.min(dist, 50); // 瘥?憌?50px
               item.y += (dy / dist) * Math.min(dist, 50);
               allLooted = false;
             }
@@ -766,9 +800,9 @@ export class Game {
       return;
     }
 
-    // Feature 5 – Backward Reconciliation: snapshot zombie positions before physics moves them.
+    // Feature 5 ??Backward Reconciliation: snapshot zombie positions before physics moves them.
     // Fix: reuse the existing Map object (clear + repopulate) instead of allocating a new Map
-    // every physics tick — eliminates the main GC hotspot at high zombie counts.
+    // every physics tick ??eliminates the main GC hotspot at high zombie counts.
     {
       const idx = this._zombieHistoryTick % this._HISTORY_SIZE;
       let snap = this._zombieHistoryBuf[idx];
@@ -814,7 +848,7 @@ export class Game {
     for (const player of this.players) {
       if (player.hp > 0) {
         if (this.waveManager.isInfinite) {
-          // 移除強制發光
+          // 蝘駁撘瑕?澆?
         }
         const obstacles = this.mapManager.getNearbyObstacles(player.x, player.y);
         const playerIdx = this.players.indexOf(player);
@@ -844,19 +878,7 @@ export class Game {
 
         // Smooth auto-aim logic
         let targetAngle = Math.atan2(player.lastMoveDir.y, player.lastMoveDir.x);
-        let nearestEnemy = null;
-        let minDistanceSq = Infinity;
-        for (const zombie of this.zombies) {
-          if (zombie.hp <= 0) continue;
-          const dx = zombie.x - player.x;
-          const dy = zombie.y - player.y;
-          const distSq = dx * dx + dy * dy;
-          if (distSq < minDistanceSq) {
-            minDistanceSq = distSq;
-            nearestEnemy = zombie;
-          }
-        }
-
+        const nearestEnemy = _findNearestAutoTarget(this, player.x, player.y, 700);
         if (nearestEnemy) {
           targetAngle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
         }
@@ -885,7 +907,7 @@ export class Game {
       }
     }
 
-    // ── Debug：無限金幣每幀補滿 ────────────────────────────────────────────
+    // ?? Debug嚗??撟??撟鋆遛 ????????????????????????????????????????????
     if (this.debugInfiniteCoins) {
       this.players.forEach(p => { p.materials = 999999; });
     }
@@ -895,13 +917,6 @@ export class Game {
     if (!this.waveManager.isResting && !this.debugPaused) {
       this.zombieSpawnTimer += dt;
       let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
-
-      // Tombstone spawn boost
-      const nearbyObstacles = this.mapManager.getNearbyObstacles(this.camera.x + CONSTANTS.CANVAS_WIDTH / 2, this.camera.y + CONSTANTS.CANVAS_HEIGHT / 2);
-      const activeTombstones = nearbyObstacles.filter(obs => obs.type === 'tombstone' && !obs.isDestroyed);
-      if (activeTombstones.length > 0) {
-        spawnRate /= (1 + activeTombstones.length * 0.5); // 50% faster per tombstone
-      }
 
       if (this.zombieSpawnTimer > spawnRate) {
         this.zombieSpawnTimer = 0;
@@ -947,7 +962,7 @@ export class Game {
 
       // Update glow state based on intro timer
       if (this.waveManager.isInfinite) {
-        // 移除殭屍強制發光
+        // 蝘駁畾剖?撘瑕?澆?
       }
 
       const obstacles = this.mapManager.getNearbyObstacles(zombie.x, zombie.y);
@@ -973,7 +988,7 @@ export class Game {
 
     resolveOverlaps(this.zombies, this.players);
 
-    // ── Arena Mode Boundaries ──
+    // ?? Arena Mode Boundaries ??
     if (this.mode === 'arena') {
       const bounds = this.playableArenaBounds;
       for (const p of this.players) {
@@ -997,16 +1012,17 @@ export class Game {
     // Update sword projectiles (Branch A/B boomerang + embed)
     updateSwordProjectiles(this.swordProjectiles, this, dt);
 
-    // 更新燃燒導彈（Gun Branch A）
+    // ?湔??撠?嚗un Branch A嚗?
     updateMissiles(this.missiles, this, dt);
 
-    // 更新電弧槍（Gun Branch B）電漿彈與連鎖邏輯
+    // ?湔?餃憫瑽?Gun Branch B嚗瞍踹?????摩
     ArcSystem.updateArcs(this.arcProjectiles, this, dt);
 
-    // 更新場地效果（龍捲風 / 岩漿標記 / 地面火焰）並蒐集新的擊殺
+    // ?湔?游??嚗??脤◢ / 撗拇撚璅? / ?圈?怎嚗蒂???啁??捏
     updateActiveEffects(this, dt);
+    updateTombstones(this, dt);
 
-    // 處理劍系 + 場地效果擊殺（SwordSystem / ActiveEffectSystem 蒐集的死亡殭屍）
+    // ???頂 + ?游???捏嚗wordSystem / ActiveEffectSystem ???香鈭⊥悌撅?
     this.flushQueuedZombieDeaths();
 
     // Update projectiles
@@ -1089,7 +1105,7 @@ export class Game {
 
         let hit = false;
         if (proj.type === 'bullet') {
-          // Feature 5: Backward Reconciliation — rewind zombie to when shooter fired
+          // Feature 5: Backward Reconciliation ??rewind zombie to when shooter fired
           const shooterLatencyMs = this.playerLatencies.get(proj.ownerId) ?? 0;
           const rewindTicks = Math.min(Math.round(shooterLatencyMs / 16), this._HISTORY_SIZE - 1);
           let czx = zombie.x, czy = zombie.y;
@@ -1113,11 +1129,11 @@ export class Game {
               while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
               while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-              let hitArc = Math.PI / 4; // default 90 degrees (±45)
-              if (proj.level === 2) hitArc = Math.PI / 4; // 90 degrees (±45)
-              else if (proj.level === 3) hitArc = 50 * Math.PI / 180; // 100 degrees (±50)
-              else if (proj.level === 4) hitArc = Math.PI / 3; // 120 degrees (±60)
-              else if (proj.level === 5) hitArc = 85 * Math.PI / 180; // 170 degrees (±85)
+              let hitArc = Math.PI / 4; // default 90 degrees (簣45)
+              if (proj.level === 2) hitArc = Math.PI / 4; // 90 degrees (簣45)
+              else if (proj.level === 3) hitArc = 50 * Math.PI / 180; // 100 degrees (簣50)
+              else if (proj.level === 4) hitArc = Math.PI / 3; // 120 degrees (簣60)
+              else if (proj.level === 5) hitArc = 85 * Math.PI / 180; // 170 degrees (簣85)
 
               // If zombie is very close, always hit (prevents missing when overlapping)
               if (dist < 40 || Math.abs(angleDiff) < hitArc) {
@@ -1169,9 +1185,9 @@ export class Game {
             }
           }
 
-          // Hit effects — 由 BulletDefinitions / 未來 SlashDefinitions 的 onHit 決定
+          // Hit effects ????BulletDefinitions / ?芯? SlashDefinitions ??onHit 瘙箏?
           if (proj.type === 'bullet') {
-            zombie.flashWhiteTimer = 90; // 怪物全身純白閃爍 0.09秒
+            zombie.flashWhiteTimer = 90; // ?芰?刻澈蝝?? 0.09蝘?
             const bulletDef = BULLET_REGISTRY[proj.bulletType] ?? BULLET_REGISTRY['blue_ellipse'];
             bulletDef.onHit?.({ zombie, pushEffect: e => this.hitEffects.push(e) });
           }
@@ -1257,11 +1273,11 @@ export class Game {
             item.targetedByPlayerId = player.id;
             item.pickupProgress += dt;
             
-            // 蓄力達到 3000ms (3秒) 拾取成功
+            // ??? 3000ms (3蝘? ?曉???
             if (item.pickupProgress >= 3000) {
               audioManager.playPickup();
               player.weapon = item.type === 'weapon_sword' ? 'sword' : 'gun';
-              player.syncWeaponToSlot(); // 立即同步等級與狀態
+              player.syncWeaponToSlot(); // 蝡?郊蝑?????
               player.weaponSwitchTimer = 500;
               player.weaponSwitchType = player.weapon;
               
@@ -1271,7 +1287,7 @@ export class Game {
               break; 
             }
           } else {
-            // 普通道具立即拾取
+            // ?桅??瑞??單??
             audioManager.playPickup();
             if (item.type === 'speed') {
               player.speedBoostTimer = 5000;
@@ -1280,7 +1296,7 @@ export class Game {
             } else if (item.type === 'energy_orb') {
               const val = item.value || 1;
               this.awardOrbXp(player, val);
-              // ── 共同薪資：所有存活玩家各自獲得相同金幣（獨立錢包）──
+              // ?? ?勗??芾?嚗???瘣餌摰嗅??芰敺??撟???函??Ｗ?嚗??
               for (const p of this.players) {
                 p.materials += val;
               }
@@ -1292,7 +1308,7 @@ export class Game {
         }
       }
 
-      // 如果無人踩在該武器上，進度瞬間歸零
+      // 憒??∩犖頦拙閰脫郎?其?嚗脣漲?祇?甇賊
       if (!isBeingStepped && (item.type === 'weapon_sword' || item.type === 'weapon_gun')) {
         item.pickupProgress = 0;
         item.targetedByPlayerId = null;
@@ -1309,8 +1325,8 @@ export class Game {
         return false;
       }
 
-      vfx.y -= 1; // 相對玩家向上漂浮
-      vfx.alpha -= 0.02; // 逐漸淡出
+      vfx.y -= 1; // ?詨??拙振??瞍筑
+      vfx.alpha -= 0.02; // ?撓瘛∪
       return vfx.alpha > 0;
     });
 
@@ -1318,14 +1334,14 @@ export class Game {
     for (let i = this.hitEffects.length - 1; i >= 0; i--) {
       const effect = this.hitEffects[i];
       effect.lifetime -= dt;
-      // 物理驅動的碎片：套用慣性與空氣阻力
+      // ?拍?撽?????憟??扯?蝛箸除?餃?
       if (effect.vx !== undefined && effect.vy !== undefined) {
         effect.x += effect.vx * (dt / 16);
         effect.y += effect.vy * (dt / 16);
-        const drag = Math.pow(0.88, dt / 16); // 極強空氣阻力 → 快速定格
+        const drag = Math.pow(0.88, dt / 16); // 璆萄撥蝛箸除?餃? ??敹恍???
         effect.vx *= drag;
         effect.vy *= drag;
-        // 加入微弱重力
+        // ?敺桀摹??
         effect.vy += 0.15 * (dt / 16);
       }
       if (effect.lifetime <= 0) {
@@ -1350,8 +1366,8 @@ export class Game {
   spawnItem() { _spawnItem(this); }
 
   /**
-   * 殭屍死亡統一處理：音效、掉落 orb、爆裂特效、slime 分裂、移除、加分。
-   * 回傳新生成的子殭屍（供呼叫方加入命中保護 Set）。
+   * 畾剖?甇颱滿蝯曹???嚗????orb??鋆?lime ???宏?扎???
+   * ??啁???摮悌撅?靘?急??賭葉靽風 Set嚗?
    */
   killZombie(zombie: Zombie, ownerId: number | null, attackLevel: number, hitAngle?: number): Zombie[] {
     const zombieIndex = this.zombies.indexOf(zombie);
@@ -1360,13 +1376,13 @@ export class Game {
     audioManager.playKill();
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
 
-    // ── 碎裂噴發 (Gibbing) ─────────────────────────────────────────────────
+    // ?? 蝣??渡 (Gibbing) ?????????????????????????????????????????????????
     const burstAngle = hitAngle !== undefined ? hitAngle : Math.random() * Math.PI * 2;
-    const gibCount = 3 + Math.floor(Math.random() * 3); // 3~5 顆肉塊
+    const gibCount = 3 + Math.floor(Math.random() * 3); // 3~5 憿?憛?
     for (let g = 0; g < gibCount; g++) {
-      // 在受擊反方向的扇形範圍 (±40°) 內散射
+      // ?典????孵???敶Ｙ???(簣40簞) ?扳撠?
       const spreadAngle = burstAngle + (Math.random() - 0.5) * 1.4;
-      const speed = 10 + Math.random() * 7; // 初速 10~17 px/tick (目標距離 80~150px)
+      const speed = 10 + Math.random() * 7; // ??10~17 px/tick (?格?頝 80~150px)
       this.hitEffects.push({
         x: zombie.x, y: zombie.y,
         type: 'gib_blood',
@@ -1379,7 +1395,7 @@ export class Game {
       });
     }
 
-    // 掉落能量球
+    // ??賡???
     for (let i = 0; i < zombieDef.orbCount; i++) {
       const ox = (Math.random() - 0.5) * 20;
       const oy = (Math.random() - 0.5) * 20;
@@ -1391,15 +1407,15 @@ export class Game {
       this.baggedMaterials = 0;
     }
 
-    // 爆裂死亡特效
+    // ??甇颱滿?寞?
     this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'death_burst', lifetime: 450, maxLifetime: 450 });
 
-    // 解體特效（高等級攻擊）
+    // 閫???寞?嚗?蝑??餅?嚗?
     if ((zombie.type === 'normal' || zombie.type === 'spitter') && attackLevel >= 4) {
       this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'dismember', lifetime: 500, maxLifetime: 500 });
     }
 
-    // slime 分裂
+    // slime ??
     const children: Zombie[] = [];
     if (zombieDef.splitOnDeath) {
       const specs = zombieDef.splitOnDeath(zombie.x, zombie.y);
@@ -1413,10 +1429,10 @@ export class Game {
       }
     }
 
-    // 岩漿標記：怪死時鎖定位置 + 生成焦屍視覺
+    // 撗拇撚璅?嚗芣香??摰?蝵?+ ???血?閬死
     for (const effect of this.activeEffects) {
       if (effect.type === 'lava_mark' && effect.targetZombieId === zombie.id) {
-        effect.targetZombieId = undefined;  // 停止跟蹤，位置已鎖定
+        effect.targetZombieId = undefined;  // ?迫頝馱嚗?蝵桀歇??
         this.hitEffects.push({ x: effect.x, y: effect.y, type: 'charred_body', lifetime: effect.lifetime + 300, maxLifetime: effect.lifetime + 300 });
       }
     }
@@ -1470,7 +1486,7 @@ export class Game {
       ctx.closePath();
     }
 
-    // 模組 H：道具淡入修復動畫（_fadeAlpha: 0→1 漸出）
+    // 璅∠? H嚗??瑟楚?乩耨敺拙??恬?_fadeAlpha: 0?? 瞍詨嚗?
     for (const item of this.items) {
       const alpha = (item as any)._fadeAlpha;
       if (alpha !== undefined) {
@@ -1516,3 +1532,4 @@ export class Game {
   }
 
 }
+

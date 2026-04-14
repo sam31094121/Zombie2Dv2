@@ -21,6 +21,8 @@ export class Obstacle {
   triggerTimer: number = 0;
   respawnTimer: number = 0;
   lastHealTick: number = 0; // For streetlight healing
+  tombstoneSummonTimer: number = 3000;
+  tombstoneMaxHits: number = 0;
 
   constructor(x: number, y: number, width: number, height: number, type: ObstacleType) {
     this.x = x;
@@ -33,11 +35,15 @@ export class Obstacle {
     // Set HP for destructible objects
     if (type === 'sandbag') this.maxHp = 100;
     else if (type === 'explosive_barrel') this.maxHp = 20;
-    else if (type === 'tombstone') this.maxHp = 150;
+    else if (type === 'tombstone') this.maxHp = 10;
     else if (type === 'vending_machine') this.maxHp = 80;
     else this.maxHp = 1000000; // Indestructible
     
     this.hp = this.maxHp;
+    if (type === 'tombstone') {
+      this.tombstoneMaxHits = 10;
+      this.tombstoneSummonTimer = 3000;
+    }
   }
 
   update(dt: number, players?: Player[], onHealCallback?: (p: Player) => void) {
@@ -78,7 +84,11 @@ export class Obstacle {
 
   takeDamage(amount: number) {
     if (this.isDestroyed) return;
-    this.hp -= amount;
+    if (this.type === 'tombstone') {
+      this.hp -= 1;
+    } else {
+      this.hp -= amount;
+    }
     if (this.hp <= 0 || this.type === 'explosive_barrel') {
       this.isDestroyed = true;
       if (this.type === 'explosive_barrel') {
@@ -97,11 +107,11 @@ export class Obstacle {
   }
 
   collidesWithCircle(cx: number, cy: number, r: number): boolean {
-    if (this.isDestroyed && this.type !== 'explosive_barrel' && this.type !== 'vending_machine' && this.type !== 'tombstone') return false;
+    if (this.isDestroyed && this.type !== 'explosive_barrel' && this.type !== 'vending_machine') return false;
 
     if (this.type === 'pillar' || this.type === 'rock' || this.type === 'building' || 
         this.type === 'sandbag' || this.type === 'explosive_barrel' || this.type === 'streetlight' || 
-        this.type === 'monolith' || this.type === 'tombstone') {
+        this.type === 'monolith') {
       const px = this.x + this.width / 2;
       const py = this.y + this.height / 2;
       const dist = Math.hypot(cx - px, cy - py);
@@ -137,7 +147,7 @@ export class Obstacle {
 
     if (this.type === 'pillar' || this.type === 'rock' || this.type === 'building' || 
         this.type === 'sandbag' || this.type === 'explosive_barrel' || this.type === 'streetlight' || 
-        this.type === 'monolith' || this.type === 'tombstone') {
+        this.type === 'monolith') {
       const px = this.x + this.width / 2;
       const py = this.y + this.height / 2;
       const dist = Math.hypot(cx - px, cy - py);

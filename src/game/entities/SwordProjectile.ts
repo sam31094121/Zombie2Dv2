@@ -61,6 +61,7 @@ export class SwordProjectile {
   // Zombies already hit during current pass (going_out or returning)
   // Cleared when transitioning to spinning/returning
   hitZombieIds = new Set<number>();
+  hitObstacleKeys = new Set<string>();
 
   isDone: boolean = false;
 

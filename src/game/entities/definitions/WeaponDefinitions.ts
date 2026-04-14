@@ -330,12 +330,12 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       const v = angleVec(angle);
       const perp = { x: -v.y, y: v.x };
       // 憭批?敶?瑽銝剖亢嚗?
-      const front = makeBullet(player, dmgMult, v.x, v.y, 3, 2, 10, 8,
+      const front = makeBullet(player, dmgMult, v.x, v.y, 1, 2, 10, 8,
         32, 0, 'blue_ellipse', origin);
       // ?拚?撠?敶???蝞⊥????
-      const left = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
+      const left = makeBullet(player, dmgMult, v.x, v.y, 1, 2, 10, 5,
         32, -5, 'blue_ellipse', origin);
-      const right = makeBullet(player, dmgMult, v.x, v.y, 2, 2, 10, 5,
+      const right = makeBullet(player, dmgMult, v.x, v.y, 1, 2, 10, 5,
         32, 5, 'blue_ellipse', origin);
       return [front, left, right];
     },
@@ -700,7 +700,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     fire: () => [],
     fireDirect(game, p, m, origin) {
       audioManager.playShoot(4);
-      game.missiles.push(_makeMissile(p, m, 6, 0, origin));
+      game.missiles.push(_makeMissile(p, m, 4, 0, origin));
     },
     drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
@@ -713,7 +713,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     fire: () => [],
     fireDirect(game, p, m, origin) {
       audioManager.playShoot(5);
-      game.missiles.push(_makeMissile(p, m, 7, 0, origin));
+      game.missiles.push(_makeMissile(p, m, 5, 0, origin));
     },
     drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
@@ -726,7 +726,7 @@ const GUN_BRANCH_A: Record<string, IWeaponLevelDef> = {
     fire: () => [],
     fireDirect(game, p, m, origin) {
       audioManager.playShoot(5);
-      game.missiles.push(_makeMissile(p, m, 8, 300, origin)); // splitAfter=300ms
+      game.missiles.push(_makeMissile(p, m, 5, 300, origin)); // splitAfter=300ms
     },
     drawWeapon(ctx, player, slot) { _drawMissileLauncher(ctx, player, slot); },
   },
@@ -876,25 +876,25 @@ function _fireArc(game: Game, p: Player, level: number, damage: number, jumps: n
 
 const GUN_BRANCH_B: Record<string, IWeaponLevelDef> = {
   '5B': {
-    attackInterval: 1800,
+    attackInterval: 1650,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 5, 5, 3, 1000, origin); },
     drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 5, slot); },
   },
   '6B': {
-    attackInterval: 1800,
+    attackInterval: 1650,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 6, 6, 5, 1200, origin); },
     drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 6, slot); },
   },
   '7B': {
-    attackInterval: 1800,
+    attackInterval: 1600,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 7, 7, 8, 1500, origin); },
     drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 7, slot); },
   },
   '8B': {
-    attackInterval: 2000,
+    attackInterval: 1800,
     fire: () => [],
     fireDirect(game, p, m, origin) { _fireArc(game, p, 8, 8, 10, 2000, origin); },
     drawWeapon(ctx, player, slot) { _drawThreeClawArcGun(ctx, player, 8, slot); },
@@ -913,15 +913,15 @@ export const WEAPON_BRANCH_INFO: Record<'sword' | 'gun', Record<'A' | 'B', IWeap
     B: { name: '爆裂', emoji: '💥', description: '命中後造成範圍爆發傷害' },
   },
   gun: {
-    A: { name: '導彈', emoji: '🚀', description: '追蹤飛彈，重視壓制與區域控場' },
-    B: { name: '電漿', emoji: '⚡', description: '電漿彈鏈鎖打擊，偏向清群與控場' },
+    A: { name: '電漿', emoji: '⚡', description: '電漿彈鏈鎖打擊，偏向清群與控場' },
+    B: { name: '導彈', emoji: '🚀', description: '追蹤飛彈，重視壓制與區域控場' },
   },
 };
 
 // ?? 蝯曹??駁?銵????????????????????????????????????????????????????????????????
 export const WEAPON_REGISTRY: Record<'sword' | 'gun', Record<number | string, IWeaponLevelDef>> = {
   sword: { ...SWORD_LEVELS, ...SWORD_BRANCH_A, ...SWORD_BRANCH_B },
-  gun: { ...GUN_LEVELS, ...GUN_BRANCH_A, ...GUN_BRANCH_B },
+  gun: { ...GUN_LEVELS, ...GUN_BRANCH_B, ...GUN_BRANCH_A },
 };
 
 // ?? 甇血蝑??萄潘?靘摰?weaponLevel + branch 閮?嚗??????????????????????????

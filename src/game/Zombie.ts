@@ -35,6 +35,7 @@ export class Zombie {
   time: number = 0;
   isCloseToPlayer: boolean = false;
   angle: number = 0;
+  isSummoned: boolean = false;
 
   // slime / spitter 動畫
   jellyPhase: number = 0;

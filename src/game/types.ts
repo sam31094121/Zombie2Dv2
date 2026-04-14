@@ -16,7 +16,7 @@ export type ObstacleType =
   | 'tombstone' | 'vending_machine' | 'container'
   | 'altar' | 'monolith';
 
-export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' | 'butcher';
+export type ZombieType = 'normal' | 'big' | 'slime' | 'slime_small' | 'spitter' | 'butcher' | 'ghost';
 
 export type GameMode = 'endless' | 'arena';
 

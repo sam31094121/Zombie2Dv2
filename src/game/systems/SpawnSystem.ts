@@ -57,7 +57,7 @@ export function spawnZombie(game: Game): void {
   spawnZombieAt(game, x, y, type);
 }
 
-export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' | 'big' | 'slime' | 'spitter'): void {
+export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' | 'big' | 'slime' | 'spitter' | 'ghost'): void {
   const zombie = new Zombie(x, y, type);
   zombie.id = ++game._zombieIdCounter;
 
@@ -72,6 +72,10 @@ export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' |
   } else if (type === 'spitter') {
     zombie.hp = 3 * mult;
     zombie.speed *= mult;
+  } else if (type === 'ghost') {
+    zombie.hp = Math.max(3, Math.round(3 * mult));
+    zombie.speed *= Math.max(1.08, mult * 1.08);
+    zombie.isSummoned = true;
   } else {
     // 骷髏怪（normal）：永遠 1 滴血，最弱小兵，不參與波次血量縮放
     zombie.hp = 1;

@@ -333,6 +333,24 @@ function drawTombstone(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number,
     ctx.arc(cx + ox, cy + 20 + oy, 15, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  const summonRatio = Math.max(0, Math.min(1, obs.tombstoneSummonTimer / 3000));
+  ctx.strokeStyle = `rgba(168, 85, 247, ${0.25 + (1 - summonRatio) * 0.4})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 18, 22 + (1 - summonRatio) * 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const hpRatio = Math.max(0, obs.hp / Math.max(1, obs.maxHp));
+  const barW = 44;
+  const barH = 5;
+  ctx.fillStyle = 'rgba(20, 20, 20, 0.85)';
+  ctx.fillRect(cx - barW / 2, cy - 38, barW, barH);
+  ctx.fillStyle = '#a855f7';
+  ctx.fillRect(cx - barW / 2, cy - 38, barW * hpRatio, barH);
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - barW / 2, cy - 38, barW, barH);
 }
 
 function drawVendingMachine(obs: Obstacle, ctx: CanvasRenderingContext2D, _cx: number, _cy: number, _r: number, sox: number, soy: number) {

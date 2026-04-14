@@ -118,7 +118,7 @@ function _spawnSplitMissiles(
       x: parent.x,
       y: parent.y,
       angle: base + i * SPREAD,
-      damage: 4,
+      damage: 1,
       speed: parent.speed * 1.15,
       turnSpeed: parent.turnSpeed * 1.5,
       radius: 7,

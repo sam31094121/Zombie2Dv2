@@ -7,6 +7,11 @@ import { Item } from '../Item';
 import { Projectile } from '../Projectile';
 import { SwordProjectile } from '../entities/SwordProjectile';
 import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
+import { findNearestTombstoneTarget } from './TombstoneSystem';
+
+type AutoTarget =
+  | { kind: 'zombie'; x: number; y: number }
+  | { kind: 'tombstone'; x: number; y: number; obstacle: Obstacle };
 
 export function handleObstacleInteractions(game: Game, dt: number): void {
   const obstacleSet = new Set<Obstacle>();
@@ -146,7 +151,7 @@ export function handlePlayerAttacks(game: Game, player: Player, dt: number = 16)
       const by = player.y + slotPos.ry + bob;
 
       // 1. Search for a nearby target and snap the weapon to it instantly.
-      const aimTarget = findNearestZombie(game, bx, by, 700);
+      const aimTarget = findNearestAutoTarget(game, bx, by, 700);
       if (aimTarget) {
         const targetAngle = Math.atan2(aimTarget.y - by, aimTarget.x - bx);
         let aDiff = targetAngle - (slot.aimAngle ?? player.aimAngle);
@@ -188,7 +193,7 @@ export function handlePlayerAttacks(game: Game, player: Player, dt: number = 16)
       // ?ï¿?ï¿?ä¸»æ­¦?ï¿½ï¿½??ï¿½ç›¡æ¨¡ï¿½?ï¼‰ï¿½?å°„ï¿½?æª¢æŸ¥ï¼Œåœ¨ç¯„ï¿½??ï¿½ï¿½??ï¿½ç« ?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?ï¿?
       if (now - slot.lastAttackTime <= attackInterval) continue;
 
-      const nearest = findNearestZombie(game, player.x, player.y, attackRange);
+      const nearest = findNearestAutoTarget(game, player.x, player.y, attackRange);
       if (!nearest) continue; // å°„ï¿½??ï¿½ç„¡?ï¿½ç‰©ï¼Œï¿½??ï¿½ç«
 
       slot.lastAttackTime = now;
@@ -253,6 +258,19 @@ export function findNearestZombie(game: Game, x: number, y: number, maxDist: num
     }
   }
   return nearest;
+}
+
+export function findNearestAutoTarget(game: Game, x: number, y: number, maxDist: number): AutoTarget | null {
+  const zombie = findNearestZombie(game, x, y, maxDist);
+  const zombieDist = zombie ? Math.hypot(zombie.x - x, zombie.y - y) : Infinity;
+  const tombstone = findNearestTombstoneTarget(game, x, y, maxDist);
+  const tombstoneDist = tombstone ? Math.hypot(tombstone.x - x, tombstone.y - y) : Infinity;
+
+  if (!zombie && !tombstone) return null;
+  if (tombstoneDist < zombieDist && tombstone) {
+    return { kind: 'tombstone', x: tombstone.x, y: tombstone.y, obstacle: tombstone.obstacle };
+  }
+  return zombie ? { kind: 'zombie', x: zombie.x, y: zombie.y } : null;
 }
 
 export function explodeObstacle(game: Game, obs: Obstacle): void {

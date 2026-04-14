@@ -1,12 +1,12 @@
-// ── ZombieDefinitions.ts ────────────────────────────────────────────────────
-// 殭屍型別登錄表（Registry Pattern / Open-Closed Principle）
+// ?? ZombieDefinitions.ts ????????????????????????????????????????????????????
+// 畾剖???駁?銵剁?Registry Pattern / Open-Closed Principle嚗?
 //
-// 新增殭屍方式：
-//   1. 在 types.ts 的 ZombieType 加入新型別名
-//   2. 在 ZOMBIE_REGISTRY 加一個 entry（含可選的行為 Hook）
-//   3. 在 ZombieRenderer.ts 加對應的 draw case
-//   ✅ Zombie.ts / Game.ts 主邏輯零修改
-// ────────────────────────────────────────────────────────────────────────────
+// ?啣?畾剖??孵?嚗?
+//   1. ??types.ts ??ZombieType ??啣??亙?
+//   2. ??ZOMBIE_REGISTRY ????entry嚗?舫????Hook嚗?
+//   3. ??ZombieRenderer.ts ???? draw case
+//   ??Zombie.ts / Game.ts 銝駁?頛舫靽格
+// ????????????????????????????????????????????????????????????????????????????
 import { ZombieType } from '../../types';
 import { CONSTANTS } from '../../Constants';
 import { Projectile } from '../../Projectile';
@@ -14,7 +14,7 @@ import type { Player } from '../../Player';
 import type { Obstacle } from '../../map/Obstacle';
 import type { Zombie } from '../../Zombie';
 
-// ── 分裂死亡規格（slime → 2 slime_small）────────────────────────────────────
+// ?? ??甇颱滿閬嚗lime ??2 slime_small嚗????????????????????????????????????
 export interface ZombieSpawnSpec {
   type: ZombieType;
   x: number;
@@ -23,7 +23,7 @@ export interface ZombieSpawnSpec {
   vy: number;
 }
 
-// ── 行為 Hook 的上下文參數 ────────────────────────────────────────────────────
+// ?? 銵 Hook ??銝?? ????????????????????????????????????????????????????
 export interface ZombieBehaviorCtx {
   dt: number;
   nearest: Player | null;
@@ -34,33 +34,33 @@ export interface ZombieBehaviorCtx {
   slimeTrails: { x: number; y: number; radius: number; lifetime: number; maxLifetime: number }[];
 }
 
-// ── 殭屍定義介面 ─────────────────────────────────────────────────────────────
+// ?? 畾剖?摰儔隞 ?????????????????????????????????????????????????????????????
 export interface IZombieDefinition {
   readonly radius: number;
   readonly baseHp: number;
   readonly baseSpeed: number;
-  // XP 掉落
+  // XP ?
   readonly orbCount: number;
   readonly orbColor: string;
   readonly orbValue: number;
-  // 擊退阻力等級 0~10（0=無阻力 / 10=完全免疫）詳見 KNOCKBACK_SPEC.md
+  // ??餃?蝑? 0~10嚗?=?⊿??/ 10=摰?嚗底閬?KNOCKBACK_SPEC.md
   readonly knockbackResistLevel?: number;
-  /** @deprecated 請改用 knockbackResistLevel: 10 */
+  /** @deprecated 隢??knockbackResistLevel: 10 */
   readonly immuneToKnockback?: boolean;
-  readonly leavesTrail?: boolean;        // 移動時留黏液痕（slime 類）
-  // 行為 Hook：設定後完全取代預設「追向最近玩家」邏輯
+  readonly leavesTrail?: boolean;        // 蝘餃???暺雯??slime 憿?
+  // 銵 Hook嚗身摰?摰?誨?身?蕭??餈摰嗚?頛?
   readonly updateBehavior?: (self: Zombie, ctx: ZombieBehaviorCtx) => void;
-  // 障礙物碰撞 Hook（在解析碰撞前呼叫）
+  // ???拍１??Hook嚗閫??蝣唳???恬?
   readonly onObstacleCollide?: (self: Zombie, obs: Obstacle) => void;
-  // 死亡時額外生成（slime 分裂）
+  // 甇颱滿??憭???slime ??嚗?
   readonly splitOnDeath?: (x: number, y: number) => ZombieSpawnSpec[];
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// ── 行為函式 ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────────────────
+// ????????????????????????????????????????????????????????????????????????????
+// ?? 銵?賢? ????????????????????????????????????????????????????????????????
+// ????????????????????????????????????????????????????????????????????????????
 
-// ── Spitter：保持距離 + 酸液彈 ─────────────────────────────────────────────
+// ?? Spitter嚗?????+ ?豢雯敶??????????????????????????????????????????????
 function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
   const { dt, nearest, nearestDist, obstacles, projectiles } = ctx;
   if (!nearest) { self.isCloseToPlayer = false; return; }
@@ -69,11 +69,11 @@ function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
   const dy = nearest.y - self.y;
 
   if (nearestDist < 200) {
-    // 太近 → 後退
+    // 憭芾? ??敺
     self.x -= (dx / nearestDist) * self.speed * (dt / 16);
     self.y -= (dy / nearestDist) * self.speed * (dt / 16);
   } else if (nearestDist > 300) {
-    // 太遠 → 靠近
+    // 憭芷? ????
     self.angle = Math.atan2(dy, dx);
     self.x += (dx / nearestDist) * self.speed * (dt / 16);
     self.y += (dy / nearestDist) * self.speed * (dt / 16);
@@ -81,7 +81,7 @@ function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
 
   if (nearestDist > 0) self.angle = Math.atan2(dy, dx);
 
-  // 視線判定
+  // 閬??文?
   let hasLOS = true;
   for (const obs of obstacles) {
     if (obs.isLineBlocked(self.x, self.y, nearest.x, nearest.y)) {
@@ -103,7 +103,7 @@ function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
   self.isCloseToPlayer = nearestDist < self.radius + 50;
 }
 
-// ── slime 分裂函式 ───────────────────────────────────────────────────────────
+// ?? slime ???賢? ???????????????????????????????????????????????????????????
 function slimeSplit(x: number, y: number): ZombieSpawnSpec[] {
   const angle1 = Math.random() * Math.PI * 2;
   const angle2 = angle1 + Math.PI;
@@ -113,8 +113,8 @@ function slimeSplit(x: number, y: number): ZombieSpawnSpec[] {
   ];
 }
 
-// ── 屠夫巨獸：衝撞 + 撼地 + 狂暴 ──────────────────────────────────────────
-// extraState 鍵:
+// ?? 撅井撌函嚗???+ ?澆 + ? ??????????????????????????????????????????
+// extraState ??
 //   phase:       'walk'|'pre_charge'|'charging'|'slam_windup'|'slamming'|'recovery'
 //   phaseEnd:    self.time when to exit current phase
 //   slamCDEnd:   self.time when slam is available
@@ -140,14 +140,14 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
       const dx = nearest.x - self.x;
       const dy = nearest.y - self.y;
 
-      // 優先嘗試撼地（近距離）
+      // ?芸??岫?澆嚗?頝嚗?
       if (nearestDist < 180 && now >= slamCDEnd) {
         self.extraState.set('phase', 'slam_windup');
         self.extraState.set('phaseEnd', now + 500);
         self.extraState.set('slamCDEnd', now + 7000);
         break;
       }
-      // 嘗試衝撞（中距離）
+      // ?岫銵?嚗葉頝嚗?
       if (nearestDist > 80 && nearestDist < 420 && now >= chargeCDEnd) {
         const len = Math.hypot(dx, dy);
         const windup = isEnraged ? 750 : 1500;
@@ -158,7 +158,7 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
         self.extraState.set('chargeDY', dy / len);
         break;
       }
-      // 緩慢移動
+      // 蝺拇蝘餃?
       if (nearestDist > 0) {
         self.angle = Math.atan2(dy, dx);
         self.x += (dx / nearestDist) * self.speed * (dt / 16);
@@ -169,7 +169,7 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
     }
 
     case 'pre_charge': {
-      // 追蹤瞄準（最後 300ms 鎖定方向）
+      // 餈質馱??嚗?敺?300ms ???孵?嚗?
       if (nearest && now < phaseEnd - 300) {
         const len = Math.hypot(nearest.x - self.x, nearest.y - self.y);
         if (len > 0) {
@@ -250,9 +250,9 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// ── 殭屍登錄表 ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────────────────
+// ????????????????????????????????????????????????????????????????????????????
+// ?? 畾剖??駁?銵?????????????????????????????????????????????????????????????????
+// ????????????????????????????????????????????????????????????????????????????
 export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
   normal: {
     radius: 12,
@@ -261,7 +261,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 1,
     orbColor: '#2196f3',
     orbValue: 1,
-    knockbackResistLevel: 1,   // 標準小怪，幾乎無阻力
+    knockbackResistLevel: 1,   // 璅?撠迎?撟曆??⊿??
   },
 
   big: {
@@ -271,7 +271,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 4,
     orbColor: '#9c27b0',
     orbValue: 2,
-    knockbackResistLevel: 6,   // 大型，中強阻力（只被推 40%）
+    knockbackResistLevel: 6,   // 憭批?嚗葉撘琿???芾◤??40%嚗?
     onObstacleCollide: (_self, obs) => {
       if (obs.type === 'sandbag') obs.takeDamage(0.5);
     },
@@ -284,7 +284,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
-    knockbackResistLevel: 1,   // 同 normal
+    knockbackResistLevel: 1,   // ??normal
     leavesTrail: true,
     splitOnDeath: slimeSplit,
   },
@@ -296,7 +296,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 1,
     orbColor: '#4caf50',
     orbValue: 1,
-    knockbackResistLevel: 0,   // 最輕，完全無阻力
+    knockbackResistLevel: 0,   // ?頛?摰?⊿??
     leavesTrail: true,
   },
 
@@ -307,8 +307,18 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
-    knockbackResistLevel: 1,   // 同 normal
+    knockbackResistLevel: 1,   // ??normal
     updateBehavior: spitterBehavior,
+  },
+
+  ghost: {
+    radius: 14,
+    baseHp: 3,
+    baseSpeed: CONSTANTS.ZOMBIE_SPEED * 1.18,
+    orbCount: 2,
+    orbColor: '#c4b5fd',
+    orbValue: 1,
+    knockbackResistLevel: 1,
   },
 
   butcher: {
@@ -318,7 +328,8 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 15,
     orbColor: '#f44336',
     orbValue: 8,
-    knockbackResistLevel: 7,   // 重型，強阻力（只被推 30%）
+    knockbackResistLevel: 7,   // ??嚗撥?餃?嚗鋡急 30%嚗?
     updateBehavior: butcherBehavior,
   },
 };
+
