@@ -1,0 +1,1 @@
+const fs = require("fs"); let c = fs.readFileSync("src/game/Game.ts", "utf8"); c = c.replace(/    if \(\!suppressOrbDrops\) \{/g, "    }\n    if (!suppressOrbDrops) {"); fs.writeFileSync("src/game/Game.ts", c, "utf8");

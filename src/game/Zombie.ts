@@ -45,16 +45,7 @@ export class Zombie {
   // 行為 Hook 的任意狀態（如 Butcher 狀態機）
   extraState: Map<string, unknown> = new Map();
 
-  constructor(x: number, y: number, type: ZombieType = 'normal') {
-    this.x = x;
-    this.y = y;
-    this.type = type;
-    const def = ZOMBIE_REGISTRY[type];
-    this.radius = def.radius;
-    this.hp     = def.baseHp;
-    this.maxHp  = def.baseHp;
-    this.speed  = def.baseSpeed;
-  }
+  constructor(x: number, y: number, type: ZombieType = 'normal') { this.init(x, y, type); } init(x: number, y: number, type: ZombieType = 'normal') { this.x = x; this.y = y; this.type = type; const def = ZOMBIE_REGISTRY[type]; this.radius = def.radius; this.hp = def.baseHp; this.maxHp = def.baseHp; this.speed = def.baseSpeed; this.vx = 0; this.vy = 0; this.paralysisTimer = 0; this.slowTimer = 0; this.flashWhiteTimer = 0; this.isInfiniteGlow = false; this.leanBackTimer = 0; this.isInsideContainer = false; this.time = 0; this.isCloseToPlayer = false; this.angle = 0; this.isSummoned = false; this.jellyPhase = 0; this.lastSpitTime = 0; this.lastTrailTime = 0; this.extraState.clear(); this.lastDamageTime.clear(); }
 
   update(
     dt: number,

@@ -1,0 +1,1 @@
+const fs = require("fs"); let c = fs.readFileSync("src/game/Game.ts", "utf8"); c = c.replace(/size: 3 \+ Math\.random\(\) \* 4,\n      \}\);\n    \}/g, "size: 3 + Math.random() * 4,\n      });\n    } }"); fs.writeFileSync("src/game/Game.ts", c, "utf8");

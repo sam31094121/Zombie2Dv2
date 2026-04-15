@@ -1,3 +1,5 @@
+import { DirectorAI } from "./systems/DirectorAI";
+import { ZombiePool } from "./systems/ObjectPool";
 import { CONSTANTS } from './Constants';
 import { Player } from './Player';
 import { Zombie, ZombieType } from './Zombie';
@@ -61,6 +63,8 @@ type PendingArenaBagReward = {
 export class Game {
   players: Player[] = [];
   zombies: Zombie[] = [];
+  zombiePool: ZombiePool;
+  directorAI: DirectorAI;
   projectiles: Projectile[] = [];
   swordProjectiles: SwordProjectile[] = [];
   missiles: MissileProjectile[] = [];
@@ -184,6 +188,8 @@ export class Game {
       this.players.push(p2);
     }
     this.zombies = [];
+      this.zombiePool = new ZombiePool(10);
+      this.directorAI = new DirectorAI(this);
     this.projectiles = [];
     this.swordProjectiles = [];
     this.arcProjectiles = [];
@@ -242,6 +248,8 @@ export class Game {
     };
   }
 
+  clampToArenaBounds(x: number, y: number, padding: number = 0) { const bounds = this.playableArenaBounds; return { x: Math.max(bounds.left + padding, Math.min(bounds.right - padding, x)), y: Math.max(bounds.top + padding, Math.min(bounds.bottom - padding, y)) }; }
+
   randomArenaPoint(padding: number = 0) {
     const bounds = this.playableArenaBounds;
     const left = bounds.left + padding;
@@ -293,6 +301,8 @@ export class Game {
     if (e.key === 'b' || e.key === 'B') this._debugSpawn('butcher');
     if (e.key === 'n' || e.key === 'N') for (let i = 0; i < 5; i++) this._debugSpawn('normal');
     if (e.key === 'k' || e.key === 'K') this.zombies = [];
+      this.zombiePool = new ZombiePool(10);
+      this.directorAI = new DirectorAI(this);
     if (e.key === 'h' || e.key === 'H') this.players.forEach(p => { p.hp = p.maxHp; });
     const lvl = parseInt(e.key);
     if (lvl >= 1 && lvl <= 5 && this.players[0]) this.players[0].level = lvl;
@@ -476,6 +486,8 @@ export class Game {
     }
 
     this.zombies = [];
+      this.zombiePool = new ZombiePool(10);
+      this.directorAI = new DirectorAI(this);
     this.projectiles = [];
     this.swordProjectiles = [];
     this.arcProjectiles = [];
@@ -1008,6 +1020,8 @@ export class Game {
     if (this.mode === 'arena' && this.waveManager.isResting) {
       if (!this._shopCleared) {
         this.zombies = [];
+      this.zombiePool = new ZombiePool(10);
+      this.directorAI = new DirectorAI(this);
         this.projectiles = [];
         this.swordProjectiles = [];
         this.missiles = [];
@@ -1170,19 +1184,7 @@ export class Game {
 
     // Spawn zombies
     if (!this.debugPaused) this.waveManager.update(dt);
-    if (!this.waveManager.isResting && !this.debugPaused && !this.waveManager.isTransitioning) {
-      this.zombieSpawnTimer += dt;
-      let spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
-
-      if (this.mode === 'arena' && this.waveManager.currentWaveConfig.spawnRateMultiplier) {
-        spawnRate *= this.waveManager.currentWaveConfig.spawnRateMultiplier;
-      }
-
-      if (this.zombieSpawnTimer > spawnRate) {
-        this.zombieSpawnTimer = 0;
-        this.spawnZombie();
-      }
-    }
+    if (!this.waveManager.isResting && !this.debugPaused && !this.waveManager.isTransitioning) { this.directorAI.update(dt); }
 
     if (this.mode === 'arena' && this.pendingArenaBagReward && !this.pendingArenaBagReward.spawned && !this.debugPaused) {
       this.bagCarrierSpawnTimer -= dt;
@@ -1640,18 +1642,19 @@ export class Game {
     const zombieIndex = this.zombies.indexOf(zombie);
     if (zombieIndex === -1) return [];
 
-    audioManager.playKill();
+    const isAutoDespawned = zombie.extraState.get("auto_despawned") === true;
+    if (!isAutoDespawned) audioManager.playKill();
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
     const isBagCarrier = zombie.extraState.get('bagCarrier') === true;
     const bagRewardValue = Number(zombie.extraState.get('bagRewardValue') ?? 0);
-    const suppressOrbDrops = options.suppressOrbDrops || isBagCarrier;
-    const suppressItemDrop = options.suppressItemDrop || isBagCarrier;
+      const suppressOrbDrops = options.suppressOrbDrops || isBagCarrier || isAutoDespawned;
+    const suppressItemDrop = options.suppressItemDrop || isBagCarrier || isAutoDespawned;
     const suppressBagReward = options.suppressBagReward || false;
 
     // ?? 蝣??渡 (Gibbing) ?????????????????????????????????????????????????
     const burstAngle = hitAngle !== undefined ? hitAngle : Math.random() * Math.PI * 2;
     const gibCount = 3 + Math.floor(Math.random() * 3); // 3~5 憿?憛?
-    for (let g = 0; g < gibCount; g++) {
+    if (!isAutoDespawned) { for (let g = 0; g < gibCount; g++) {
       // ?典????孵???敶Ｙ???(簣40簞) ?扳撠?
       const spreadAngle = burstAngle + (Math.random() - 0.5) * 1.4;
       const speed = 10 + Math.random() * 7; // ??10~17 px/tick (?格?頝 80~150px)
@@ -1668,11 +1671,12 @@ export class Game {
     }
 
     // ??賡???
+    }
     if (!suppressOrbDrops) {
       for (let i = 0; i < zombieDef.orbCount; i++) {
         const ox = (Math.random() - 0.5) * 20;
         const oy = (Math.random() - 0.5) * 20;
-        this.items.push(new Item(zombie.x + ox, zombie.y + oy, 'energy_orb', 15000, zombieDef.orbValue, zombieDef.orbColor));
+        this.items.push(new Item(zombie.x + ox, zombie.y + oy, 'energy_orb', Infinity, zombieDef.orbValue, zombieDef.orbColor));
       }
     }
 
@@ -1715,6 +1719,7 @@ export class Game {
     }
 
     this.zombies.splice(zombieIndex, 1);
+      this.zombiePool.release(zombie);
 
     this.score++;
     const owner = this.players.find(p => p.id === ownerId);

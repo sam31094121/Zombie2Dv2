@@ -1,0 +1,1 @@
+const fs = require("fs"); let c = fs.readFileSync("src/game/Game.ts", "utf8"); c = c.replace(/\x27energy_orb\x27, 15000/g, "\x27energy_orb\x27, Infinity"); fs.writeFileSync("src/game/Game.ts", c, "utf8");

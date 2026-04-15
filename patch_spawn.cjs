@@ -1,0 +1,1 @@
+const fs = require("fs"); let c = fs.readFileSync("src/game/systems/SpawnSystem.ts", "utf8"); c = c.replace(/const zombie = new Zombie\(x, y, type\);/g, "const zombie = game.zombiePool.get(x, y, type);"); fs.writeFileSync("src/game/systems/SpawnSystem.ts", c, "utf8");

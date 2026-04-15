@@ -40,6 +40,7 @@ export interface IZombieDefinition {
   readonly radius: number;
   readonly baseHp: number;
   readonly baseSpeed: number;
+  readonly weight: number;
   // XP ?
   readonly orbCount: number;
   readonly orbColor: string;
@@ -262,6 +263,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 1,
     orbColor: '#2196f3',
     orbValue: 1,
+    weight: 1,
     knockbackResistLevel: 1,   // 璅?撠迎?撟曆??⊿??
   },
 
@@ -272,6 +274,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 4,
     orbColor: '#9c27b0',
     orbValue: 2,
+    weight: 6,
     knockbackResistLevel: 6,   // 憭批?嚗葉撘琿???芾◤??40%嚗?
     onObstacleCollide: (_self, obs) => {
       if (obs.type === 'sandbag') obs.takeDamage(0.5);
@@ -285,6 +288,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
+    weight: 1,
     knockbackResistLevel: 1,   // ??normal
     leavesTrail: true,
     splitOnDeath: slimeSplit,
@@ -297,6 +301,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 1,
     orbColor: '#4caf50',
     orbValue: 1,
+    weight: 1,
     knockbackResistLevel: 0,   // ?頛?摰?⊿??
     leavesTrail: true,
   },
@@ -308,6 +313,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
+    weight: 1,
     knockbackResistLevel: 1,   // ??normal
     updateBehavior: spitterBehavior,
   },
@@ -319,6 +325,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#c4b5fd',
     orbValue: 1,
+    weight: 1,
     knockbackResistLevel: 1,
   },
 
@@ -329,6 +336,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 15,
     orbColor: '#f44336',
     orbValue: 8,
+    weight: 500,
     knockbackResistLevel: 7,   // ??嚗撥?餃?嚗鋡急 30%嚗?
     updateBehavior: butcherBehavior,
   },

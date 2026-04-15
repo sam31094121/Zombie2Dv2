@@ -58,7 +58,7 @@ export function spawnZombie(game: Game): void {
 }
 
 export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' | 'big' | 'slime' | 'spitter' | 'ghost'): void {
-  const zombie = new Zombie(x, y, type);
+  const zombie = game.zombiePool.get(x, y, type);
   zombie.id = ++game._zombieIdCounter;
 
   const mult = game.waveManager.difficultyMultiplier;

@@ -2,7 +2,7 @@
 // 競技場模式商店模組 — 支援單人模式與雙人模式（透過 Props 擴充）
 // Phase 1: 素質選擇 / Phase 2: 武器 & 配件商店
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Player, WeaponSlot, OwnedItem } from '../../game/Player';
 import { audioManager } from '../../game/AudioManager';
 import { STAT_REGISTRY } from '../../game/items/StatDefinitions';
@@ -103,6 +103,37 @@ export const BRANCH_DISPLAY: Record<string, Record<'A' | 'B', string>> = {
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
+const shellStyle: React.CSSProperties = {
+  background: 'linear-gradient(180deg, rgba(18, 24, 38, 0.94) 0%, rgba(9, 13, 24, 0.98) 100%)',
+  border: '1px solid rgba(148, 163, 184, 0.15)',
+  boxShadow: '0 24px 70px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03)',
+  backdropFilter: 'blur(14px)',
+};
+
+const cardStyle: React.CSSProperties = {
+  background: 'linear-gradient(180deg, rgba(24, 31, 48, 0.94) 0%, rgba(10, 14, 24, 0.98) 100%)',
+  border: '1px solid rgba(148, 163, 184, 0.12)',
+  boxShadow: '0 18px 40px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.03)',
+};
+
+const mutedPanelStyle: React.CSSProperties = {
+  background: 'linear-gradient(180deg, rgba(16, 23, 36, 0.84) 0%, rgba(8, 12, 20, 0.92) 100%)',
+  border: '1px solid rgba(148, 163, 184, 0.11)',
+  boxShadow: '0 14px 32px rgba(0, 0, 0, 0.2)',
+};
+
+const chipStyle: React.CSSProperties = {
+  background: 'rgba(255, 255, 255, 0.06)',
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+};
+
+const formatMaterials = (value: number) =>
+  value >= 999999 ? 'MAX' : Math.floor(value).toLocaleString('en-US');
+
+const getWeaponKindLabel = (type: 'sword' | 'gun') => (type === 'sword' ? '刃械' : '火器');
+const getWeaponName = (type: 'sword' | 'gun') => (type === 'sword' ? '近戰框體' : '彈道框體');
+const getItemTypeLabel = (type: string) => (type === 'consumable' ? '一次性' : '常駐');
+
 interface ShopPanelProps {
   // ─ 必要 ─
   player: Player;
@@ -154,6 +185,12 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
   const [branchPending, setBranchPending] = useState<{ weaponId: string } | null>(null);
   const [, forceUpdate] = useState(0);
   const rerender = () => forceUpdate(n => n + 1);
+
+  useEffect(() => {
+    if (phase === 1 && effectiveStatPoints <= 0) {
+      setPhase(2);
+    }
+  }, [effectiveStatPoints, phase]);
 
   // ── 購買金幣噴射特效 ────────────────────────────────────────────────────────
   const [coinBursts, setCoinBursts] = useState<{ id: number; dx: number }[]>([]);
@@ -306,38 +343,88 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
     <>
       <style>{`
         @keyframes coinFloat {
-          0%   { transform: translate(var(--coin-dx, 0px), 0) scale(1); opacity: 1; }
-          100% { transform: translate(var(--coin-dx, 0px), -44px) scale(0.5); opacity: 0; }
+          0% { transform: translate(var(--coin-dx, 0px), 10px) scale(0.85); opacity: 0; }
+          20% { opacity: 1; }
+          100% { transform: translate(var(--coin-dx, 0px), -46px) scale(0.45); opacity: 0; }
         }
-        .coin-float { animation: coinFloat 0.7s ease-out forwards; }
+        @keyframes panelRise {
+          from { opacity: 0; transform: translateY(14px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes emberPulse {
+          0%, 100% { box-shadow: 0 0 0 rgba(242, 184, 64, 0); }
+          50% { box-shadow: 0 0 28px rgba(242, 184, 64, 0.16); }
+        }
+        .coin-float { animation: coinFloat 0.75s ease-out forwards; }
+        .shop-rise { animation: panelRise 0.35s ease-out both; }
+        .shop-card-hover {
+          transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        }
+        .shop-card-hover:hover {
+          transform: translateY(-2px);
+          border-color: rgba(245, 181, 69, 0.28);
+          box-shadow: 0 24px 44px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(245, 181, 69, 0.08);
+        }
+        .shop-ember {
+          animation: emberPulse 2.8s ease-in-out infinite;
+        }
       `}</style>
 
       {/* ── 最外層容器 ──
           雙人模式下不撐滿高度（由外部 ManagementView 控制佈局）
           單人模式下 h-full 填滿整個 overlay */}
       <div
-        className="relative w-full h-screen bg-[#060a10] flex flex-col items-center overflow-hidden text-neutral-200"
+        className="relative flex h-screen w-full flex-col overflow-hidden text-stone-100"
         style={{
-          backgroundImage: 'linear-gradient(#1e293b 1px, transparent 1px), linear-gradient(90deg, #1e293b 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-          paddingTop: (isReadyMode || customFooter) ? '0' : 'env(safe-area-inset-top, 0px)',
-          paddingBottom: (isReadyMode || customFooter) ? '0' : 'env(safe-area-inset-bottom, 0px)',
+          background: 'radial-gradient(circle at 14% 12%, rgba(198, 139, 45, 0.16), transparent 24%), radial-gradient(circle at 84% 10%, rgba(63, 114, 175, 0.2), transparent 28%), linear-gradient(180deg, #0a0d14 0%, #05070b 100%)',
+          paddingTop: isReadyMode || customFooter ? '0' : 'env(safe-area-inset-top, 0px)',
+          paddingBottom: isReadyMode || customFooter ? '0' : 'env(safe-area-inset-bottom, 0px)',
         }}
       >
+        <div
+          className="pointer-events-none absolute inset-0 opacity-35"
+          style={{
+            backgroundImage: 'linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)',
+            backgroundSize: '72px 72px',
+            maskImage: 'linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.25) 100%)',
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-48"
+          style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 100%)' }}
+        />
         {/* ── 雙人模式玩家身份橫幅（isReadyMode 情境下保留）── */}
         {isReadyMode && (
           <div
-            className="flex-shrink-0 w-full text-center text-xs font-black py-1.5 tracking-widest"
-            style={{ background: player.color + '33', borderBottom: `2px solid ${player.color}66`, color: player.color }}
+            className="relative z-10 flex-shrink-0 py-2 text-center text-[11px] font-black uppercase tracking-[0.42em]"
+            style={{
+              background: `linear-gradient(90deg, ${player.color}18 0%, rgba(255,255,255,0.02) 50%, ${player.color}18 100%)`,
+              borderBottom: `1px solid ${player.color}40`,
+              color: player.color,
+            }}
           >
-            P{player.id === 1 ? '1' : '2'} · {player.id === 1 ? '🔵 玩家一' : '🔴 玩家二'}
+            Player {player.id} Loadout Desk
           </div>
         )}
 
         {/* ── Sticky Header ── */}
-        <div className="flex-shrink-0 w-full max-w-2xl px-3 pt-2.5 pb-1.5 sm:px-6 sm:pt-4">
+        <div className="relative z-10 flex-shrink-0 w-full px-3 pt-3 sm:px-6 sm:pt-5">
           {/* 資源列（含金幣噴射動畫容器） */}
-          <div className="relative flex items-center gap-2 mb-1.5 bg-neutral-900/80 px-3 py-1.5 rounded-xl border border-neutral-700/30 w-full overflow-hidden">
+          <div className="relative mx-auto mb-3 flex w-full max-w-[1120px] flex-wrap items-end gap-3 overflow-hidden rounded-[30px] px-4 py-5 sm:px-6" style={shellStyle}>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-black uppercase tracking-[0.42em] text-amber-300/80">
+                Field Arsenal
+              </div>
+              <div
+                className="mt-2 text-[30px] font-black leading-none text-white sm:text-[40px]"
+                style={{ fontFamily: "'Trebuchet MS', 'Segoe UI', sans-serif" }}
+              >
+                波次後勤補給
+              </div>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px]">
+                先把核心數值調整到位，再把手上的素材換成下一波真正有感的火力。
+              </p>
+            </div>
             {/* 金幣噴射粒子 */}
             {coinBursts.map(c => (
               <span
@@ -348,26 +435,58 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                 🪙
               </span>
             ))}
-            <div className="text-sm font-black flex items-center gap-1">💰 <span className="text-amber-500 font-bold">{player.materials >= 999999 ? '∞' : Math.floor(player.materials)}</span></div>
-            <div className="text-[10px] text-neutral-500 font-bold ml-2">HP <span className="text-green-500">{Math.floor(player.hp)}</span></div>
-            <div className="text-[10px] text-neutral-500 font-bold ml-1">LV <span className="text-blue-500">{player.level}</span></div>
-            <div className="ml-auto text-amber-600 font-black text-[10px] tracking-widest">WAVE {wave} ✓</div>
+            <div className="min-w-[124px] rounded-[22px] px-4 py-3 shop-ember" style={cardStyle}>
+              <div className="text-[11px] font-black uppercase tracking-[0.32em] text-amber-200/65">素材</div>
+              <div className="mt-2 text-[28px] font-black text-amber-300">{formatMaterials(player.materials)}</div>
+              <div className="mt-1 text-xs text-slate-400">採購與重抽共用</div>
+            </div>
+            <div className="min-w-[110px] rounded-[22px] px-4 py-3" style={cardStyle}>
+              <div className="text-[11px] font-black uppercase tracking-[0.32em] text-emerald-200/65">HP</div>
+              <div className="mt-2 text-[28px] font-black text-emerald-300">{Math.floor(player.hp)}</div>
+              <div className="mt-1 text-xs text-slate-400">目前狀態</div>
+            </div>
+            <div className="min-w-[110px] rounded-[22px] px-4 py-3" style={cardStyle}>
+              <div className="text-[11px] font-black uppercase tracking-[0.32em] text-sky-200/65">角色等級</div>
+              <div className="mt-2 text-[28px] font-black text-sky-300">{player.level}</div>
+              <div className="mt-1 text-xs text-slate-400">本輪基礎成長</div>
+            </div>
+            <div className="min-w-[110px] rounded-[22px] px-4 py-3" style={cardStyle}>
+              <div className="text-[11px] font-black uppercase tracking-[0.32em] text-stone-300/65">Wave</div>
+              <div className="mt-2 text-[28px] font-black text-stone-100">{wave}</div>
+              <div className="mt-1 text-xs text-slate-400">
+                {effectiveStatPoints > 0 ? `${effectiveStatPoints} 點待分配` : '可直接進採購'}
+              </div>
+            </div>
           </div>
 
           {/* Phase 切換 Tab */}
-          <div className="flex gap-1.5 w-full">
+          <div className="mx-auto grid w-full max-w-[1120px] grid-cols-1 gap-3 lg:grid-cols-2">
             <button
               onClick={() => setPhase(1)}
-              className={`flex-1 py-1.5 rounded-lg font-black tracking-wide text-[10px] transition-all touch-manipulation ${phase === 1 ? 'bg-blue-600/90 text-white' : 'bg-neutral-800/80 text-neutral-500 active:bg-neutral-700'}`}
+              className={`rounded-[24px] px-4 py-4 text-left font-black transition-all duration-200 touch-manipulation ${phase === 1 ? 'text-white shadow-[0_18px_42px_rgba(0,0,0,0.24)]' : 'text-slate-400'}`}
+              style={phase === 1
+                ? {
+                    ...mutedPanelStyle,
+                    border: '1px solid rgba(96, 165, 250, 0.44)',
+                    background: 'linear-gradient(180deg, rgba(16, 35, 63, 0.96) 0%, rgba(10, 17, 29, 0.98) 100%)',
+                  }
+                : mutedPanelStyle}
             >
               PHASE 1 素質
               {effectiveStatPoints > 0 && (
-                <span className="ml-1 bg-yellow-500 text-black text-[9px] px-1 rounded-full">{effectiveStatPoints}</span>
+                <span className="ml-2 rounded-full border border-yellow-400/30 bg-yellow-400/15 px-2 py-1 text-[10px] text-yellow-200">{effectiveStatPoints}</span>
               )}
             </button>
             <button
               onClick={() => setPhase(2)}
-              className={`flex-1 py-1.5 rounded-lg font-black tracking-wide text-[10px] transition-all touch-manipulation ${phase === 2 ? 'bg-purple-600/90 text-white' : 'bg-neutral-800/80 text-neutral-500 active:bg-neutral-700'}`}
+              className={`rounded-[24px] px-4 py-4 text-left font-black transition-all duration-200 touch-manipulation ${phase === 2 ? 'text-white shadow-[0_18px_42px_rgba(0,0,0,0.24)]' : 'text-slate-400'}`}
+              style={phase === 2
+                ? {
+                    ...mutedPanelStyle,
+                    border: '1px solid rgba(245, 181, 69, 0.42)',
+                    background: 'linear-gradient(180deg, rgba(49, 31, 12, 0.96) 0%, rgba(14, 16, 24, 0.98) 100%)',
+                  }
+                : mutedPanelStyle}
             >
               PHASE 2 武器
             </button>
@@ -375,14 +494,28 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
         </div>
 
         {/* ── 捲動主體 ── */}
-        <div className="flex-1 w-full max-w-2xl overflow-y-auto overscroll-contain px-3 pb-4 sm:px-6" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="relative z-10 mx-auto flex-1 w-full max-w-[1120px] overflow-y-auto overscroll-contain px-3 pb-4 pt-3 sm:px-6 sm:pb-6" style={{ WebkitOverflowScrolling: 'touch' }}>
 
           {/* ══════════════════════════════════════════════════════════════════ */}
           {/* PHASE 1 — 素質選擇                                                */}
           {/* ══════════════════════════════════════════════════════════════════ */}
           {phase === 1 && (
-            <div className="w-full">
-              <div className="flex items-center justify-between mb-2">
+            <div className="shop-rise w-full rounded-[30px] p-4 sm:p-6" style={shellStyle}>
+              <div className="mb-6">
+                <div className="text-[11px] font-black uppercase tracking-[0.38em] text-sky-200/70">
+                  Attribute Calibration
+                </div>
+                <h3
+                  className="mt-2 text-[28px] font-black leading-tight text-white sm:text-[34px]"
+                  style={{ fontFamily: "'Trebuchet MS', 'Segoe UI', sans-serif" }}
+                >
+                  點數升級
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px]">
+                  這區現在改成比較像戰術卡片。每一張都要能一眼看懂用途、等級和升級價值。
+                </p>
+              </div>
+              <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <h3 className="text-xs font-black text-blue-400 tracking-widest">
                   可用點數：<span className="text-yellow-400">{effectiveStatPoints}</span>
                 </h3>
@@ -392,7 +525,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               </div>
 
               {/* 手機 2 列 / 桌面 3 列 */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {Object.values(STAT_REGISTRY).map(stat => {
                   const curLv = player.statLevels[stat.id] ?? 0;
                   const isMaxed = stat.maxLevel !== -1 && curLv >= stat.maxLevel;
@@ -404,25 +537,26 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                       key={stat.id}
                       onClick={() => handlePickStat(stat.id)}
                       disabled={disabled}
-                      className={`p-2.5 rounded-xl border-2 text-left transition-all touch-manipulation min-h-[72px] ${
+                      className={`shop-card-hover min-h-[220px] rounded-[26px] p-4 text-left transition-all touch-manipulation ${
                         isMaxed
-                          ? 'border-yellow-600/50 bg-yellow-900/20 opacity-60 cursor-not-allowed'
+                          ? 'border-yellow-600/50 bg-yellow-900/20 opacity-70 cursor-not-allowed'
                           : disabled
-                            ? 'border-neutral-700 bg-neutral-900/50 opacity-40 cursor-not-allowed'
+                            ? 'border-slate-700 bg-slate-950/70 opacity-60 cursor-not-allowed'
                             : 'border-blue-500/50 bg-blue-900/20 active:bg-blue-900/50 cursor-pointer'
                       }`}
+                      style={cardStyle}
                     >
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-base">{stat.icon}</span>
-                        <span className="font-black text-[11px]">{stat.name}</span>
-                        {isMaxed && <span className="ml-auto text-yellow-400 text-[9px] font-bold">MAX</span>}
+                      <div className="mb-3 flex items-center gap-3">
+                        <span className="flex h-14 w-14 items-center justify-center rounded-[18px] border border-white/10 bg-white/5 text-3xl">{stat.icon}</span>
+                        <span className="text-lg font-black text-white">{stat.name}</span>
+                        {isMaxed && <span className="ml-auto rounded-full border border-yellow-400/25 bg-yellow-400/15 px-2.5 py-1 text-[10px] font-black text-yellow-200">MAX</span>}
                       </div>
-                      <p className="text-[9px] text-neutral-400 mb-1.5 leading-snug">{stat.description}</p>
-                      <div className="flex items-center gap-0.5">
+                      <p className="mb-4 text-sm leading-6 text-slate-300">{stat.description}</p>
+                      <div className="mt-auto flex items-center gap-1.5">
                         {Array.from({ length: barCount }).map((_, i) => (
-                          <div key={i} className={`h-1 flex-1 rounded-full ${i < filledBars ? 'bg-blue-400' : 'bg-neutral-700'}`} />
+                          <div key={i} className={`h-2 flex-1 rounded-full ${i < filledBars ? 'bg-sky-300' : 'bg-slate-700/80'}`} />
                         ))}
-                        <span className="text-[9px] text-neutral-500 ml-1 shrink-0">
+                        <span className="ml-2 shrink-0 text-[11px] text-slate-400">
                           {curLv}{stat.maxLevel !== -1 ? `/${stat.maxLevel}` : ''}
                         </span>
                       </div>
@@ -434,7 +568,11 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               {/* Phase 1 → Phase 2 捷徑 */}
               <button
                 onClick={() => setPhase(2)}
-                className="mt-3 w-full py-2.5 rounded-xl bg-purple-700/60 hover:bg-purple-700/80 active:bg-purple-800 border border-purple-500/50 font-black text-xs tracking-widest transition-all touch-manipulation"
+                className="mt-6 w-full rounded-[22px] border border-amber-400/20 px-5 py-4 text-sm font-black tracking-[0.2em] text-black transition-all touch-manipulation"
+                style={{
+                  background: 'linear-gradient(135deg, #f5b545 0%, #ffdf84 100%)',
+                  boxShadow: '0 12px 30px rgba(245, 181, 69, 0.2)',
+                }}
               >
                 前往武器商店 →
               </button>
@@ -446,17 +584,31 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           {/* ══════════════════════════════════════════════════════════════════ */}
           {phase === 2 && (
             <>
+              <div className="shop-rise w-full rounded-[30px] p-4 sm:p-6" style={shellStyle}>
+                <div className="text-[11px] font-black uppercase tracking-[0.38em] text-amber-200/70">
+                  Supply Table
+                </div>
+                <h3
+                  className="mt-2 text-[28px] font-black leading-tight text-white sm:text-[34px]"
+                  style={{ fontFamily: "'Trebuchet MS', 'Segoe UI', sans-serif" }}
+                >
+                  補給採購
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-[15px]">
+                  這一版把商店做成比較像補給牌桌。裝備、道具、行動按鈕現在有更清楚的節奏與層級。
+                </p>
+              </div>
               {/* ── 武器欄（hideInventory=true 時隱藏，雙人模式用 CharacterPreview 代替）── */}
               {!hideInventory && (
-                <div className="w-full mb-2">
-                  <h3 className="text-[10px] font-bold text-neutral-600 tracking-widest uppercase mb-1.5">
+                <div className="shop-rise w-full rounded-[30px] p-4 sm:p-6" style={shellStyle}>
+                  <h3 className="mb-4 text-[11px] font-black uppercase tracking-[0.38em] text-stone-300/70">
                     武器欄 ({player.weapons.length}/6)
                   </h3>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {Array.from({ length: 6 }).map((_, i) => {
                       const w = player.weapons[i];
                       if (!w) return (
-                        <div key={`empty-${i}`} className="rounded-lg border-2 border-dashed border-neutral-900 flex items-center justify-center text-neutral-800 text-[9px] font-bold" style={{ minHeight: 90 }}>
+                        <div key={`empty-${i}`} className="flex min-h-[220px] items-center justify-center rounded-[24px] border border-dashed border-slate-700/70 text-sm font-black text-slate-500" style={mutedPanelStyle}>
                           EMPTY
                         </div>
                       );
@@ -468,12 +620,12 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                         <div
                           key={w.id}
                           onClick={() => handleInventoryWeaponClick(w)}
-                          className="rounded-lg border-2 flex flex-col items-center cursor-pointer active:scale-95 transition-all relative overflow-hidden touch-manipulation group"
-                          style={{ borderColor: col + '44', boxShadow: `0 0 6px ${col}11`, minHeight: 90, background: '#0b1623' }}
+                          className="shop-card-hover relative flex min-h-[220px] flex-col overflow-hidden rounded-[24px] touch-manipulation"
+                          style={{ ...cardStyle, borderColor: col + '44', boxShadow: `0 18px 42px rgba(0,0,0,0.22), 0 0 0 1px ${col}10` }}
                         >
                           <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={402} bufH={240} />
-                          <div className="flex flex-col items-center gap-0.5 pb-1">
-                            <span className="text-[9px] font-black" style={{ color: col }}>Lv.{w.level}{w.branch ?? ''}</span>
+                          <div className="flex flex-col items-center gap-1 px-3 pb-3 pt-2">
+                            <span className="text-base font-black" style={{ color: col }}>Lv.{w.level}{w.branch ?? ''}</span>
                             <StarRating level={w.level} branch={w.branch} size="xs" />
                           </div>
                           {hasMatch
@@ -489,22 +641,22 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
 
               {/* ── 配件背包 ── */}
               {player.ownedItems.length > 0 && (
-                <div className="w-full mb-2">
+                <div className="shop-rise w-full rounded-[30px] p-4 sm:p-6" style={shellStyle}>
                   <h3 className="text-[10px] font-bold text-neutral-500 tracking-widest uppercase mb-1.5">配件背包</h3>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {player.ownedItems.map(item => {
                       const def = ITEM_REGISTRY[item.defId];
                       if (!def) return null;
                       return (
-                        <div key={item.id} className="bg-neutral-900 border border-neutral-700/50 rounded-lg px-2 py-1 flex items-center gap-1.5 text-[11px]">
+                        <div key={item.id} className="flex items-center gap-3 rounded-[24px] px-4 py-4" style={cardStyle}>
                           <span>{def.icon}</span>
-                          <span className="font-bold text-[10px]">{def.name}</span>
+                          <span className="text-base font-black text-white">{def.name}</span>
                           {item.defId === 'guest_pass' && (
                             <span className="text-[9px] text-green-400">→ 重擲免費</span>
                           )}
                           <button
                             onClick={() => handleSellItem(item)}
-                            className="ml-1 text-[9px] bg-red-900/60 active:bg-red-800 border border-red-700/50 px-1.5 py-0.5 rounded-md font-bold transition-colors touch-manipulation"
+                            className="ml-auto rounded-[14px] border border-red-500/20 bg-red-900/30 px-3 py-2 text-xs font-black text-red-100 transition-colors touch-manipulation"
                           >
                             賣 💰{Math.floor(def.cost * 0.5)}
                           </button>
@@ -516,23 +668,23 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               )}
 
               {/* ── 商店卡牌（手機 3 列 / 桌面 5 列，共 5 張）── */}
-              <div className="w-full mb-3">
+              <div className="shop-rise w-full rounded-[30px] p-4 sm:p-6" style={shellStyle}>
                 <h3 className="text-[10px] font-bold text-neutral-500 tracking-widest uppercase mb-1.5">補給站</h3>
-                <div className={`grid gap-2 ${cardCount > 5 ? 'grid-cols-4' : 'grid-cols-3 sm:grid-cols-5'}`}>
+                <div className={`grid gap-4 ${cardCount > 5 ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5'}`}>
                   {shopCards.map(card => {
                     if (card.cardType === 'weapon') {
                       const col = weaponColor(card.level);
                       const canBuy = player.materials >= card.cost && player.weapons.length < 6;
                       return (
-                        <div key={card.id} className="bg-[#0b1623] border-2 rounded-xl flex flex-col overflow-hidden" style={{ borderColor: col + '33' }}>
+                        <div key={card.id} className="shop-card-hover flex flex-col overflow-hidden rounded-[24px]" style={{ ...cardStyle, borderColor: col + '33' }}>
                           <WeaponPreviewCanvas type={card.type} level={card.level} branch={card.branch} bufW={402} bufH={240} />
-                          <div className="flex flex-col items-center px-1 pb-1.5 pt-0.5 gap-0.5 flex-1">
-                            <div className="font-bold text-[10px]" style={{ color: col }}>Lv.{card.level}{card.branch ?? ''}</div>
+                          <div className="flex flex-1 flex-col items-center gap-1 px-3 pb-4 pt-3">
+                            <div className="text-lg font-black" style={{ color: col }}>Lv.{card.level}{card.branch ?? ''}</div>
                             <StarRating level={card.level} branch={card.branch} size="xs" />
                             <button
                               onClick={() => handleBuyWeapon(card)}
                               disabled={!canBuy}
-                              className={`mt-1.5 w-full py-1 rounded-lg font-black text-[9px] transition-all touch-manipulation ${canBuy ? 'bg-amber-600 active:bg-amber-500 text-white' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed'}`}
+                              className={`mt-3 w-full rounded-[16px] px-4 py-3 text-sm font-black transition-all touch-manipulation ${canBuy ? 'bg-amber-400 text-black shadow-[0_12px_30px_rgba(245,181,69,0.2)] active:bg-amber-300' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed'}`}
                             >
                               💰{card.cost}
                             </button>
@@ -544,14 +696,14 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                       if (!def) return null;
                       const canBuy = player.materials >= def.cost;
                       return (
-                        <div key={card.id} className={`bg-[#0b1623] border-2 rounded-xl p-1.5 flex flex-col items-center text-center ${def.type === 'consumable' ? 'border-green-900/40' : 'border-purple-900/40'}`}>
-                          <span className="text-2xl mt-1">{def.icon}</span>
-                          <div className="font-bold text-[10px] mt-1 leading-tight">{def.name}</div>
-                          <p className="text-[8px] text-neutral-500 mb-1.5 flex-1 leading-tight">{def.description}</p>
+                        <div key={card.id} className={`shop-card-hover flex flex-col items-center rounded-[24px] p-4 text-center ${def.type === 'consumable' ? 'border-green-900/40' : 'border-purple-900/40'}`} style={cardStyle}>
+                          <span className="mt-2 text-4xl">{def.icon}</span>
+                          <div className="mt-3 text-base font-black text-white leading-tight">{def.name}</div>
+                          <p className="mb-3 mt-3 flex-1 text-sm leading-6 text-slate-300">{def.description}</p>
                           <button
                             onClick={() => handleBuyItem(card)}
                             disabled={!canBuy}
-                            className={`mt-auto w-full py-1 rounded-lg font-black text-[9px] transition-all touch-manipulation ${canBuy ? 'bg-amber-600 active:bg-amber-500 text-white' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed'}`}
+                            className={`mt-auto w-full rounded-[16px] px-4 py-3 text-sm font-black transition-all touch-manipulation ${canBuy ? 'bg-amber-400 text-black shadow-[0_12px_30px_rgba(245,181,69,0.2)] active:bg-amber-300' : 'bg-neutral-900 text-neutral-600 cursor-not-allowed'}`}
                           >
                             💰{def.cost}
                           </button>
@@ -560,7 +712,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                     }
                   })}
                   {shopCards.length === 0 && (
-                    <div className="col-span-3 sm:col-span-5 py-8 text-center text-neutral-600 border-2 border-dashed border-neutral-800 rounded-xl font-bold tracking-widest text-xs">
+                    <div className="col-span-full rounded-[24px] border border-dashed border-slate-700/70 py-12 text-center text-slate-500 font-bold tracking-[0.28em] text-xs" style={mutedPanelStyle}>
                       SOLD OUT
                     </div>
                   )}
@@ -568,16 +720,16 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               </div>
 
               {/* ── 底部操作列 ── */}
-              <div className="flex gap-3 w-full pt-1">
+              <div className="mt-6 flex w-full flex-col gap-3 rounded-[26px] p-4 sm:flex-row" style={mutedPanelStyle}>
                 <button
                   onClick={handleReroll}
                   disabled={!canReroll}
-                  className={`flex-1 py-3 rounded-xl font-black border-2 transition-all text-xs touch-manipulation ${
+                  className={`flex-1 rounded-[18px] border px-5 py-4 font-black transition-all text-sm touch-manipulation ${
                     hasGuestPass
-                      ? 'border-green-500 text-green-400 active:bg-green-500/10'
+                      ? 'border-green-500/30 text-green-300 active:bg-green-500/10'
                       : canReroll
-                        ? 'border-blue-500 text-blue-400 active:bg-blue-500/10'
-                        : 'border-neutral-700 text-neutral-600 cursor-not-allowed'
+                        ? 'border-blue-500/30 text-blue-300 active:bg-blue-500/10'
+                        : 'border-neutral-700 text-neutral-500 cursor-not-allowed'
                   }`}
                 >
                   🎲 重擲
@@ -592,14 +744,14 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                   isReady ? (
                     <button
                       disabled
-                      className="flex-1 py-3 rounded-xl font-black bg-neutral-800 text-neutral-500 tracking-widest text-xs cursor-not-allowed"
+                      className="flex-1 rounded-[18px] bg-neutral-800 px-5 py-4 font-black text-neutral-500 tracking-[0.2em] text-sm cursor-not-allowed"
                     >
                       等待隊友 ⏳
                     </button>
                   ) : (
                     <button
                       onClick={onNextWave}
-                      className="flex-1 py-3 rounded-xl font-black bg-green-500 text-black active:bg-green-400 transition-all tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.3)] touch-manipulation text-xs"
+                      className="flex-1 rounded-[18px] bg-green-400 px-5 py-4 font-black text-black active:bg-green-300 transition-all tracking-[0.2em] shadow-[0_12px_30px_rgba(34,197,94,0.2)] touch-manipulation text-sm"
                     >
                       準備好了 ✓
                     </button>
@@ -607,7 +759,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                 ) : (
                   <button
                     onClick={onNextWave}
-                    className="flex-1 py-3 rounded-xl font-black bg-white text-black active:bg-neutral-200 transition-all tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.15)] touch-manipulation text-xs"
+                    className="flex-1 rounded-[18px] bg-white px-5 py-4 font-black text-black active:bg-neutral-200 transition-all tracking-[0.2em] shadow-[0_12px_30px_rgba(255,255,255,0.12)] touch-manipulation text-sm"
                   >
                     下一波 ⚔️
                   </button>
@@ -619,7 +771,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
 
         {/* ── CustomFooter 插槽（雙人模式注入角色預覽 + 準備按鈕）── */}
         {customFooter && (
-          <div className="flex-shrink-0 w-full" style={{ borderTop: '1px solid #ffffff0d', background: '#060a10' }}>
+          <div className="flex-shrink-0 w-full" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', background: 'linear-gradient(180deg, rgba(10,12,18,0.94) 0%, rgba(6,7,11,0.98) 100%)', boxShadow: '0 -20px 40px rgba(0,0,0,0.22)' }}>
             {customFooter}
           </div>
         )}
