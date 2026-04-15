@@ -421,10 +421,8 @@ export function TestModePanel({ gameRef }: Props) {
   const [open, setOpen]     = useState(false);
   const [targetPid, setTargetPid] = useState(1);
   const [spawnCount, setSpawnCount] = useState<1|5|10>(1);
-  const [p1SwordLv, setP1SwordLv] = useState(1);
-  const [p1GunLv,   setP1GunLv]   = useState(1);
-  const [p2SwordLv, setP2SwordLv] = useState(1);
-  const [p2GunLv,   setP2GunLv]   = useState(1);
+  const [p1Level, setP1Level] = useState(1);
+  const [p2Level, setP2Level] = useState(1);
   const [selZombie, setSelZombie] = useState<ZombieType | null>(null);
 
   const g = () => gameRef.current;
@@ -435,22 +433,24 @@ export function TestModePanel({ gameRef }: Props) {
     return () => window.removeEventListener('keydown', h);
   }, []);
 
-  const getLv = (w: 'sword'|'gun') =>
-    w === 'sword' ? (targetPid === 1 ? p1SwordLv : p2SwordLv)
-                  : (targetPid === 1 ? p1GunLv   : p2GunLv);
+  const getPlayerLevel = () => {
+    const live = g()?.players.find(p => p.id === targetPid)?.level;
+    if (typeof live === 'number') return live;
+    return targetPid === 1 ? p1Level : p2Level;
+  };
 
-  const setLv = (w: 'sword'|'gun', v: number) => {
-    if (w === 'sword') targetPid === 1 ? setP1SwordLv(v) : setP2SwordLv(v);
-    else               targetPid === 1 ? setP1GunLv(v)   : setP2GunLv(v);
+  const setPlayerLevelState = (pid: number, v: number) => {
+    if (pid === 1) setP1Level(v);
+    else setP2Level(v);
   };
 
   const getBranch = (w: 'sword'|'gun') =>
     g()?.players.find(p => p.id === targetPid)?.weaponBranches[w] ?? null;
 
-  const changeLevel = (w: 'sword'|'gun', d: number) => {
-    const next = Math.max(1, Math.min(8, getLv(w) + d));
-    setLv(w, next);
-    g()?.debugSetWeapon(targetPid, w, next);
+  const changePlayerLevel = (d: number) => {
+    const next = Math.max(1, Math.min(8, getPlayerLevel() + d));
+    setPlayerLevelState(targetPid, next);
+    g()?.debugSetPlayerLevel(targetPid, next);
   };
 
   const statusActive = (key: 'shield'|'speedBoost'|'slowDebuff'|'glow') => {
@@ -525,10 +525,14 @@ export function TestModePanel({ gameRef }: Props) {
       {/* ── 玩家 ── */}
       <Section title="👤 玩家">
         <Btn onClick={() => g()?.debugHealAll()} color="green" className="w-full">💉 滿血（所有玩家）</Btn>
-        <LevelCtrl label="劍" emoji="⚔️" level={getLv('sword')}
-          onWeapon={() => g()?.debugSetWeapon(targetPid, 'sword', getLv('sword'))}
-          onLevel={d => changeLevel('sword', d)} />
-        {getLv('sword') >= 5 && (
+        <LevelCtrl label="LV" emoji="🧬" level={getPlayerLevel()}
+          onWeapon={() => g()?.debugSetPlayerLevel(targetPid, getPlayerLevel())}
+          onLevel={changePlayerLevel} />
+        <div className="grid grid-cols-2 gap-1">
+          <Btn onClick={() => g()?.debugSetWeapon(targetPid, 'sword', getPlayerLevel())} color="blue">⚔ 刀</Btn>
+          <Btn onClick={() => g()?.debugSetWeapon(targetPid, 'gun', getPlayerLevel())} color="yellow">🔫 槍</Btn>
+        </div>
+        {getPlayerLevel() >= 5 && (
           <div className="flex gap-1 pl-6">
             {(['A','B'] as const).map(b => (
               <Btn key={b} onClick={() => g()?.debugSetWeaponBranch(targetPid, 'sword', getBranch('sword') === b ? null : b)}
@@ -538,10 +542,7 @@ export function TestModePanel({ gameRef }: Props) {
             ))}
           </div>
         )}
-        <LevelCtrl label="槍" emoji="🔫" level={getLv('gun')}
-          onWeapon={() => g()?.debugSetWeapon(targetPid, 'gun', getLv('gun'))}
-          onLevel={d => changeLevel('gun', d)} />
-        {getLv('gun') >= 5 && (
+        {getPlayerLevel() >= 5 && (
           <div className="flex gap-1 pl-6">
             {(['A','B'] as const).map(b => (
               <Btn key={b} onClick={() => g()?.debugSetWeaponBranch(targetPid, 'gun', getBranch('gun') === b ? null : b)}

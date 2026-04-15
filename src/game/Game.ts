@@ -48,6 +48,7 @@ type ArenaLootBagState = {
   targetY: number;
   phase: 'throw' | 'suck' | 'settle';
   timer: number;
+  duration: number;
   storedValue: number;
 };
 
@@ -327,17 +328,35 @@ export class Game {
     this.players.forEach(p => { p.hp = p.maxHp; });
   }
 
+  debugSetPlayerLevel(pid: number, level: number) {
+    const p = this.players.find(pl => pl.id === pid);
+    if (!p) return;
+
+    const next = Math.max(1, Math.min(8, level));
+    p.level = next;
+    p.weaponLevels.sword = next;
+    p.weaponLevels.gun = next;
+    if (next < 5) {
+      p.weaponBranches.sword = null;
+      p.weaponBranches.gun = null;
+    }
+    p.syncWeaponToSlot();
+  }
+
   debugSetWeapon(pid: number, weapon: 'sword' | 'gun', level: number) {
     const p = this.players.find(pl => pl.id === pid);
     if (!p) return;
     p.weapon = weapon;
     p.weaponLevels[weapon] = Math.max(1, Math.min(8, level));
+    p.syncWeaponToSlot();
   }
   debugSetWeaponBranch(pid: number, weapon: 'sword' | 'gun', branch: 'A' | 'B' | null) {
     const p = this.players.find(pl => pl.id === pid);
     if (!p) return;
     p.weaponBranches[weapon] = branch;
     if (branch && p.weaponLevels[weapon] < 5) p.weaponLevels[weapon] = 5;
+    if (branch && p.level < 5) p.level = 5;
+    p.syncWeaponToSlot();
   }
 
   debugSpawnItem(type: ItemType) {
@@ -626,7 +645,8 @@ export class Game {
       targetX: anchor.x + 34,
       targetY: anchor.y - 52,
       phase: 'throw',
-      timer: 220,
+      timer: 1000,
+      duration: 1000,
       storedValue: 0,
     };
 
@@ -672,12 +692,14 @@ export class Game {
     const bag = this.arenaLootBag;
     if (bag.phase === 'throw') {
       bag.timer -= dt;
-      const progress = 1 - Math.max(0, bag.timer) / 220;
-      bag.x = bag.startX + (bag.targetX - bag.startX) * progress;
-      bag.y = bag.startY + (bag.targetY - bag.startY) * progress - Math.sin(progress * Math.PI) * 12;
+      const progress = 1 - Math.max(0, bag.timer) / Math.max(1, bag.duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      bag.x = bag.startX + (bag.targetX - bag.startX) * eased;
+      bag.y = bag.startY + (bag.targetY - bag.startY) * eased - Math.sin(progress * Math.PI) * 22;
       if (bag.timer <= 0) {
         bag.phase = 'suck';
-        bag.timer = 0;
+        bag.timer = 400;
+        bag.duration = 400;
         bag.x = bag.targetX;
         bag.y = bag.targetY;
       }
@@ -701,7 +723,8 @@ export class Game {
       const dx = bag.x - item.x;
       const dy = bag.y - item.y;
       const dist = Math.hypot(dx, dy) || 1;
-      const pull = Math.min(52, Math.max(12, dist * 0.28)) * (dt / 16);
+      const remaining = Math.max(16, bag.timer);
+      const pull = Math.max(dist * (dt / remaining), 6);
       item.x += (dx / dist) * pull;
       item.y += (dy / dist) * pull;
 
@@ -718,9 +741,12 @@ export class Game {
       }
     }
 
+    bag.timer = Math.max(0, bag.timer - dt);
+
     if (!hasGroundOrbs) {
       bag.phase = 'settle';
       bag.timer = 500;
+      bag.duration = 500;
     }
   }
 
@@ -1207,7 +1233,7 @@ export class Game {
       }
 
       const obstacles = this.mapManager.getNearbyObstacles(zombie.x, zombie.y);
-      zombie.update(dt, this.players, obstacles, this.projectiles, this.slimeTrails);
+      zombie.update(dt, this.players, obstacles, this.projectiles, this.slimeTrails, this.debugHpLocked);
 
       // Zombie-Player collision (damage)
       for (const player of this.players) {
@@ -1476,7 +1502,7 @@ export class Game {
           }
 
           if (item.attractedByPlayerId === null) {
-            const magneticRadius = 25 * player.pickupRadiusMultiplier;
+            const magneticRadius = 38 * player.pickupRadiusMultiplier;
             const distToPlayer = Math.hypot(player.x - item.x, player.y - item.y);
             if (distToPlayer < magneticRadius) {
               item.attractedByPlayerId = player.id;
@@ -1787,7 +1813,11 @@ export class Game {
     ctx.save();
     ctx.translate(bag.x, bag.y);
 
-    const pulse = bag.phase === 'suck' ? 1 + Math.sin(Date.now() / 90) * 0.06 : 1;
+    const pulse = bag.phase === 'suck'
+      ? 1 + Math.sin(Date.now() / 90) * 0.06
+      : bag.phase === 'settle'
+        ? 1 + Math.sin(Date.now() / 120) * 0.1
+        : 1;
     ctx.scale(pulse, pulse);
 
     ctx.fillStyle = 'rgba(0,0,0,0.25)';

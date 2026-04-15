@@ -32,6 +32,7 @@ export interface ZombieBehaviorCtx {
   obstacles: Obstacle[];
   projectiles: Projectile[];
   slimeTrails: { x: number; y: number; radius: number; lifetime: number; maxLifetime: number }[];
+  debugHpLocked?: boolean;
 }
 
 // ?? 畾剖?摰儔隞 ?????????????????????????????????????????????????????????????
@@ -122,7 +123,7 @@ function slimeSplit(x: number, y: number): ZombieSpawnSpec[] {
 //   chargeDX/DY: normalized charge direction (locked)
 //   slamRadius:  shockwave ring radius (renderer animation)
 function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
-  const { dt, nearest, nearestDist, players } = ctx;
+  const { dt, nearest, nearestDist, players, debugHpLocked } = ctx;
 
   const phase      = (self.extraState.get('phase')       ?? 'walk') as string;
   const phaseEnd   = (self.extraState.get('phaseEnd')    ?? 0)      as number;
@@ -197,7 +198,7 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
         if (dist < self.radius + p.radius + 5) {
           const lastDmg = self.lastDamageTime.get(p.id) ?? 0;
           if (now - lastDmg > 400) {
-            if (p.takeDamage(40)) {
+            if (!debugHpLocked && p.takeDamage(40)) {
               p.x += chargeDX * 35;
               p.y += chargeDY * 35;
               self.lastDamageTime.set(p.id, now);
@@ -220,7 +221,7 @@ function butcherBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
         for (const p of players) {
           if (p.hp <= 0) continue;
           if (Math.hypot(p.x - self.x, p.y - self.y) < 150) {
-            p.takeDamage(50);
+            if (!debugHpLocked) p.takeDamage(50);
           }
         }
         self.extraState.set('phase', 'slamming');

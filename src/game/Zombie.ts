@@ -62,6 +62,7 @@ export class Zombie {
     obstacles: Obstacle[],
     projectiles: Projectile[],
     slimeTrails: { x: number; y: number; radius: number; lifetime: number; maxLifetime: number }[],
+    debugHpLocked: boolean = false,
   ) {
     if (this.hp <= 0) return;
 
@@ -91,6 +92,7 @@ export class Zombie {
     const ctx: ZombieBehaviorCtx = {
       dt, nearest, nearestDist: minDist,
       players, obstacles, projectiles, slimeTrails,
+      debugHpLocked,
     };
 
     if (def.updateBehavior) {
