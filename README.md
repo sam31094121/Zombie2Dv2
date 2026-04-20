@@ -27,9 +27,6 @@
    ```
 
 3. 開啟瀏覽器前往 `http://localhost:3000`
+4. 上線版網址 `https://sam31094121.github.io/Zombie2Dv2/` 
 
-## 建置
-
-```
-npm run build
-```
+5. 與線上分枝自動合併  " git pull origin main --no-rebase "
