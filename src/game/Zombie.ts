@@ -86,7 +86,40 @@ export class Zombie {
       debugHpLocked,
     };
 
-    if (def.updateBehavior) {
+    if (this.extraState.get('bagCarrier') === true) {
+      // Decrement spawn pop timer
+      const st = (this.extraState.get('spawnTimer') as number) ?? 0;
+      if (st > 0) {
+        this.extraState.set('spawnTimer', Math.max(0, st - dt));
+        // During spawn fling, let vx/vy physics carry it
+      } else {
+        // Random wander behavior
+        let wt = (this.extraState.get('wanderTimer') as number) ?? 0;
+        let wx = (this.extraState.get('wanderDX') as number) ?? 0;
+        let wy = (this.extraState.get('wanderDY') as number) ?? 0;
+        wt -= dt;
+        if (wt <= 0 || (wx === 0 && wy === 0)) {
+          const a = Math.random() * Math.PI * 2;
+          wx = Math.cos(a); wy = Math.sin(a);
+          wt = 1200 + Math.random() * 2200;
+        }
+        // Bounce off arena bounds
+        const ab = this.extraState.get('arenaBounds') as { left: number; right: number; top: number; bottom: number } | undefined;
+        if (ab) {
+          if (this.x < ab.left  + this.radius) wx =  Math.abs(wx);
+          if (this.x > ab.right - this.radius) wx = -Math.abs(wx);
+          if (this.y < ab.top   + this.radius) wy =  Math.abs(wy);
+          if (this.y > ab.bottom- this.radius) wy = -Math.abs(wy);
+        }
+        this.extraState.set('wanderDX', wx);
+        this.extraState.set('wanderDY', wy);
+        this.extraState.set('wanderTimer', wt);
+        this.angle = Math.atan2(wy, wx);
+        this.x += wx * this.speed * (dt / 16);
+        this.y += wy * this.speed * (dt / 16);
+      }
+      this.isCloseToPlayer = false;
+    } else if (def.updateBehavior) {
       // 行為 Hook：完全由定義控制移動與攻擊
       def.updateBehavior(this, ctx);
     } else {

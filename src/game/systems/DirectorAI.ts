@@ -1,5 +1,4 @@
 import type { Game } from '../Game';
-import { CONSTANTS } from '../Constants';
 import { ZOMBIE_REGISTRY } from '../entities/definitions/ZombieDefinitions';
 import type { ZombieType } from '../Zombie';
 
@@ -16,8 +15,13 @@ export class DirectorAI {
   private directorTimer: number = 0;
   private readonly TICK_RATE = 500;
   private readonly OPENING_PRESSURE_RATIO = 0.2;
-  private readonly LIGHT_OPENING_MS = 1500;
-  private readonly FULL_PRESSURE_MS = 6000;
+  private readonly MID_WAVE_PRESSURE_RATIO = 0.5;
+  private readonly INITIAL_TICK_RATIO = 0.5;
+  private readonly SPITTER_UNLOCK_MS = 1500;
+  private readonly HEAVY_UNIT_UNLOCK_MS = 3000;
+  private readonly OBJECTIVE_VIRTUAL_DURATION_MS = 30000;
+  private readonly SPAWN_PADDING = 120;
+  private readonly SPAWN_SAFE_RADIUS = 220;
 
   constructor(game: Game) {
     this.game = game;
@@ -62,7 +66,7 @@ export class DirectorAI {
 
   private spawnClump(budget: number, pressure: PressureState) {
     let spent = 0;
-    const center = this.getRandomOffscreenEdge();
+    const center = this.getRandomArenaSpawnPoint();
     let loops = 0;
 
     while (spent < budget && loops < 20) {
@@ -71,8 +75,8 @@ export class DirectorAI {
       const weight = ZOMBIE_REGISTRY[type].weight ?? 1;
       if (spent + weight > budget && type !== 'normal' && type !== 'slime_small') continue;
 
-      const x = center.x + (Math.random() - 0.5) * 150;
-      const y = center.y + (Math.random() - 0.5) * 150;
+      const x = center.x + (Math.random() - 0.5) * 110;
+      const y = center.y + (Math.random() - 0.5) * 110;
 
       this.spawnZombie(type, x, y);
       spent += weight;
@@ -82,14 +86,14 @@ export class DirectorAI {
   private spawnFormation(budget: number, type: 'circle') {
     if (type !== 'circle') return;
 
-    const radius = 600;
+    const radius = 85 + Math.random() * 40;
     const count = Math.min(25, Math.floor(budget));
-    const playerCenter = this.getGlobalPlayerCenter();
+    const center = this.getRandomArenaSpawnPoint(this.SPAWN_SAFE_RADIUS + 40);
 
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      const x = playerCenter.x + Math.cos(angle) * radius;
-      const y = playerCenter.y + Math.sin(angle) * radius;
+      const x = center.x + Math.cos(angle) * radius;
+      const y = center.y + Math.sin(angle) * radius;
       this.spawnZombie('normal', x, y);
     }
   }
@@ -136,23 +140,45 @@ export class DirectorAI {
 
   private getPressureState(weightCap: number): PressureState {
     const elapsed = this.game.waveManager.combatElapsedMs;
-    const rampProgress = this.getRampProgress(elapsed);
-    const targetRatio = this.OPENING_PRESSURE_RATIO + (1 - this.OPENING_PRESSURE_RATIO) * rampProgress;
+    const targetRatio = this.getTargetRatio(elapsed);
+    const rampProgress = this.getRampProgress(targetRatio);
     const fullTickBudget = Math.max(4, Math.min(18, Math.round(weightCap * 0.08)));
+    const openingTickBudget = Math.max(2, Math.round(fullTickBudget * this.INITIAL_TICK_RATIO));
 
     return {
       rampProgress,
       targetCap: Math.max(1, Math.ceil(weightCap * targetRatio)),
-      maxCommitPerTick: Math.max(1, Math.round(4 + (fullTickBudget - 4) * rampProgress)),
-      maxUnitWeight: elapsed < 3000 ? 1 : Number.POSITIVE_INFINITY,
-      allowSpitter: elapsed >= this.LIGHT_OPENING_MS,
+      maxCommitPerTick: Math.max(1, Math.round(openingTickBudget + (fullTickBudget - openingTickBudget) * rampProgress)),
+      maxUnitWeight: elapsed < this.HEAVY_UNIT_UNLOCK_MS ? 1 : Number.POSITIVE_INFINITY,
+      allowSpitter: elapsed >= this.SPITTER_UNLOCK_MS,
     };
   }
 
-  private getRampProgress(elapsedMs: number) {
-    if (elapsedMs <= this.LIGHT_OPENING_MS) return 0;
-    if (elapsedMs >= this.FULL_PRESSURE_MS) return 1;
-    return (elapsedMs - this.LIGHT_OPENING_MS) / (this.FULL_PRESSURE_MS - this.LIGHT_OPENING_MS);
+  // Arena pressure timeline: 20% at wave start, 50% at mid-wave, full at the start of the final third.
+  private getTargetRatio(elapsedMs: number) {
+    const { halfWaveMs, peakStartMs } = this.getPressureBreakpointsMs();
+    if (elapsedMs <= 0) return this.OPENING_PRESSURE_RATIO;
+
+    if (elapsedMs <= halfWaveMs) {
+      const progress = elapsedMs / halfWaveMs;
+      return this.OPENING_PRESSURE_RATIO
+        + (this.MID_WAVE_PRESSURE_RATIO - this.OPENING_PRESSURE_RATIO) * progress;
+    }
+
+    if (elapsedMs >= peakStartMs) {
+      return 1;
+    }
+
+    const finalRampWindow = Math.max(this.TICK_RATE, peakStartMs - halfWaveMs);
+    const progress = (elapsedMs - halfWaveMs) / finalRampWindow;
+    return this.MID_WAVE_PRESSURE_RATIO + (1 - this.MID_WAVE_PRESSURE_RATIO) * progress;
+  }
+
+  private getRampProgress(targetRatio: number) {
+    return Math.max(
+      0,
+      Math.min(1, (targetRatio - this.OPENING_PRESSURE_RATIO) / (1 - this.OPENING_PRESSURE_RATIO)),
+    );
   }
 
   private processAutoDespawn() {
@@ -192,53 +218,57 @@ export class DirectorAI {
     return 'normal';
   }
 
-  private getRandomOffscreenEdge() {
-    const side = Math.floor(Math.random() * 4);
-    const margin = 200;
+  private getPeakPressureStartMs() {
+    const waveDuration = this.game.waveManager.currentWaveConfig.arenaDuration;
+    const totalDurationMs = typeof waveDuration === 'number'
+      ? waveDuration * 1000
+      : this.OBJECTIVE_VIRTUAL_DURATION_MS;
 
-    if (side === 0) {
-      return {
-        x: this.game.camera.x + Math.random() * CONSTANTS.CANVAS_WIDTH,
-        y: this.game.camera.y - margin,
-      };
-    }
-    if (side === 1) {
-      return {
-        x: this.game.camera.x + CONSTANTS.CANVAS_WIDTH + margin,
-        y: this.game.camera.y + Math.random() * CONSTANTS.CANVAS_HEIGHT,
-      };
-    }
-    if (side === 2) {
-      return {
-        x: this.game.camera.x + Math.random() * CONSTANTS.CANVAS_WIDTH,
-        y: this.game.camera.y + CONSTANTS.CANVAS_HEIGHT + margin,
-      };
-    }
+    return Math.max(this.TICK_RATE, Math.floor(totalDurationMs * (2 / 3)));
+  }
+
+  private getPressureBreakpointsMs() {
+    const peakStartMs = this.getPeakPressureStartMs();
     return {
-      x: this.game.camera.x - margin,
-      y: this.game.camera.y + Math.random() * CONSTANTS.CANVAS_HEIGHT,
+      peakStartMs,
+      halfWaveMs: Math.max(this.TICK_RATE, Math.floor(peakStartMs * 0.75)),
     };
   }
 
-  private getGlobalPlayerCenter() {
-    let px = 0;
-    let py = 0;
-    let active = 0;
+  private getRandomArenaSpawnPoint(minPlayerDistance = this.SPAWN_SAFE_RADIUS) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const point = this.game.randomArenaPoint(this.SPAWN_PADDING);
+      if (this.isSpawnPointSafe(point.x, point.y, minPlayerDistance)) {
+        return point;
+      }
+    }
 
+    return this.game.randomArenaPoint(this.SPAWN_PADDING);
+  }
+
+  private isSpawnPointSafe(x: number, y: number, minPlayerDistance: number) {
     for (const player of this.game.players) {
       if (player.hp <= 0) continue;
-      px += player.x;
-      py += player.y;
-      active++;
+      if (Math.hypot(player.x - x, player.y - y) < minPlayerDistance) {
+        return false;
+      }
     }
 
-    if (active === 0) {
-      return {
-        x: this.game.camera.x + CONSTANTS.CANVAS_WIDTH / 2,
-        y: this.game.camera.y + CONSTANTS.CANVAS_HEIGHT / 2,
-      };
+    for (const effect of this.game.activeEffects) {
+      if (effect.type !== 'spawn_warning') continue;
+      if (Math.hypot(effect.x - x, effect.y - y) < 70) {
+        return false;
+      }
     }
 
-    return { x: px / active, y: py / active };
+    const obstacles = this.game.mapManager.getNearbyObstacles(x, y);
+    for (const obstacle of obstacles) {
+      if (obstacle.isDestroyed) continue;
+      if (obstacle.collidesWithCircle(x, y, 40)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }

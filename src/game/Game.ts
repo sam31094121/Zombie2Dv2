@@ -807,17 +807,34 @@ export class Game {
   private spawnBagCarrier() {
     if (!this.pendingArenaBagReward || this.pendingArenaBagReward.spawned) return;
 
-    const point = this.randomArenaPoint(120);
-    const carrier = new Zombie(point.x, point.y, 'normal');
+    // Spawn at nearest player position, fling outward
+    const srcPlayer = this.players.find(p => p.hp > 0) ?? null;
+    const spawnX = srcPlayer ? srcPlayer.x : (this.playableArenaBounds.left + this.playableArenaBounds.right) / 2;
+    const spawnY = srcPlayer ? srcPlayer.y : (this.playableArenaBounds.top  + this.playableArenaBounds.bottom) / 2;
+
+    const carrier = new Zombie(spawnX, spawnY, 'normal');
     carrier.id = ++this._zombieIdCounter;
-    carrier.hp = Math.max(12, 8 + this.waveManager.currentWave * 3);
+    carrier.hp = Math.max(6, 4 + this.waveManager.currentWave * 2);
     carrier.maxHp = carrier.hp;
-    carrier.speed = Math.max(carrier.speed * 1.55, 2.8);
+    carrier.speed = 1.8 + Math.random() * 0.6;
+
+    // Fling the carrier outward in a random direction (pop-out effect)
+    const flingAngle = Math.random() * Math.PI * 2;
+    const flingPower = 8 + Math.random() * 4;
+    carrier.vx = Math.cos(flingAngle) * flingPower;
+    carrier.vy = Math.sin(flingAngle) * flingPower;
+
+    const bounds = this.playableArenaBounds;
     carrier.extraState.set('bagCarrier', true);
     carrier.extraState.set('bagRewardValue', this.pendingArenaBagReward.value);
     carrier.extraState.set('bagRewardWave', this.pendingArenaBagReward.sourceWave);
-    this.zombies.push(carrier);
+    carrier.extraState.set('spawnTimer', 600);
+    carrier.extraState.set('arenaBounds', {
+      left: bounds.left + 60, right: bounds.right - 60,
+      top:  bounds.top  + 60, bottom: bounds.bottom - 60,
+    });
 
+    this.zombies.push(carrier);
     this.pendingArenaBagReward.spawned = true;
     this.activeBagCarrierId = carrier.id;
   }
@@ -1336,6 +1353,10 @@ export class Game {
       for (const obs of obstacles) {
         if (obs.isDestroyed) continue;
         if (obs.collidesWithCircle(proj.x, proj.y, proj.radius)) {
+          if (proj.isEnemy && obs.type === 'tombstone') {
+            continue;
+          }
+
           if (obs.type === 'monolith' && proj.type === 'bullet') {
             // Reflect to nearest zombie
             const nearestZombie = this.findNearestZombie(obs.x + obs.width / 2, obs.y + obs.height / 2, 500);

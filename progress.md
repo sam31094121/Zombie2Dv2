@@ -13,3 +13,8 @@ Original prompt: 瘝??????
 - 2026-04-20: Arena wave tombstones are tagged and removed from `mapManager.obstacles` when entering shop / starting the next wave, preventing cross-wave tombstone carryover.
 - 2026-04-20: Wave HUD now receives objective text so objective waves show mission text rather than exposing the raw `999` timer.
 - 2026-04-21: Endless-mode hotfix in progress. Restored timer-based spawn from `Game.update()` for non-arena modes after arena-only `DirectorAI` cut off the old endless spawn path.
+- 2026-04-21: Arena director spawn anchors now choose random safe points inside the arena instead of hugging the map edge, relying on `spawn_warning` telegraphs to keep the spawn readable.
+- 2026-04-21: Arena pressure curve now follows wave stage milestones: 20% at wave start, 50% at the half-way mark, and full pressure by the start of the final third (objective waves use a virtual 30s timeline).
+- 2026-04-21: Gun Lv1 and Lv2 bullets now pierce 2 zombies, giving the early gun path a small clear-speed bump without touching later gun branches.
+- 2026-04-21: Enemy projectiles no longer damage tombstones, preventing cross tombstones from self-destructing to monster spit.
+- 2026-04-21: `npm run lint` and `npm run build` both passed after the pacing / spawn / weapon tweaks; local smoke scripts also launched the game successfully for a quick regression check.

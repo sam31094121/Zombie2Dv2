@@ -22,7 +22,12 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
   // ???? ??鈭?謍???箸慫????????祗 ctx.save ??摰?????????????????????????????????????????????????????????
   if (zombie.type === 'butcher') drawButcherWorldFX(zombie, ctx);
   const isBagCarrier = zombie.extraState.get('bagCarrier') === true;
-  const bagRewardValue = Number(zombie.extraState.get('bagRewardValue') ?? 0);
+
+  // ── BAG CARRIER: completely separate draw path ──────────────────────────
+  if (isBagCarrier) {
+    drawGoblinCourier(zombie, ctx);
+    return;
+  }
 
   ctx.save();
   if (zombie.isInsideContainer) ctx.globalAlpha = 0.4;
@@ -219,37 +224,6 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
       ctx.beginPath(); ctx.arc(4,-4,2,0,Math.PI*2); ctx.fill();
     }
 
-    if (isBagCarrier) {
-      ctx.save();
-      ctx.rotate(-0.25);
-      ctx.fillStyle = '#8b5a2b';
-      ctx.strokeStyle = '#2f1b0c';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(5, -2);
-      ctx.quadraticCurveTo(12, -10, 14, -2);
-      ctx.quadraticCurveTo(16, 8, 8, 11);
-      ctx.quadraticCurveTo(0, 8, 1, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = '#facc15';
-      ctx.beginPath();
-      ctx.moveTo(5, -2);
-      ctx.quadraticCurveTo(9, -7, 12, -2);
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.fillStyle = '#fbbf24';
-      ctx.beginPath();
-      ctx.arc(0, -zombie.radius - 8, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.font = 'bold 8px Courier';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(Math.max(1, bagRewardValue)), 0, -zombie.radius - 8);
-    }
   }
 
   ctx.restore();
@@ -266,6 +240,196 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
 }
 
 // ???? ??鈭?謘??冽??撖?????????+ ?蛔?????????????????????????????????????????????????????????????????????????????
+// ── Goblin Courier (Bag Carrier) ──────────────────────────────────────────
+function drawGoblinCourier(zombie: Zombie, ctx: CanvasRenderingContext2D): void {
+  const bagValue  = Number(zombie.extraState.get('bagRewardValue') ?? 0);
+  const tier      = bagValue <= 50 ? 1 : bagValue <= 150 ? 2 : 3;
+  const t         = zombie.time;
+
+  const SKIN  = ['#5eead4', '#fdba74', '#c084fc'][tier - 1];
+  const DARK  = ['#0d9488', '#c2410c', '#7c3aed'][tier - 1];
+  const EAR_I = ['#99f6e4', '#fde68a', '#f0abfc'][tier - 1];
+  const PUPIL = ['#0c4a6e', '#7c2d12', '#3b0764'][tier - 1];
+
+  // Spawn-pop scale animation (0 → 1.35 → 1.0 over 600 ms)
+  const st = Number(zombie.extraState.get('spawnTimer') ?? 0);
+  let spawnScale = 1;
+  if (st > 0) {
+    const p = 1 - st / 600;
+    spawnScale = p < 0.5 ? p * 2 * 1.35 : 1.35 - (p - 0.5) * 2 * 0.35;
+    spawnScale = Math.max(0.02, spawnScale);
+  }
+
+  const r    = zombie.radius;
+  const walk = Math.sin(t / 110);
+
+  // World-space shadow
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(zombie.x + 3, zombie.y + r * 0.65, r * 0.9 * spawnScale, 5 * spawnScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Local-space drawing
+  ctx.save();
+  if (zombie.isInsideContainer) ctx.globalAlpha = 0.4;
+  ctx.translate(zombie.x, zombie.y);
+  ctx.rotate(zombie.angle + Math.PI / 2);
+  ctx.scale(spawnScale, spawnScale);
+
+  const flash = zombie.flashWhiteTimer > 0;
+  const bodyColor = flash ? '#ffffff' : SKIN;
+
+  // Feet (trailing behind, +y = backward in local space)
+  const fL = walk * 3.5, fR = -walk * 3.5;
+  ctx.fillStyle = flash ? '#ffffff' : DARK;
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(-4 + fL, r * 0.82, 3.8, 5.5,  0.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse( 4 + fR, r * 0.82, 3.8, 5.5, -0.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // Body
+  ctx.fillStyle = bodyColor; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, r * 0.08, r * 0.82, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // Body inner highlight
+  if (!flash) {
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.beginPath(); ctx.ellipse(-r * 0.22, -r * 0.18, r * 0.38, r * 0.3, -0.4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Pointy elf ears
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+  for (const side of [-1, 1] as const) {
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.moveTo(side * r * 0.74,  r * 0.08);
+    ctx.lineTo(side * r * 1.18, -r * 0.34);
+    ctx.lineTo(side * r * 0.56, -r * 0.46);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (!flash) {
+      ctx.fillStyle = EAR_I;
+      ctx.beginPath();
+      ctx.moveTo(side * r * 0.74,  r * 0.05);
+      ctx.lineTo(side * r * 1.07, -r * 0.30);
+      ctx.lineTo(side * r * 0.60, -r * 0.40);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  // Arms
+  const aSwing = walk * 4.5;
+  ctx.fillStyle = flash ? '#ffffff' : DARK; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(-r * 0.9, r * 0.22 + aSwing, 4, 3.2,  0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse( r * 0.9, r * 0.22 - aSwing, 4, 3.2, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // Eyes (with occasional blink)
+  const blink = Math.sin(t / 590) > 0.91 ? 0.28 : 1;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(-r * 0.30, -r * 0.36, 3.4, 3.4 * blink, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( r * 0.30, -r * 0.36, 3.4, 3.4 * blink, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = flash ? '#ff0000' : PUPIL;
+  ctx.beginPath(); ctx.ellipse(-r * 0.28, -r * 0.34, 1.8, 1.8 * blink, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( r * 0.32, -r * 0.34, 1.8, 1.8 * blink, 0, 0, Math.PI * 2); ctx.fill();
+  if (!flash) {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); ctx.arc(-r * 0.24, -r * 0.38, 0.85, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc( r * 0.37, -r * 0.38, 0.85, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Tier-3 sweat drops (it's carrying the heaviest bag!)
+  if (tier === 3 && !flash) {
+    const s1 = Math.sin(t / 175) * 0.5 + 0.5;
+    const s2 = Math.sin(t / 210 + 1.8) * 0.5 + 0.5;
+    ctx.fillStyle = `rgba(130,210,255,${(0.5 + s1 * 0.45).toFixed(2)})`;
+    ctx.beginPath(); ctx.ellipse( r * 0.66, -r * 0.52 + s1 * 3, 2.2, 3.8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(130,210,255,${(0.35 + s2 * 0.45).toFixed(2)})`;
+    ctx.beginPath(); ctx.ellipse(-r * 0.58, -r * 0.28 + s2 * 4, 1.8, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Rope from right arm to bag
+  const bagSwing = walk * 2.8;
+  const bagX = r * 1.28, bagY = r * 0.68 + bagSwing;
+  ctx.strokeStyle = DARK; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(r * 0.9, r * 0.22 - aSwing);
+  ctx.quadraticCurveTo(r * 1.15, r * 0.44 + bagSwing * 0.5, bagX, bagY);
+  ctx.stroke();
+
+  drawMoneyBag(ctx, bagX, bagY, tier, t);
+
+  ctx.restore();
+
+  // HP bar (world coords, coloured by tier)
+  const hpRatio = Math.max(0, zombie.hp / zombie.maxHp);
+  const bw = r * 2.4;
+  const bx = zombie.x - bw / 2, by = zombie.y - r - 15;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(bx, by, bw, 3);
+  ctx.fillStyle = ['' , '#2dd4bf', '#f97316', '#a855f7'][tier];
+  ctx.fillRect(bx, by, bw * hpRatio, 3);
+}
+
+function drawMoneyBag(
+  ctx: CanvasRenderingContext2D,
+  cx: number, cy: number,
+  tier: number, time: number,
+): void {
+  const R = [7, 10, 14][tier - 1];
+
+  const BAG_FILL = ['#92400e', '#b45309', '#78350f'][tier - 1];
+  const BAG_RIM  = ['#a16207', '#ca8a04', '#92400e'][tier - 1];
+  const BOW_FILL = ['#94a3b8', '#fbbf24', '#fcd34d'][tier - 1];
+  const COIN_TXT = ['#e2e8f0', '#fef9c3', '#fef08a'][tier - 1];
+
+  if (tier === 3) { ctx.shadowColor = '#f59e0b'; ctx.shadowBlur = 7 + Math.sin(time / 90) * 3; }
+
+  // Bag body
+  ctx.fillStyle = BAG_FILL; ctx.strokeStyle = '#1a0800'; ctx.lineWidth = 1.8;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // Neck (cover seam between bag and bow)
+  const nH = R * 0.38;
+  ctx.fillStyle = BAG_FILL;
+  ctx.fillRect(cx - nH, cy - R - R * 0.32, nH * 2, R * 0.42);
+  ctx.strokeStyle = '#1a0800'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(cx - nH, cy - R * 0.9); ctx.lineTo(cx - nH, cy - R * 0.38); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + nH, cy - R * 0.9); ctx.lineTo(cx + nH, cy - R * 0.38); ctx.stroke();
+
+  // Bow petals + centre knot
+  ctx.fillStyle = BOW_FILL; ctx.strokeStyle = '#1a0800'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.ellipse(cx - R * 0.44, cy - R * 1.08, R * 0.34, R * 0.19, -0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx + R * 0.44, cy - R * 1.08, R * 0.34, R * 0.19,  0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy - R * 1.08, R * 0.19, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  // Bag highlight
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.13)';
+  ctx.beginPath(); ctx.arc(cx - R * 0.3, cy - R * 0.22, R * 0.38, 0, Math.PI * 2); ctx.fill();
+
+  // Coin emblem circle + $ symbol
+  ctx.fillStyle = BAG_RIM; ctx.strokeStyle = '#1a0800'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy + R * 0.06, R * 0.52, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = COIN_TXT;
+  ctx.font = `bold ${Math.round(R * 0.78)}px Courier, monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('$', cx, cy + R * 0.07);
+
+  // Tier-3 orbiting sparkles
+  if (tier === 3) {
+    const st = time / 420;
+    for (let i = 0; i < 5; i++) {
+      const a    = (i / 5) * Math.PI * 2 + st;
+      const dist = R + 5 + Math.sin(st * 2 + i) * 1.5;
+      const al   = (Math.sin(st * 3 + i * 1.3) * 0.5 + 0.5) * 0.85;
+      ctx.fillStyle = `rgba(255,215,0,${al.toFixed(2)})`;
+      ctx.beginPath(); ctx.arc(cx + Math.cos(a) * dist, cy + Math.sin(a) * dist, 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 function drawButcherWorldFX(zombie: Zombie, ctx: CanvasRenderingContext2D): void {
   const phase      = (zombie.extraState.get('phase')      ?? 'walk') as string;
   const chargeDX   = (zombie.extraState.get('chargeDX')   ?? 0)      as number;

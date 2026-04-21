@@ -196,7 +196,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       audioManager.playShoot(1);
       const angle = origin?.aimAngle ?? player.aimAngle;
       const v = angleVec(angle);
-      return [makeBullet(player, dmgMult, v.x, v.y, 1, 1, 6, 5, 25, -2, 'blue_ellipse', origin)];
+      return [makeBullet(player, dmgMult, v.x, v.y, 1, 2, 6, 5, 25, -2, 'blue_ellipse', origin)];
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
@@ -268,7 +268,7 @@ export const GUN_LEVELS: Record<number, IWeaponLevelDef> = {
       audioManager.playShoot(2);
       const angle = origin?.aimAngle ?? player.aimAngle;
       const v = angleVec(angle);
-      return [makeBullet(player, dmgMult, v.x, v.y, 2, 1, 8, 6, 28, 0, 'blue_ellipse', origin)];
+      return [makeBullet(player, dmgMult, v.x, v.y, 2, 2, 8, 6, 28, 0, 'blue_ellipse', origin)];
     },
     drawWeapon(ctx, player, slot) {
       ctx.save();
@@ -935,4 +935,3 @@ export function getWeaponKey(
   const maxBase = 4;
   return Math.min(level, maxBase);
 }
-
