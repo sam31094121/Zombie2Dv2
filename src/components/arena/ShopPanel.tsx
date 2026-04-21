@@ -772,7 +772,16 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
         const nextLv = w.level + 1;
         const col = weaponColor(nextLv);
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-end', background: 'rgba(0,0,0,0.85)' }}>
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            background: 'rgba(0,0,0,0.85)',
+          }}>
             <div style={{
               width: '100%', maxWidth: 420, margin: '0 auto',
               background: `linear-gradient(180deg, #0f1220 0%, ${C.panel} 100%)`,
@@ -832,7 +841,16 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
         if (!w) return null;
         const names = BRANCH_DISPLAY[w.type] ?? { A: 'A', B: 'B' };
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-end', background: 'rgba(0,0,0,0.9)' }}>
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            background: 'rgba(0,0,0,0.9)',
+          }}>
             <div style={{
               width: '100%', maxWidth: 480, margin: '0 auto',
               background: `linear-gradient(180deg, #0f0a20 0%, ${C.panel} 100%)`,

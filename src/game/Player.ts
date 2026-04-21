@@ -215,7 +215,7 @@ export class Player {
       }
     } else {
       if (this.slowDebuffTimer > 0) {
-        currentSpeed *= 0.7; // 30% slow
+        currentSpeed *= 0.82; // Slime should hinder repositioning, not trap the player in place.
         this.slowDebuffTimer -= dt;
       }
     }

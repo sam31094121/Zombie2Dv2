@@ -18,3 +18,4 @@ Original prompt: 瘝??????
 - 2026-04-21: Gun Lv1 and Lv2 bullets now pierce 2 zombies, giving the early gun path a small clear-speed bump without touching later gun branches.
 - 2026-04-21: Enemy projectiles no longer damage tombstones, preventing cross tombstones from self-destructing to monster spit.
 - 2026-04-21: `npm run lint` and `npm run build` both passed after the pacing / spawn / weapon tweaks; local smoke scripts also launched the game successfully for a quick regression check.
+- 2026-04-22: Slime pressure was softened by reducing slime trail density and lifetime, shortening trail-applied slow to a short refresh window, and lowering both slime and small-slime chase speed so players can actually break out after being tagged.

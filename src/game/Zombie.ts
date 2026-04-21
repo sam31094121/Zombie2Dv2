@@ -8,6 +8,10 @@ import { drawZombie } from './renderers/ZombieRenderer';
 // Re-export for backward compatibility
 export type { ZombieType };
 
+const SLIME_TRAIL_INTERVAL_MS = 550;
+const SLIME_TRAIL_LIFETIME_MS = 1800;
+const SLIME_TRAIL_RADIUS_BONUS = 2;
+
 export class Zombie {
   id: number = 0;
   x: number;
@@ -137,9 +141,15 @@ export class Zombie {
     // 留痕跡（slime 類）
     if (def.leavesTrail) {
       this.jellyPhase += dt * 0.01;
-      if (nearest && this.time - this.lastTrailTime > 200) {
+      if (nearest && this.time - this.lastTrailTime > SLIME_TRAIL_INTERVAL_MS) {
         this.lastTrailTime = this.time;
-        slimeTrails.push({ x: this.x, y: this.y, radius: this.radius + 5, lifetime: 5000, maxLifetime: 5000 });
+        slimeTrails.push({
+          x: this.x,
+          y: this.y,
+          radius: this.radius + SLIME_TRAIL_RADIUS_BONUS,
+          lifetime: SLIME_TRAIL_LIFETIME_MS,
+          maxLifetime: SLIME_TRAIL_LIFETIME_MS,
+        });
       }
     }
 

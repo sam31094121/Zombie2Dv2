@@ -99,6 +99,7 @@ export class Game {
   pendingArenaBagReward: PendingArenaBagReward | null = null;
   activeBagCarrierId: number | null = null;
   bagCarrierSpawnTimer: number = 0;
+  private readonly SLIME_TRAIL_SLOW_MS = 700;
 
   // 蝬脰楝憭犖璅∪?
   networkMode: boolean = false;
@@ -1256,7 +1257,7 @@ export class Game {
         if (player.hp > 0) {
           const dist = Math.hypot(player.x - trail.x, player.y - trail.y);
           if (dist < player.radius + trail.radius) {
-            player.slowDebuffTimer = 4000; // 4 seconds slow
+            player.slowDebuffTimer = Math.max(player.slowDebuffTimer, this.SLIME_TRAIL_SLOW_MS);
           }
         }
       }

@@ -284,7 +284,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
   slime: {
     radius: 16,
     baseHp: 10,
-    baseSpeed: CONSTANTS.ZOMBIE_SPEED * 1.5,
+    baseSpeed: CONSTANTS.ZOMBIE_SPEED * 1.2,
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
@@ -297,7 +297,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
   slime_small: {
     radius: 10,
     baseHp: 3,
-    baseSpeed: 2.7,
+    baseSpeed: 1.95,
     orbCount: 1,
     orbColor: '#4caf50',
     orbValue: 1,
@@ -341,4 +341,3 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     updateBehavior: butcherBehavior,
   },
 };
-
