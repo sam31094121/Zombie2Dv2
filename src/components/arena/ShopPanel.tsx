@@ -673,26 +673,89 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
         </div>
 
         {/* ── FOOTER ────────────────────────────────────────────────────── */}
+        {/* ── FOOTER ────────────────────────────────────────────────────── */}
         <footer style={{
-          flexShrink: 0, display: 'flex',
-          background: `linear-gradient(180deg, ${C.panelAlt} 0%, #060710 100%)`,
-          boxShadow: `-0px -2px 0 ${C.b1}, 0 -4px 20px rgba(0,0,0,0.5)`,
-          position: 'relative', zIndex: 2,
+          flexShrink: 0, display: 'flex', gap: 12,
+          background: `linear-gradient(180deg, #13172c 0%, #060710 100%)`,
+          boxShadow: `0 -6px 30px rgba(0,0,0,0.8), inset 0 2px 0 rgba(255,255,255,0.05)`,
+          position: 'relative', zIndex: 10,
+          padding: isDesktop ? '18px 24px' : '14px 12px',
         }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent 0%, ${C.bgold}60 30%, ${C.bgold}60 70%, transparent 100%)` }} />
-          <div style={{ flex: 1, padding: '10px 16px', boxShadow: `inset -1px 0 0 ${C.b1}` }}>
-            <PxBtn onClick={handleReroll} disabled={!canReroll} color={hasGuestPass ? C.green : C.blue}>
-              🎲 重擲{hasGuestPass ? '  🎫 FREE' : `  💰${rerollCost}`}
-            </PxBtn>
-          </div>
-          <div style={{ flex: 1, padding: '10px 16px' }}>
-            {isReadyMode
-              ? isReady
-                ? <PxBtn disabled color={C.textDim}>⏳ 等待隊友</PxBtn>
-                : <PxBtn onClick={onNextWave} color={C.green} fill>✓ 準備好了</PxBtn>
-              : <PxBtn onClick={onNextWave} color={C.gold} fill>⚔ 下一波</PxBtn>
-            }
-          </div>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent 0%, ${C.gold} 50%, transparent 100%)`, opacity: 0.9, boxShadow: `0 0 15px ${C.gold}` }} />
+          
+          <button
+            onClick={!canReroll ? undefined : handleReroll}
+            disabled={!canReroll}
+            style={{
+              flex: 1, position: 'relative', border: 'none',
+              background: !canReroll ? C.disabled : `linear-gradient(180deg, ${hasGuestPass ? C.green : C.blue}30 0%, ${C.bg} 100%)`,
+              boxShadow: !canReroll ? 'none' : `inset 0 0 0 2px ${hasGuestPass ? C.green : C.blue}80, 0 6px 20px rgba(0,0,0,0.5)`,
+              borderRadius: 6, cursor: !canReroll ? 'not-allowed' : 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+              padding: isDesktop ? '16px 0' : '14px 0',
+              transition: 'all 0.15s',
+              opacity: !canReroll ? 0.7 : 1,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: isDesktop ? 22 : 18 }}>🎲</span>
+              <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: !canReroll ? C.disabledT : (hasGuestPass ? C.green : C.blue), textShadow: !canReroll ? 'none' : `0 0 12px ${hasGuestPass ? C.green : C.blue}60` }}>
+                重擲
+              </span>
+            </div>
+            <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: !canReroll ? C.disabledT : C.text, marginTop: 2 }}>
+              {hasGuestPass ? '🎫 FREE' : `💰${rerollCost}`}
+            </span>
+          </button>
+
+          <button
+            onClick={isReadyMode && isReady ? undefined : onNextWave}
+            disabled={isReadyMode && isReady}
+            style={{
+              flex: 1.2, position: 'relative', border: 'none',
+              background: (isReadyMode && isReady) ? C.disabled : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
+              boxShadow: (isReadyMode && isReady) ? 'none' : `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`,
+              borderRadius: 6, cursor: (isReadyMode && isReady) ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              padding: isDesktop ? '16px 0' : '14px 0',
+              transform: (isReadyMode && isReady) ? 'none' : 'translateY(-2px)',
+              transition: 'all 0.1s',
+            }}
+            onPointerDown={(e) => {
+              if (!(isReadyMode && isReady)) {
+                e.currentTarget.style.transform = 'translateY(4px)';
+                e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.2), 0 0 0 #8c5204, 0 4px 10px rgba(212, 128, 12, 0.4)`;
+              }
+            }}
+            onPointerUp={(e) => {
+              if (!(isReadyMode && isReady)) {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`;
+              }
+            }}
+            onPointerLeave={(e) => {
+              if (!(isReadyMode && isReady)) {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`;
+              }
+            }}
+          >
+            {isReadyMode ? (
+              isReady ? (
+                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: C.textDim }}>⏳ 等待隊友</span>
+              ) : (
+                <>
+                  <span style={{ fontSize: isDesktop ? 22 : 18 }}>✓</span>
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 14 : 12, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備好了</span>
+                </>
+              )
+            ) : (
+              <>
+                <span style={{ fontSize: isDesktop ? 24 : 20, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>⚔</span>
+                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 15 : 13, color: '#fff', textShadow: '0 2px 6px rgba(0,0,0,0.6)', letterSpacing: '0.05em' }}>下一波</span>
+              </>
+            )}
+          </button>
         </footer>
 
         {customFooter && (

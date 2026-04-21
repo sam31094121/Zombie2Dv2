@@ -30,7 +30,7 @@ export const GameUI: React.FC = () => {
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
   const [p2State, setP2State] = useState<Player | null>(null);
-  const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number } | null>(null);
+  const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number | null; objectiveText: string | null } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [isPausedUI, setIsPausedUI] = useState(false); // 新增暫停 UI 狀態
   const [isTestModeEnabled, setIsTestModeEnabled] = useState(false); // 控制測試面板是否顯示
@@ -182,7 +182,8 @@ export const GameUI: React.FC = () => {
     setWaveState({
       wave: waveManager.currentWave,
       isResting: waveManager.isResting,
-      timer: Math.ceil(waveManager.timer),
+      timer: waveManager.isObjectiveBased() && !waveManager.isResting ? null : Math.ceil(waveManager.timer),
+      objectiveText: waveManager.getObjectiveText(),
     });
   };
 
@@ -688,7 +689,12 @@ export const GameUI: React.FC = () => {
             <div className="relative flex justify-center items-start w-full">
               {p1State && <P1Card p1State={p1State} p1RespawnCountdown={p1RespawnCountdown} />}
               <div className="relative flex items-center">
-                <WaveDisplay wave={waveState.wave} isResting={waveState.isResting} timer={waveState.timer} />
+                <WaveDisplay
+                  wave={waveState.wave}
+                  isResting={waveState.isResting}
+                  timer={waveState.timer}
+                  objectiveText={waveState.objectiveText}
+                />
                 {gameRef.current?.mode === 'arena' && gameRef.current.isArenaBagAbsorbing && (
                   <div className="absolute left-1/2 top-full mt-3 -translate-x-1/2 rounded-full border border-amber-400/40 bg-black/70 px-4 py-1 text-xs font-bold tracking-wide text-amber-200">
                     戰利品封袋中

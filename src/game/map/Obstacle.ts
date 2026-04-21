@@ -23,6 +23,7 @@ export class Obstacle {
   lastHealTick: number = 0; // For streetlight healing
   tombstoneSummonTimer: number = 3000;
   tombstoneMaxHits: number = 0;
+  isArenaWaveObstacle: boolean = false;
 
   constructor(x: number, y: number, width: number, height: number, type: ObstacleType) {
     this.x = x;

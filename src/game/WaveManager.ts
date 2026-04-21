@@ -1,5 +1,3 @@
-import { CONSTANTS } from './Constants';
-
 export interface Wave {
   id: number;
   composition: { normal: number; big: number; slime: number; spitter: number };
@@ -9,18 +7,17 @@ export interface Wave {
   weightCap?: number;
 }
 
-// 競技場：Wave 1–10（根據設計） 無盡模式：Wave 1–9 後轉無限
 export const WAVES: Wave[] = [
-  { id:  1, composition: { normal: 1.00, big: 0.00, slime: 0.00, spitter: 0.00 }, arenaDuration: 30 , weightCap: 20 },
-  { id:  2, composition: { normal: 0.80, big: 0.20, slime: 0.00, spitter: 0.00 }, arenaDuration: 30 , weightCap: 30 },
-  { id:  3, composition: { normal: 0.70, big: 0.00, slime: 0.30, spitter: 0.00 }, arenaDuration: 45 , weightCap: 45 },
-  { id:  4, composition: { normal: 0.60, big: 0.20, slime: 0.20, spitter: 0.00 }, arenaDuration: 45 , weightCap: 60 },
-  { id:  5, composition: { normal: 0.50, big: 0.20, slime: 0.00, spitter: 0.30 }, arenaDuration: 'objective', arenaObjective: 'tombstones' , weightCap: 60 },
-  { id:  6, composition: { normal: 0.40, big: 0.20, slime: 0.20, spitter: 0.20 }, arenaDuration: 40, spawnRateMultiplier: 0.5 , weightCap: 150 },
-  { id:  7, composition: { normal: 0.30, big: 0.30, slime: 0.20, spitter: 0.20 }, arenaDuration: 40, spawnRateMultiplier: 0.5 , weightCap: 150 },
-  { id:  8, composition: { normal: 0.20, big: 0.40, slime: 0.20, spitter: 0.20 }, arenaDuration: 40, spawnRateMultiplier: 0.5 , weightCap: 150 },
-  { id:  9, composition: { normal: 0.60, big: 0.00, slime: 0.00, spitter: 0.40 }, arenaDuration: 40, spawnRateMultiplier: 0.2 , weightCap: 400 }, // W9 海量普通與吐酸
-  { id: 10, composition: { normal: 0.00, big: 0.40, slime: 0.25, spitter: 0.35 }, arenaDuration: 'objective', arenaObjective: 'boss' , weightCap: 200 }, // FINAL
+  { id: 1, composition: { normal: 1.0, big: 0.0, slime: 0.0, spitter: 0.0 }, arenaDuration: 30, weightCap: 20 },
+  { id: 2, composition: { normal: 0.8, big: 0.2, slime: 0.0, spitter: 0.0 }, arenaDuration: 30, weightCap: 30 },
+  { id: 3, composition: { normal: 0.7, big: 0.0, slime: 0.3, spitter: 0.0 }, arenaDuration: 45, weightCap: 45 },
+  { id: 4, composition: { normal: 0.6, big: 0.2, slime: 0.2, spitter: 0.0 }, arenaDuration: 45, weightCap: 60 },
+  { id: 5, composition: { normal: 0.5, big: 0.2, slime: 0.0, spitter: 0.3 }, arenaDuration: 'objective', arenaObjective: 'tombstones', weightCap: 60 },
+  { id: 6, composition: { normal: 0.4, big: 0.2, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 150 },
+  { id: 7, composition: { normal: 0.3, big: 0.3, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 150 },
+  { id: 8, composition: { normal: 0.2, big: 0.4, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 150 },
+  { id: 9, composition: { normal: 0.6, big: 0.0, slime: 0.0, spitter: 0.4 }, arenaDuration: 40, spawnRateMultiplier: 0.2, weightCap: 400 },
+  { id: 10, composition: { normal: 0.0, big: 0.4, slime: 0.25, spitter: 0.35 }, arenaDuration: 'objective', arenaObjective: 'boss', weightCap: 200 },
 ];
 
 export class WaveManager {
@@ -29,12 +26,11 @@ export class WaveManager {
   isResting: boolean = false;
   isInfinite: boolean = false;
   difficultyMultiplier: number = 1.0;
-  activeMechanics: string[] = []; // 保留欄位供外部相容讀取
+  activeMechanics: string[] = [];
   infiniteTimer: number = 0;
   waveIntroTimer: number = 0;
+  combatElapsedMs: number = 0;
   mode: 'endless' | 'arena' = 'endless';
-
-  // 平滑轉場狀態
   isTransitioning: boolean = false;
   transitionTimer: number = 0;
 
@@ -58,13 +54,12 @@ export class WaveManager {
   applyWaveConfig() {
     const config = this.currentWaveConfig;
     if (config.arenaDuration === 'objective') {
-      this.timer = 999; // 顯示上的假時間或隱藏，不會倒數
+      this.timer = 999;
     } else {
       this.timer = config.arenaDuration || 30;
     }
   }
 
-  // 由外部 Game.ts 在達成條件時呼叫
   completeObjective() {
     if (this.isObjectiveBased() && !this.isTransitioning && !this.isResting) {
       this.startTransition();
@@ -73,7 +68,7 @@ export class WaveManager {
 
   startTransition() {
     this.isTransitioning = true;
-    this.transitionTimer = 0.6; // 配合 dt *= 0.3 達到真實時間 2 秒的慢動作
+    this.transitionTimer = 0.6;
   }
 
   update(dt: number) {
@@ -83,8 +78,9 @@ export class WaveManager {
       this.transitionTimer -= dt / 1000;
       if (this.transitionTimer <= 0) {
         this.isTransitioning = false;
-        this.timer = 0; // Trigger shop
+        this.timer = 0;
         this.isResting = true;
+        this.combatElapsedMs = 0;
       }
       return;
     }
@@ -93,7 +89,10 @@ export class WaveManager {
       this.waveIntroTimer -= dt;
     }
 
-    // 無盡模式：每 20 秒強化難度
+    if (!this.isResting) {
+      this.combatElapsedMs += dt;
+    }
+
     if (this.isInfinite && !this.isResting) {
       this.infiniteTimer += dt / 1000;
       if (this.infiniteTimer >= 20) {
@@ -102,18 +101,15 @@ export class WaveManager {
       }
     }
 
-    // 若非任務目標倒數計時
     if (!this.isObjectiveBased()) {
       this.timer -= dt / 1000;
       if (this.timer <= 0) {
         if (this.mode === 'arena') {
-          this.startTransition(); // 不再立刻 isResting，而是進入轉場
+          this.startTransition();
+        } else if (this.isResting) {
+          this.startCombat();
         } else {
-          if (this.isResting) {
-            this.startCombat();
-          } else {
-            this.startRest();
-          }
+          this.startRest();
         }
       }
     }
@@ -123,6 +119,7 @@ export class WaveManager {
     this.isResting = false;
     this.isTransitioning = false;
     this.waveIntroTimer = 3000;
+    this.combatElapsedMs = 0;
 
     if (this.mode === 'arena') {
       this.currentWave++;
@@ -137,19 +134,29 @@ export class WaveManager {
     this.isResting = true;
     this.isTransitioning = false;
     this.timer = 5;
+    this.combatElapsedMs = 0;
   }
 
   getComposition() {
     return this.currentWaveConfig.composition;
   }
 
+  getObjectiveText(): string | null {
+    if (!this.isObjectiveBased()) return null;
+
+    if (this.currentWaveConfig.arenaObjective === 'tombstones') {
+      return '任務：摧毀所有墓碑';
+    }
+    if (this.currentWaveConfig.arenaObjective === 'boss') {
+      return '任務：擊敗屠夫';
+    }
+    return '任務波';
+  }
+
   getHint(): string {
     if (this.isTransitioning) return 'WAVE CLEARED!';
-    if (this.isObjectiveBased()) {
-      const obj = this.currentWaveConfig.arenaObjective;
-      if (obj === 'tombstones') return '摧毀墓碑以進入下一波！';
-      if (obj === 'boss') return '警告：紅色屠夫！';
-    }
+    const objectiveText = this.getObjectiveText();
+    if (objectiveText) return objectiveText;
     if (this.isInfinite) return '無盡模式：每 20 秒殭屍強化。';
     return `Wave ${this.currentWave}`;
   }

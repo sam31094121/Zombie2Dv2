@@ -9,3 +9,7 @@ Original prompt: 瘝??????
 - 2026-04-15: 補修 `TestModePanel.tsx` 的 `ghost` 半徑對照，讓 `npm run lint` 可通過。
 - 2026-04-15: 驗證結果：`npm run lint`、`npm run build` 通過。Playwright client 需要額外安裝 `playwright` 與 Chromium，已完成；自動點擊可成功進入遊戲並產生截圖於 `output/web-game*`。
 - 2026-04-15: 目前限制：專案還沒有針對競技場過場的自動化 hook / 狀態輸出，這次只驗證了頁面載入、開始遊戲、無新增 console error，尚未自動走到「封袋 -> 商店 -> 下一波袋子怪」完整鏈路。
+- 2026-04-20: Arena pacing patch landed. Director now counts queued `spawn_warning` weight and ramps toward target pressure over the opening seconds instead of snapping to full wave pressure.
+- 2026-04-20: Arena wave tombstones are tagged and removed from `mapManager.obstacles` when entering shop / starting the next wave, preventing cross-wave tombstone carryover.
+- 2026-04-20: Wave HUD now receives objective text so objective waves show mission text rather than exposing the raw `999` timer.
+- 2026-04-21: Endless-mode hotfix in progress. Restored timer-based spawn from `Game.update()` for non-arena modes after arena-only `DirectorAI` cut off the old endless spawn path.

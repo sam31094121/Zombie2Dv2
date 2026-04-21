@@ -206,6 +206,7 @@ export class Game {
     this.score = 0;
     this.startTime = Date.now();
     this.lastItemSpawnTime = Date.now();
+    this.zombieSpawnTimer = 0;
     this.isGameOver = false;
     this.mapManager = new MapManager();
     this.camera = { x: 0, y: 0 };
@@ -499,6 +500,8 @@ export class Game {
     this.pendingSwordKills.clear();
     this.arenaLootBag = null;
     this._shopReadyToOpen = false;
+    this.clearArenaWaveObstacles();
+    this.activeBoss = null;
   }
 
   activeTombstones: Obstacle[] = [];
@@ -512,11 +515,27 @@ export class Game {
     this.mapManager.obstacles.set(key, list);
   }
 
+  private clearArenaWaveObstacles() {
+    if (this.mode !== "arena") return;
+
+    for (const [key, list] of [...this.mapManager.obstacles.entries()]) {
+      const next = list.filter(obs => !obs.isArenaWaveObstacle);
+      if (next.length === list.length) continue;
+      if (next.length > 0) {
+        this.mapManager.obstacles.set(key, next);
+      } else {
+        this.mapManager.obstacles.delete(key);
+      }
+    }
+
+    this.activeTombstones = [];
+  }
+
   nextArenaWave() {
     if (this.mode !== "arena") return;
     this._arenaWaveStartLevels = this.players.map(p => p.level);
 
-    this.activeTombstones = [];
+    this.clearArenaWaveObstacles();
     this.activeBoss = null;
 
     this.waveManager.startCombat();
@@ -532,6 +551,7 @@ export class Game {
       for (let i = 0; i < 3; i++) {
         const pt = this.randomArenaPoint(150);
         const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+        obs.isArenaWaveObstacle = true;
         obs.maxHp *= 2;
         obs.hp = obs.maxHp;
         this.addObstacleToMap(obs);
@@ -540,12 +560,14 @@ export class Game {
     } else if (waveId >= 6 && waveId <= 8) {
       const pt = this.randomArenaPoint(150);
       const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+      obs.isArenaWaveObstacle = true;
       this.addObstacleToMap(obs);
       this.activeTombstones.push(obs);
     } else if (waveId === 9) {
       for (let i = 0; i < 3; i++) {
         const pt = this.randomArenaPoint(150);
         const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+        obs.isArenaWaveObstacle = true;
         this.addObstacleToMap(obs);
         this.activeTombstones.push(obs);
       }
@@ -1019,6 +1041,8 @@ export class Game {
     // --- ARENA MODE WAVE END FREEZE & LOOT BAG ---
     if (this.mode === 'arena' && this.waveManager.isResting) {
       if (!this._shopCleared) {
+        this.clearArenaWaveObstacles();
+        this.activeBoss = null;
         this.zombies = [];
       this.zombiePool = new ZombiePool(10);
       this.directorAI = new DirectorAI(this);
@@ -1184,7 +1208,9 @@ export class Game {
 
     // Spawn zombies
     if (!this.debugPaused) this.waveManager.update(dt);
-    if (!this.waveManager.isResting && !this.debugPaused && !this.waveManager.isTransitioning) { this.directorAI.update(dt); }
+    if (!this.waveManager.isResting && !this.debugPaused && !this.waveManager.isTransitioning) {
+      this.updateZombieSpawning(dt);
+    }
 
     if (this.mode === 'arena' && this.pendingArenaBagReward && !this.pendingArenaBagReward.spawned && !this.debugPaused) {
       this.bagCarrierSpawnTimer -= dt;
@@ -1630,6 +1656,19 @@ export class Game {
   private explodeObstacle(obs: Obstacle) { _explodeObstacle(this, obs); }
   private dropVendingMachineItems(obs: Obstacle) { _dropVendingMachineItems(this, obs); }
   handlePlayerAttacks(player: Player) { _handlePlayerAttacks(this, player); }
+  private updateZombieSpawning(dt: number) {
+    if (this.mode === 'arena') {
+      this.directorAI.update(dt);
+      return;
+    }
+
+    this.zombieSpawnTimer += dt;
+    const spawnRate = Math.max(500, 2000 - (this.waveManager.currentWave * 100));
+    if (this.zombieSpawnTimer >= spawnRate) {
+      this.zombieSpawnTimer = 0;
+      this.spawnZombie();
+    }
+  }
   spawnZombie() { _spawnZombie(this); }
   spawnItemAt(x: number, y: number) { _spawnItemAt(this, x, y); }
   spawnItem() { _spawnItem(this); }
@@ -1861,4 +1900,3 @@ export class Game {
   }
 
 }
-

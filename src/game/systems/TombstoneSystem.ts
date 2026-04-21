@@ -38,6 +38,7 @@ export function getVisibleTombstones(game: Game): Obstacle[] {
 
   return nearby.filter(obs => {
     if (!isActiveTombstone(obs)) return false;
+    if (game.mode === 'arena' && !obs.isArenaWaveObstacle) return false;
     const c = getTombstoneCenter(obs);
     return c.x >= left && c.x <= right && c.y >= top && c.y <= bottom;
   });
@@ -105,4 +106,3 @@ export function updateTombstones(game: Game, dt: number): void {
     });
   }
 }
-
