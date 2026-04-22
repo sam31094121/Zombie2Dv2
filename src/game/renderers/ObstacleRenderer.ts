@@ -11,8 +11,10 @@ export function drawObstacle(obs: Obstacle, ctx: CanvasRenderingContext2D, playe
   if (obs.isDestroyed) {
     if (obs.type === 'vending_machine') {
       // fall through — drawVendingMachine renders its own destroyed state
+    } else if (obs.type === 'explosive_barrel') {
+      // fall through — drawExplosiveBarrel renders the charred ruin state
     } else {
-      if (obs.type !== 'explosive_barrel' && obs.type !== 'tombstone') drawRubble(obs, ctx);
+      if (obs.type !== 'tombstone') drawRubble(obs, ctx);
       return;
     }
   }
@@ -255,6 +257,58 @@ function drawElectricFence(obs: Obstacle, ctx: CanvasRenderingContext2D, sox: nu
 function drawExplosiveBarrel(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, _sox: number, _soy: number) {
   const vr = r * 1.7; // visual radius larger than collision radius
   const t = Date.now();
+
+  // ── 爆炸後等待復活的焦黑殘骸 ──────────────────────────────────────
+  if (obs.isDestroyed) {
+    // Respawn progress: 0 = just exploded, 1 = about to respawn
+    const respawnProgress = obs.respawnTimer > 0 ? 1 - (obs.respawnTimer / 10000) : 1;
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    // Charred crater shadow
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + vr * 0.3, vr * 0.9, vr * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Scorch marks (irregular dark patches)
+    ctx.fillStyle = '#1a1a1a';
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2 + 0.3;
+      const dist = vr * 0.55;
+      ctx.beginPath();
+      ctx.ellipse(cx + Math.cos(angle) * dist, cy + Math.sin(angle) * dist * 0.5, vr * 0.25, vr * 0.15, angle, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Flattened barrel rim (visible debris)
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, vr * 0.7, vr * 0.35, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Glowing embers that fade as respawn approaches
+    const emberAlpha = Math.max(0, 1 - respawnProgress * 2) * (0.5 + Math.sin(t / 120) * 0.3);
+    if (emberAlpha > 0) {
+      ctx.globalAlpha = emberAlpha;
+      const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, vr * 0.6);
+      grd.addColorStop(0, 'rgba(255,120,0,0.9)');
+      grd.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(cx, cy, vr * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Respawn indicator: subtle pulsing ring when > 70% done
+    if (respawnProgress > 0.7) {
+      const pulse = Math.sin(t / 200) * 0.3 + 0.7;
+      ctx.globalAlpha = (respawnProgress - 0.7) / 0.3 * 0.5 * pulse;
+      ctx.strokeStyle = '#ef5350';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, vr * 0.8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
 
   // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.28)';

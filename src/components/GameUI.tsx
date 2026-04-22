@@ -92,9 +92,12 @@ export const GameUI: React.FC = () => {
       const width = window.innerWidth || 800;
       const height = window.innerHeight || 600;
       const aspect = width / height;
-      const MIN_DIMENSION = 800;
+      const MIN_DIMENSION = platform === 'mobile' ? 720 : 800;
       if (!isFinite(aspect) || isNaN(aspect) || aspect <= 0) {
-        setDimensions({ width: 800, height: 600 });
+        const fallbackHeight = Math.round(MIN_DIMENSION * 0.75);
+        CONSTANTS.CANVAS_WIDTH = MIN_DIMENSION;
+        CONSTANTS.CANVAS_HEIGHT = fallbackHeight;
+        setDimensions({ width: MIN_DIMENSION, height: fallbackHeight });
         return;
       }
       if (aspect > 1) {
@@ -144,7 +147,7 @@ export const GameUI: React.FC = () => {
       window.removeEventListener('touchstart', handleFSActivity, { capture: true } as any);
       if (fsTimerRef.current) clearTimeout(fsTimerRef.current);
     };
-  }, []);
+  }, [platform]);
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
 

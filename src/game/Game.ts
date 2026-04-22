@@ -586,127 +586,239 @@ export class Game {
   private generateArenaTacticalObstacles(waveId: number) {
     if (this.mode !== 'arena') return;
 
-    // Define tactical obstacle patterns
+    // ── 碰撞半徑速查表（circle型用 width/2，AABB型用 {hw, hh}）
+    // pillar: r=20, rock: r=45, building: r=100, sandbag: r=30
+    // explosive_barrel: r=30, monolith: r=35, streetlight: r=10(特例)
+    // tree: 樹幹 r≈14（不阻擋，幾乎無視）
+    // container: AABB 140×80, wall: AABB 80×80, vending_machine: AABB 60×60
+    // 安全間距 padding = 15px
+
+    // ── 已放障礙物登記冊（用於散落背景物件的 AABB 檢查）
+    type PlacedBox = { cx: number; cy: number; r: number };
+    const placedBoxes: PlacedBox[] = [];
+
+    const registerCircle = (cx: number, cy: number, r: number) =>
+      placedBoxes.push({ cx, cy, r });
+
+    const canPlace = (cx: number, cy: number, r: number, pad = 15) =>
+      placedBoxes.every(b => Math.hypot(cx - b.cx, cy - b.cy) > r + b.r + pad);
+
+    const place = (obs: Obstacle, effectiveRadius: number): boolean => {
+      const cx = obs.x + obs.width / 2;
+      const cy = obs.y + obs.height / 2;
+      // Reject if overlaps any already-placed obstacle (universal check for ALL patterns + scatter)
+      if (!canPlace(cx, cy, effectiveRadius)) return false;
+      obs.isArenaWaveObstacle = true;
+      this.addObstacleToMap(obs);
+      registerCircle(cx, cy, effectiveRadius);
+      return true;
+    };
+
+    // ── 9 個戰術陣型（偏移量依碰撞半徑精確設計，保留 15px 安全間距）
     const patterns = [
+
       // 1. 防禦陣地 (Sandbag fort)
+      // 3 個沙包(r=30)圍成半圓弧 + 路燈在後方
+      // 沙包間距：中心距 ≥ 30+30+15=75，用 80px
       () => {
         const pt = this.randomArenaPoint(200);
-        const types = ['sandbag', 'sandbag', 'sandbag', 'streetlight'];
-        const offsets = [{x:-50,y:30}, {x:0,y:50}, {x:50,y:30}, {x:0,y:-20}];
-        types.forEach((type, i) => {
-          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, 60, 60, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
+        // 半圓弧：3 個沙包，間距 80px，以 pt 為中心向下展開
+        const sbOffsets = [{ x: -80, y: 50 }, { x: 0, y: 70 }, { x: 80, y: 50 }];
+        sbOffsets.forEach(off => {
+          const obs = new Obstacle(pt.x + off.x - 30, pt.y + off.y - 30, 60, 60, 'sandbag');
+          place(obs, 30);
         });
+        // 路燈：在中心正上方，遠離所有沙包（至少 30+10+15=55，用 80）
+        const sl = new Obstacle(pt.x - 10, pt.y - 50, 60, 60, 'streetlight');
+        place(sl, 10);
       },
-      // 2. 廢棄路障 (Wall/Fence blockade)
+
+      // 2. 廢棄路障 (Wall blockade)
+      // 3 面牆 AABB 80×80，水平時左右排列，各牆之間緊貼（不重疊）
+      // 水平：牆1 center-x = pt.x-80, 牆2 = pt.x, 牆3 = pt.x+80  → 各中心距 80 剛好不重疊
+      // 垂直：同理 y 軸
       () => {
         const pt = this.randomArenaPoint(300);
-        const type = Math.random() > 0.5 ? 'wall' : 'electric_fence';
         const isHorizontal = Math.random() > 0.5;
+        const useWall = Math.random() > 0.5;
+        const type = useWall ? 'wall' : 'electric_fence';
         for (let i = 0; i < 3; i++) {
-          const ox = isHorizontal ? i * 90 - 90 : 0;
-          const oy = isHorizontal ? 0 : i * 90 - 90;
-          const obs = new Obstacle(pt.x + ox, pt.y + oy, 80, 80, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
+          const ox = isHorizontal ? (i - 1) * 85 : 0;
+          const oy = isHorizontal ? 0 : (i - 1) * 85;
+          // wall: AABB，effective radius 近似 half-diagonal ≈ 57，但排列方向已計算，只登記 42（半寬）
+          const obs = new Obstacle(pt.x + ox - 40, pt.y + oy - 40, 80, 80, type as any);
+          place(obs, 42);
         }
       },
-      // 3. 危險角落 (Containers + Barrels)
+
+      // 3. 危險角落 (Container + Barrels)
+      // container AABB 140×80，有效半徑近似 82
+      // barrel(r=30) 放在 container 外側：需 82+30+15=127 ≥ center-to-center
+      // 實際偏移：桶1 在右側 x+115, 桶2 在上側 y-105
       () => {
         const pt = this.randomArenaPoint(200);
-        const types = ['container', 'explosive_barrel', 'explosive_barrel'];
-        const offsets = [{x:0,y:0}, {x:90,y:40}, {x:-50,y:-70}];
-        types.forEach((type, i) => {
-          const w = type === 'container' ? 140 : 60;
-          const h = type === 'container' ? 80 : 60;
-          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, w, h, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
+        // Container 中心在 pt
+        const cont = new Obstacle(pt.x - 70, pt.y - 40, 140, 80, 'container');
+        place(cont, 82);
+        // Barrel 右側：container right edge = pt.x+70, 再推 30+15=45 → barrel center = pt.x+115
+        const b1 = new Obstacle(pt.x + 115 - 30, pt.y - 30, 60, 60, 'explosive_barrel');
+        place(b1, 30);
+        // Barrel 上方：container top edge = pt.y-40, 再推 30+15=45 → barrel center = pt.y-85
+        const b2 = new Obstacle(pt.x - 30, pt.y - 115, 60, 60, 'explosive_barrel');
+        place(b2, 30);
+      },
+
+      // 4. 自然點綴 (Trees & Rocks)
+      // rock(r=45) 之間需 45+45+15=105，使用 110px 間距
+      // tree(r≈14)，不阻擋，與 rock 間距 45+14+15=74，使用 80
+      () => {
+        const pt = this.randomArenaPoint(200);
+        const positions = [
+          { x: 0, y: 0, type: 'rock' as const },
+          { x: 110, y: -30, type: 'rock' as const },
+          { x: 55, y: 100, type: 'tree' as const },
+        ];
+        positions.forEach(p => {
+          const w = 90;
+          const r = p.type === 'rock' ? 45 : 14;
+          const obs = new Obstacle(pt.x + p.x - w / 2, pt.y + p.y - w / 2, w, w, p.type);
+          place(obs, r);
         });
       },
-      // 4. 自然點綴 (Trees & Rocks)
-      () => {
-        const pt = this.randomArenaPoint(200);
-        for(let i=0; i<3; i++) {
-          const type = Math.random() > 0.5 ? 'tree' : 'rock';
-          const ox = (Math.random() - 0.5) * 180;
-          const oy = (Math.random() - 0.5) * 180;
-          const obs = new Obstacle(pt.x + ox, pt.y + oy, 90, 90, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
-        }
-      },
-      // 5. 補給點 (Vending machine + Pillar)
+
+      // 5. 補給點 (Vending machine + Pillars)
+      // vending_machine AABB 60×60，有效 r≈42
+      // pillar r=20：vending 右側 42+20+15=77 → center offset x+80
+      // pillar 另一個：offset x-80 對稱
       () => {
         const pt = this.randomArenaPoint(150);
-        const types = ['vending_machine', 'pillar'];
-        const offsets = [{x:-40,y:0}, {x:50,y:-30}];
-        types.forEach((type, i) => {
-          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, 60, 60, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
-        });
+        const vm = new Obstacle(pt.x - 30, pt.y - 30, 60, 60, 'vending_machine');
+        place(vm, 42);
+        const p1 = new Obstacle(pt.x + 80 - 20, pt.y - 20, 40, 40, 'pillar');
+        place(p1, 20);
+        const p2 = new Obstacle(pt.x - 80 - 20, pt.y - 20, 40, 40, 'pillar');
+        place(p2, 20);
       },
+
       // 6. 死亡巷道 (Alley of Death)
+      // 兩棟 building(r=100)，巷道寬 120px（夠玩家通過）
+      // 水平巷道：兩棟上下排列，center 距離 = 100+100+120=320，各偏移 y±160
+      // 垂直巷道：兩棟左右排列，center 距離同理，各偏移 x±160
       () => {
         const pt = this.randomArenaPoint(300);
         const isHorizontal = Math.random() > 0.5;
-        const b1 = new Obstacle(pt.x + (isHorizontal ? 0 : -110), pt.y + (isHorizontal ? -110 : 0), 200, 200, 'building');
-        const b2 = new Obstacle(pt.x + (isHorizontal ? 0 : 110), pt.y + (isHorizontal ? 110 : 0), 200, 200, 'building');
-        b1.isArenaWaveObstacle = true;
-        b2.isArenaWaveObstacle = true;
-        this.addObstacleToMap(b1);
-        this.addObstacleToMap(b2);
+        const gap = 320; // building r100 + r100 + 120px 巷道
+        const b1 = new Obstacle(
+          pt.x + (isHorizontal ? 0 : -gap / 2) - 100,
+          pt.y + (isHorizontal ? -gap / 2 : 0) - 100,
+          200, 200, 'building'
+        );
+        const b2 = new Obstacle(
+          pt.x + (isHorizontal ? 0 : gap / 2) - 100,
+          pt.y + (isHorizontal ? gap / 2 : 0) - 100,
+          200, 200, 'building'
+        );
+        place(b1, 100);
+        place(b2, 100);
       },
-      // 7. 反射砲陣地 (Reflect Battery)
+
+      // 7. 反射砲陣地 (Monolith + Pillars)
+      // monolith r=35，4 個 pillar(r=20)
+      // pillar center 距 monolith center = 35+20+15=70，各放在四個角 offset ±70
+      // 兩個 pillar 之間 center 距 = sqrt(70²+70²)≈99 > 20+20+15=55 ✓
       () => {
         const pt = this.randomArenaPoint(200);
-        const center = new Obstacle(pt.x, pt.y, 70, 70, 'monolith');
-        center.isArenaWaveObstacle = true;
-        this.addObstacleToMap(center);
-        const offsets = [{x:-60,y:-60}, {x:60,y:-60}, {x:-60,y:60}, {x:60,y:60}];
-        offsets.forEach(off => {
-          const obs = new Obstacle(pt.x + off.x, pt.y + off.y, 40, 40, 'pillar');
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
+        const center = new Obstacle(pt.x - 35, pt.y - 35, 70, 70, 'monolith');
+        place(center, 35);
+        const pOffsets = [{ x: -70, y: -70 }, { x: 70, y: -70 }, { x: -70, y: 70 }, { x: 70, y: 70 }];
+        pOffsets.forEach(off => {
+          const obs = new Obstacle(pt.x + off.x - 20, pt.y + off.y - 20, 40, 40, 'pillar');
+          place(obs, 20);
         });
       },
-      // 8. 邪教儀式區 (Ritual Site)
+
+      // 8. 邪教儀式區 (Altar + Ring of Trees/Rocks)
+      // altar：無碰撞，登記 r=40 僅視覺留白
+      // 5 個圓形排列，圓心距中心 105px（altar 40 + rock 45 + 20 留白）
+      // 相鄰 rock(r=45)：兩個 rock 之間 center 距 = 2*105*sin(π/5)≈123 > 45+45+15=105 ✓
       () => {
         const pt = this.randomArenaPoint(200);
-        const center = new Obstacle(pt.x, pt.y, 80, 80, 'altar');
-        center.isArenaWaveObstacle = true;
-        this.addObstacleToMap(center);
-        for(let i=0; i<5; i++) {
+        const altar = new Obstacle(pt.x - 40, pt.y - 40, 80, 80, 'altar');
+        altar.isArenaWaveObstacle = true;
+        this.addObstacleToMap(altar);
+        registerCircle(pt.x, pt.y, 40);
+        for (let i = 0; i < 5; i++) {
           const angle = (i / 5) * Math.PI * 2;
           const type = Math.random() > 0.5 ? 'tree' : 'rock';
-          const obs = new Obstacle(pt.x + Math.cos(angle)*90, pt.y + Math.sin(angle)*90, 60, 60, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
+          const r = type === 'rock' ? 45 : 14;
+          const cx = pt.x + Math.cos(angle) * 105;
+          const cy = pt.y + Math.sin(angle) * 105;
+          const obs = new Obstacle(cx - 45, cy - 45, 90, 90, type as any);
+          place(obs, r);
         }
       },
-      // 9. S型路障迷宮 (Maze Block)
+
+      // 9. S型路障迷宮 (Maze)
+      // container(AABB 140×80, r≈82) + sandbag(r=30) + wall(AABB 80×80, r≈42)
+      // container1 center = pt + (-130, -60)
+      // container2 center = pt + (130, 60)
+      // sandbag = pt + (0, -60)：距 container1 center = 130 > 82+30+15=127 ✓（邊緣）
+      // wall = pt + (0, 60)：距 container2 center = 130 > 82+42+15=139 → 修正為 ±145
       () => {
         const pt = this.randomArenaPoint(300);
-        const types = ['container', 'electric_fence', 'wall', 'container', 'sandbag'];
-        const offsets = [{x:-90,y:-50}, {x:0,y:-50}, {x:90,y:0}, {x:0,y:50}, {x:-90,y:50}];
-        types.forEach((type, i) => {
-          const w = type === 'container' ? 140 : 80;
-          const h = type === 'container' ? 80 : 80;
-          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, w, h, type as any);
-          obs.isArenaWaveObstacle = true;
-          this.addObstacleToMap(obs);
-        });
-      }
+        const c1 = new Obstacle(pt.x - 200, pt.y - 100, 140, 80, 'container');
+        place(c1, 82);
+        const c2 = new Obstacle(pt.x + 60, pt.y + 20, 140, 80, 'container');
+        place(c2, 82);
+        const sb = new Obstacle(pt.x - 70, pt.y - 70, 60, 60, 'sandbag');
+        place(sb, 30);
+        const w = new Obstacle(pt.x - 40, pt.y + 30, 80, 80, 'wall');
+        place(w, 42);
+        const barrel = new Obstacle(pt.x + 50, pt.y - 80, 60, 60, 'explosive_barrel');
+        place(barrel, 30);
+      },
     ];
 
-    // Determine how many patterns to spawn based on wave (starts with 3, increases slightly)
+    // ── 選取陣型（根據波次）
     const numPatterns = Math.min(3 + Math.floor(waveId / 3), 6);
-    
+    const shuffled = [...patterns].sort(() => Math.random() - 0.5);
     for (let i = 0; i < numPatterns; i++) {
-      const patternFn = patterns[Math.floor(Math.random() * patterns.length)];
-      patternFn();
+      shuffled[i % shuffled.length]();
+    }
+
+    // ── 場地四象限散落背景障礙物（少量，AABB 防重疊）
+    // 把場地分成 4 個象限，每個象限撒 2 個簡單物件
+    const W = this.arenaWidth;
+    const H = this.arenaHeight;
+    const margin = 120;
+    const quadrants = [
+      { xMin: margin, xMax: W / 2 - 60, yMin: margin, yMax: H / 2 - 60 },
+      { xMin: W / 2 + 60, xMax: W - margin, yMin: margin, yMax: H / 2 - 60 },
+      { xMin: margin, xMax: W / 2 - 60, yMin: H / 2 + 60, yMax: H - margin },
+      { xMin: W / 2 + 60, xMax: W - margin, yMin: H / 2 + 60, yMax: H - margin },
+    ];
+
+    const scatterTypes: Array<{ type: 'rock' | 'tree' | 'pillar' | 'sandbag'; w: number; r: number }> = [
+      { type: 'rock', w: 90, r: 45 },
+      { type: 'tree', w: 90, r: 14 },
+      { type: 'pillar', w: 40, r: 20 },
+      { type: 'sandbag', w: 60, r: 30 },
+    ];
+
+    for (const quad of quadrants) {
+      let placed = 0;
+      let tries = 0;
+      while (placed < 2 && tries < 20) {
+        tries++;
+        const cx = quad.xMin + Math.random() * (quad.xMax - quad.xMin);
+        const cy = quad.yMin + Math.random() * (quad.yMax - quad.yMin);
+        const def = scatterTypes[Math.floor(Math.random() * scatterTypes.length)];
+        if (canPlace(cx, cy, def.r)) {
+          const obs = new Obstacle(cx - def.w / 2, cy - def.w / 2, def.w, def.w, def.type);
+          place(obs, def.r);
+          placed++;
+        }
+      }
     }
   }
 
