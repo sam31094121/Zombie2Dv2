@@ -1,6 +1,6 @@
 import { drawItem } from './renderers/ItemRenderer';
 
-export type ItemType = 'weapon_sword' | 'weapon_gun' | 'speed' | 'shield' | 'energy_orb';
+export type ItemType = 'weapon_sword' | 'weapon_gun' | 'speed' | 'shield' | 'energy_orb' | 'magnet';
 
 export class Item {
   x: number;

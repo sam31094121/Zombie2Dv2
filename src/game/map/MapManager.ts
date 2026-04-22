@@ -48,6 +48,11 @@ export function getGeneratedObstacleSize(
 
 export class MapManager {
   obstacles: Map<string, Obstacle[]> = new Map();
+  mode: 'endless' | 'arena' = 'endless';
+
+  constructor(mode: 'endless' | 'arena' = 'endless') {
+    this.mode = mode;
+  }
 
   private pseudoRandom(seed: number) {
     let x = Math.sin(seed) * 10000;
@@ -63,6 +68,14 @@ export class MapManager {
     if (this.obstacles.has(key)) return;
 
     const chunkObstacles: Obstacle[] = [];
+    
+    // In arena mode, obstacles are generated dynamically by Game.ts per wave,
+    // so we don't generate random endless chunk obstacles here.
+    if (this.mode === 'arena') {
+      this.obstacles.set(key, chunkObstacles);
+      return;
+    }
+
     // Create a unique seed for this chunk
     const seed = (cx * 73856093) ^ (cy * 19349663);
     
@@ -193,9 +206,7 @@ export class MapManager {
         }
 
         const chunk = this.obstacles.get(this.getChunkKey(i, j));
-        if (chunk) {
-          chunk.forEach(obs => obs.draw(ctx, players));
-        }
+        // Obstacles are now drawn in Game.ts for depth sorting
       }
     }
 

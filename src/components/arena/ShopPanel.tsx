@@ -461,9 +461,9 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           gridTemplateColumns: isDesktop
             ? `repeat(${Math.min(shopCards.length || 1, 5)}, 1fr)`
             : 'repeat(2, 1fr)',
-          gridAutoRows: '1fr',
+          gridAutoRows: isDesktop ? '1fr' : 'max-content',
           gap: 8, padding: 10,
-          overflow: 'hidden', boxSizing: 'border-box',
+          overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box',
         }}>
           {shopCards.length === 0 ? (
             <div style={{
@@ -483,7 +483,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                   overflow: 'hidden', minHeight: 0,
                   boxShadow: `0 0 0 1px ${col}35, 0 4px 20px rgba(0,0,0,0.6), 0 0 16px ${col}14`,
                 }}>
-                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', boxShadow: `0 1px 0 ${col}20` }}>
+                  <div style={{ width: '100%', aspectRatio: isDesktop ? undefined : '402/240', flex: isDesktop ? 1 : 'none', minHeight: 0, overflow: 'hidden', boxShadow: `0 1px 0 ${col}20` }}>
                     <WeaponPreviewCanvas
                       type={card.type} level={card.level} branch={card.branch}
                       bufW={402} bufH={240} bg={C.panelAlt}

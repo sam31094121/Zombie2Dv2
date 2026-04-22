@@ -13,6 +13,7 @@ type PressureState = {
 export class DirectorAI {
   private game: Game;
   private directorTimer: number = 0;
+  private isSpawningPhase: boolean = true;
   private readonly TICK_RATE = 500;
   private readonly OPENING_PRESSURE_RATIO = 0.2;
   private readonly MID_WAVE_PRESSURE_RATIO = 0.5;
@@ -46,7 +47,19 @@ export class DirectorAI {
     const pressure = this.getPressureState(weightCap);
     const committedWeight = this.getCommittedWeight();
 
-    if (committedWeight >= pressure.targetCap) return;
+    if (this.isSpawningPhase) {
+      if (committedWeight >= pressure.targetCap) {
+        this.isSpawningPhase = false;
+        return;
+      }
+    } else {
+      const restartThreshold = Math.max(1, Math.floor(pressure.targetCap * 0.3));
+      if (committedWeight <= restartThreshold) {
+        this.isSpawningPhase = true;
+      } else {
+        return;
+      }
+    }
 
     const deficit = pressure.targetCap - committedWeight;
     const spawnBudget = Math.min(deficit, pressure.maxCommitPerTick);

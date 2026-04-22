@@ -10,13 +10,13 @@ export interface Wave {
 export const WAVES: Wave[] = [
   { id: 1, composition: { normal: 1.0, big: 0.0, slime: 0.0, spitter: 0.0 }, arenaDuration: 30, weightCap: 20 },
   { id: 2, composition: { normal: 0.8, big: 0.2, slime: 0.0, spitter: 0.0 }, arenaDuration: 30, weightCap: 30 },
-  { id: 3, composition: { normal: 0.7, big: 0.0, slime: 0.3, spitter: 0.0 }, arenaDuration: 45, weightCap: 45 },
-  { id: 4, composition: { normal: 0.6, big: 0.2, slime: 0.2, spitter: 0.0 }, arenaDuration: 45, weightCap: 60 },
+  { id: 3, composition: { normal: 0.7, big: 0.0, slime: 0.3, spitter: 0.0 }, arenaDuration: 45, weightCap: 40 },
+  { id: 4, composition: { normal: 0.6, big: 0.2, slime: 0.2, spitter: 0.0 }, arenaDuration: 45, weightCap: 50 },
   { id: 5, composition: { normal: 0.5, big: 0.2, slime: 0.0, spitter: 0.3 }, arenaDuration: 'objective', arenaObjective: 'tombstones', weightCap: 60 },
-  { id: 6, composition: { normal: 0.4, big: 0.2, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 150 },
-  { id: 7, composition: { normal: 0.3, big: 0.3, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 150 },
-  { id: 8, composition: { normal: 0.2, big: 0.4, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 150 },
-  { id: 9, composition: { normal: 0.6, big: 0.0, slime: 0.0, spitter: 0.4 }, arenaDuration: 40, spawnRateMultiplier: 0.2, weightCap: 400 },
+  { id: 6, composition: { normal: 0.4, big: 0.2, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 80 },
+  { id: 7, composition: { normal: 0.3, big: 0.3, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 110 },
+  { id: 8, composition: { normal: 0.2, big: 0.4, slime: 0.2, spitter: 0.2 }, arenaDuration: 40, spawnRateMultiplier: 0.5, weightCap: 140 },
+  { id: 9, composition: { normal: 0.6, big: 0.0, slime: 0.0, spitter: 0.4 }, arenaDuration: 40, spawnRateMultiplier: 0.2, weightCap: 180 },
   { id: 10, composition: { normal: 0.0, big: 0.4, slime: 0.25, spitter: 0.35 }, arenaDuration: 'objective', arenaObjective: 'boss', weightCap: 200 },
 ];
 
@@ -145,7 +145,7 @@ export class WaveManager {
     if (!this.isObjectiveBased()) return null;
 
     if (this.currentWaveConfig.arenaObjective === 'tombstones') {
-      return '任務：摧毀所有墓碑';
+      return '任務：摧毀十字墓碑';
     }
     if (this.currentWaveConfig.arenaObjective === 'boss') {
       return '任務：擊敗屠夫';

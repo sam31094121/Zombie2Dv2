@@ -1,12 +1,12 @@
 import type { Game } from '../Game';
 import type { Obstacle } from '../map/Obstacle';
-import type { ZombieType } from '../types';
+import { spawnZombieAt } from './SpawnSystem';
 import { CONSTANTS } from '../Constants';
 
-const SUMMON_INTERVAL_MS = 3000;
 const SUMMON_COUNT = 10;
 const SUMMON_RADIUS = 70;
 const SCREEN_MARGIN = 80;
+const GHOST_COOLDOWN_MS = 5000; // wait after all ghosts die before next wave
 
 export interface TombstoneTarget {
   obstacle: Obstacle;
@@ -59,40 +59,47 @@ export function findNearestTombstoneTarget(game: Game, x: number, y: number, max
   return best;
 }
 
-function queueSummon(game: Game, x: number, y: number, zombieType: ZombieType = 'ghost') {
-  game.activeEffects.push({
-    type: 'spawn_warning',
-    x,
-    y,
-    radius: 24,
-    lifetime: 650,
-    maxLifetime: 650,
-    damage: 0,
-    tickInterval: 650,
-    tickTimer: 650,
-    ownerId: 0,
-    level: 1,
-    zombieType,
-  });
-}
-
 export function updateTombstones(game: Game, dt: number): void {
   if (game.mode !== 'arena') return;
 
   const tombstones = getVisibleTombstones(game);
   for (const tombstone of tombstones) {
+    // --- Phase 1: prune dead ghosts from tracked set ---
+    if (tombstone.spawnedGhostIds.size > 0) {
+      for (const id of tombstone.spawnedGhostIds) {
+        const z = game.zombies.find(z => z.id === id);
+        if (!z || z.hp <= 0) tombstone.spawnedGhostIds.delete(id);
+      }
+      // All ghosts just cleared → start cooldown
+      if (tombstone.spawnedGhostIds.size === 0 && tombstone.tombstoneCooldown <= 0) {
+        tombstone.tombstoneCooldown = GHOST_COOLDOWN_MS;
+      }
+    }
+
+    // --- Phase 2: cooldown countdown ---
+    if (tombstone.tombstoneCooldown > 0) {
+      tombstone.tombstoneCooldown -= dt;
+      continue; // not ready yet
+    }
+
+    // --- Phase 3: summon timer ---
     tombstone.tombstoneSummonTimer -= dt;
     if (tombstone.tombstoneSummonTimer > 0) continue;
 
-    tombstone.tombstoneSummonTimer += SUMMON_INTERVAL_MS;
+    // Only summon if no active ghosts currently alive
+    if (tombstone.spawnedGhostIds.size > 0) continue;
+
+    tombstone.tombstoneSummonTimer = 3000;
     const center = getTombstoneCenter(tombstone);
 
+    // Spawn ghosts directly and track their IDs (so we can detect when all die)
     for (let i = 0; i < SUMMON_COUNT; i++) {
       const angle = (i / SUMMON_COUNT) * Math.PI * 2 + Math.random() * 0.35;
       const radius = 18 + Math.random() * SUMMON_RADIUS;
       const x = center.x + Math.cos(angle) * radius;
       const y = center.y + Math.sin(angle) * radius;
-      queueSummon(game, x, y, 'ghost');
+      const ghost = spawnZombieAt(game, x, y, 'ghost');
+      tombstone.spawnedGhostIds.add(ghost.id);
     }
 
     game.hitEffects.push({

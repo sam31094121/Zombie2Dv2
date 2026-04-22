@@ -18,7 +18,7 @@ import { resolveOverlaps } from './systems/PhysicsSystem';
 import { spawnZombie as _spawnZombie, spawnItemAt as _spawnItemAt, spawnItem as _spawnItem } from './systems/SpawnSystem';
 import { applyWaveMechanisms as _applyWaveMechanisms, drawWaveFilters as _drawWaveFilters } from './systems/WaveMechanicsSystem';
 import { serializeState as _serializeState, applyNetworkState as _applyNetworkState } from './systems/NetworkSyncSystem';
-import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestZombie as _findNearestZombie, findNearestAutoTarget as _findNearestAutoTarget, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
+import { handleObstacleInteractions as _handleObstacleInteractions, handlePlayerAttacks as _handlePlayerAttacks, findNearestAutoTarget as _findNearestAutoTarget, explodeObstacle as _explodeObstacle, dropVendingMachineItems as _dropVendingMachineItems } from './systems/CombatSystem';
 import { SwordProjectile } from './entities/SwordProjectile';
 import { updateSwordProjectiles } from './systems/SwordSystem';
 import { MissileProjectile } from './entities/MissileProjectile';
@@ -169,8 +169,8 @@ export class Game {
   constructor(playerCount: number, onGameOver: (time: number, kills: number) => void, onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void, mode: GameMode = 'endless') {
     this.onGameOver = onGameOver;
     this.onUpdateUI = onUpdateUI;
-    this.mapManager = new MapManager();
     this.mode = mode;
+    this.mapManager = new MapManager(mode);
     this.waveManager = new WaveManager(mode);
     this.init(playerCount);
   }
@@ -209,7 +209,7 @@ export class Game {
     this.lastItemSpawnTime = Date.now();
     this.zombieSpawnTimer = 0;
     this.isGameOver = false;
-    this.mapManager = new MapManager();
+    this.mapManager = new MapManager(this.mode);
     this.camera = { x: 0, y: 0 };
     this.initArenaLayout();
 
@@ -549,15 +549,13 @@ export class Game {
 
     const waveId = this.waveManager.currentWaveConfig.id;
     if (waveId === 5) {
-      for (let i = 0; i < 3; i++) {
-        const pt = this.randomArenaPoint(150);
-        const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
-        obs.isArenaWaveObstacle = true;
-        obs.maxHp *= 2;
-        obs.hp = obs.maxHp;
-        this.addObstacleToMap(obs);
-        this.activeTombstones.push(obs);
-      }
+      const pt = this.randomArenaPoint(150);
+      const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
+      obs.isArenaWaveObstacle = true;
+      obs.maxHp *= 2;
+      obs.hp = obs.maxHp;
+      this.addObstacleToMap(obs);
+      this.activeTombstones.push(obs);
     } else if (waveId >= 6 && waveId <= 8) {
       const pt = this.randomArenaPoint(150);
       const obs = new Obstacle(pt.x, pt.y, 60, 60, "tombstone");
@@ -580,6 +578,135 @@ export class Game {
       (boss as any).scale = 2.5;
       this.zombies.push(boss);
       this.activeBoss = boss;
+    }
+
+    this.generateArenaTacticalObstacles(waveId);
+  }
+
+  private generateArenaTacticalObstacles(waveId: number) {
+    if (this.mode !== 'arena') return;
+
+    // Define tactical obstacle patterns
+    const patterns = [
+      // 1. 防禦陣地 (Sandbag fort)
+      () => {
+        const pt = this.randomArenaPoint(200);
+        const types = ['sandbag', 'sandbag', 'sandbag', 'streetlight'];
+        const offsets = [{x:-50,y:30}, {x:0,y:50}, {x:50,y:30}, {x:0,y:-20}];
+        types.forEach((type, i) => {
+          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, 60, 60, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        });
+      },
+      // 2. 廢棄路障 (Wall/Fence blockade)
+      () => {
+        const pt = this.randomArenaPoint(300);
+        const type = Math.random() > 0.5 ? 'wall' : 'electric_fence';
+        const isHorizontal = Math.random() > 0.5;
+        for (let i = 0; i < 3; i++) {
+          const ox = isHorizontal ? i * 90 - 90 : 0;
+          const oy = isHorizontal ? 0 : i * 90 - 90;
+          const obs = new Obstacle(pt.x + ox, pt.y + oy, 80, 80, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        }
+      },
+      // 3. 危險角落 (Containers + Barrels)
+      () => {
+        const pt = this.randomArenaPoint(200);
+        const types = ['container', 'explosive_barrel', 'explosive_barrel'];
+        const offsets = [{x:0,y:0}, {x:90,y:40}, {x:-50,y:-70}];
+        types.forEach((type, i) => {
+          const w = type === 'container' ? 140 : 60;
+          const h = type === 'container' ? 80 : 60;
+          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, w, h, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        });
+      },
+      // 4. 自然點綴 (Trees & Rocks)
+      () => {
+        const pt = this.randomArenaPoint(200);
+        for(let i=0; i<3; i++) {
+          const type = Math.random() > 0.5 ? 'tree' : 'rock';
+          const ox = (Math.random() - 0.5) * 180;
+          const oy = (Math.random() - 0.5) * 180;
+          const obs = new Obstacle(pt.x + ox, pt.y + oy, 90, 90, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        }
+      },
+      // 5. 補給點 (Vending machine + Pillar)
+      () => {
+        const pt = this.randomArenaPoint(150);
+        const types = ['vending_machine', 'pillar'];
+        const offsets = [{x:-40,y:0}, {x:50,y:-30}];
+        types.forEach((type, i) => {
+          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, 60, 60, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        });
+      },
+      // 6. 死亡巷道 (Alley of Death)
+      () => {
+        const pt = this.randomArenaPoint(300);
+        const isHorizontal = Math.random() > 0.5;
+        const b1 = new Obstacle(pt.x + (isHorizontal ? 0 : -110), pt.y + (isHorizontal ? -110 : 0), 200, 200, 'building');
+        const b2 = new Obstacle(pt.x + (isHorizontal ? 0 : 110), pt.y + (isHorizontal ? 110 : 0), 200, 200, 'building');
+        b1.isArenaWaveObstacle = true;
+        b2.isArenaWaveObstacle = true;
+        this.addObstacleToMap(b1);
+        this.addObstacleToMap(b2);
+      },
+      // 7. 反射砲陣地 (Reflect Battery)
+      () => {
+        const pt = this.randomArenaPoint(200);
+        const center = new Obstacle(pt.x, pt.y, 70, 70, 'monolith');
+        center.isArenaWaveObstacle = true;
+        this.addObstacleToMap(center);
+        const offsets = [{x:-60,y:-60}, {x:60,y:-60}, {x:-60,y:60}, {x:60,y:60}];
+        offsets.forEach(off => {
+          const obs = new Obstacle(pt.x + off.x, pt.y + off.y, 40, 40, 'pillar');
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        });
+      },
+      // 8. 邪教儀式區 (Ritual Site)
+      () => {
+        const pt = this.randomArenaPoint(200);
+        const center = new Obstacle(pt.x, pt.y, 80, 80, 'altar');
+        center.isArenaWaveObstacle = true;
+        this.addObstacleToMap(center);
+        for(let i=0; i<5; i++) {
+          const angle = (i / 5) * Math.PI * 2;
+          const type = Math.random() > 0.5 ? 'tree' : 'rock';
+          const obs = new Obstacle(pt.x + Math.cos(angle)*90, pt.y + Math.sin(angle)*90, 60, 60, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        }
+      },
+      // 9. S型路障迷宮 (Maze Block)
+      () => {
+        const pt = this.randomArenaPoint(300);
+        const types = ['container', 'electric_fence', 'wall', 'container', 'sandbag'];
+        const offsets = [{x:-90,y:-50}, {x:0,y:-50}, {x:90,y:0}, {x:0,y:50}, {x:-90,y:50}];
+        types.forEach((type, i) => {
+          const w = type === 'container' ? 140 : 80;
+          const h = type === 'container' ? 80 : 80;
+          const obs = new Obstacle(pt.x + offsets[i].x, pt.y + offsets[i].y, w, h, type as any);
+          obs.isArenaWaveObstacle = true;
+          this.addObstacleToMap(obs);
+        });
+      }
+    ];
+
+    // Determine how many patterns to spawn based on wave (starts with 3, increases slightly)
+    const numPatterns = Math.min(3 + Math.floor(waveId / 3), 6);
+    
+    for (let i = 0; i < numPatterns; i++) {
+      const patternFn = patterns[Math.floor(Math.random() * patterns.length)];
+      patternFn();
     }
   }
 
@@ -1358,31 +1485,21 @@ export class Game {
             continue;
           }
 
-          if (obs.type === 'monolith' && proj.type === 'bullet') {
-            // Reflect to nearest zombie
-            const nearestZombie = this.findNearestZombie(obs.x + obs.width / 2, obs.y + obs.height / 2, 500);
-            const currentSpeed = Math.hypot(proj.vx, proj.vy) || 1;
-            if (nearestZombie) {
-              const dx = nearestZombie.x - proj.x;
-              const dy = nearestZombie.y - proj.y;
-              const dist = Math.hypot(dx, dy);
-              if (dist > 0) {
-                proj.vx = (dx / dist) * currentSpeed;
-                proj.vy = (dy / dist) * currentSpeed;
-              } else {
-                proj.vx *= -1;
-                proj.vy *= -1;
-              }
-            } else {
-              proj.vx *= -1;
-              proj.vy *= -1;
+          if (obs.type === 'monolith' && !proj.isEnemy && (proj.type === 'bullet' || proj.type === 'slash')) {
+            // Energy Turret: absorb bullet → accumulate charge → fire 5 piercing missiles at 20
+            const hitKey = `${obs.type}:${obs.x}:${obs.y}:${obs.seed}`;
+            if (proj.type === 'slash') {
+              if (proj.hitObstacleKeys.has(hitKey)) continue;
+              proj.hitObstacleKeys.add(hitKey);
             }
-            const reflectDist = obs.width * 0.5 + proj.radius + 6;
-            const reflectLen = Math.hypot(proj.vx, proj.vy) || 1;
-            proj.x = obs.x + obs.width / 2 + (proj.vx / reflectLen) * reflectDist;
-            proj.y = obs.y + obs.height / 2 + (proj.vy / reflectLen) * reflectDist;
-            this.hitEffects.push({ x: proj.x, y: proj.y, type: 'white_sparks', lifetime: 200, maxLifetime: 200 });
-            continue; // Don't destroy projectile on reflection
+
+            this.chargeMonolith(obs, proj.damage, proj.ownerId, proj.x, proj.y);
+
+            if (proj.type === 'bullet') {
+              proj.lifetime = 0;
+              break;
+            }
+            continue;
           }
 
           if (obs.type === 'sandbag' || obs.type === 'explosive_barrel' || obs.type === 'tombstone' || obs.type === 'vending_machine') {
@@ -1514,6 +1631,26 @@ export class Game {
             this.slimeTrails.push({ x: zombie.x, y: zombie.y, radius: 10, lifetime: 3000, maxLifetime: 3000 });
           }
 
+          // Altar (Fire Totem) buff: bullet hits spawn ground_fire under the zombie
+          if (proj.type === 'bullet' && !proj.isEnemy) {
+            const shooter = this.players.find(p => p.id === proj.ownerId);
+            if (shooter?.isAtAltar) {
+              this.activeEffects.push({
+                type: 'ground_fire',
+                x: zombie.x,
+                y: zombie.y,
+                radius: 28,
+                lifetime: 2200,
+                maxLifetime: 2200,
+                damage: 3,
+                tickInterval: 300,
+                tickTimer: 300,
+                ownerId: proj.ownerId,
+                level: proj.level,
+              });
+            }
+          }
+
           if (zombie.hp <= 0) {
             const hitAngle = Math.atan2(proj.vy, proj.vx);
             const children = this.killZombie(zombie, proj.ownerId, proj.level, hitAngle);
@@ -1610,6 +1747,13 @@ export class Game {
               player.speedBoostTimer = 5000;
             } else if (item.type === 'shield') {
               player.activateShield(3000);
+            } else if (item.type === 'magnet') {
+              // Magnet effect: attract all existing energy orbs to the player
+              for (const orb of this.items) {
+                if (orb.type === 'energy_orb') {
+                  orb.attractedByPlayerId = player.id;
+                }
+              }
             } else if (item.type === 'energy_orb') {
               const val = item.value || 1;
               this.awardOrbXp(player, val);
@@ -1674,7 +1818,57 @@ export class Game {
   }
 
   handleObstacleInteractions(dt: number) { _handleObstacleInteractions(this, dt); }
-  private findNearestZombie(x: number, y: number, maxDist: number) { return _findNearestZombie(this, x, y, maxDist); }
+  chargeMonolith(obs: Obstacle, amount: number, ownerId: number, hitX: number, hitY: number) {
+    if (obs.isDestroyed || amount <= 0) return;
+
+    obs.monolithCharge += amount;
+    this.hitEffects.push({ x: hitX, y: hitY, type: 'white_sparks', lifetime: 180, maxLifetime: 180 });
+    this.hitEffects.push({ x: hitX, y: hitY, type: 'blue_circle', lifetime: 160, maxLifetime: 160 });
+
+    const CHARGE_THRESHOLD = 10;
+    if (obs.monolithCharge < CHARGE_THRESHOLD) return;
+
+    obs.monolithCharge = 0;
+    const ocx = obs.x + obs.width / 2;
+    const ocy = obs.y + obs.height / 2;
+    let target: typeof this.zombies[number] | null = null;
+    let nearestDist = 900;
+    for (const zombie of this.zombies) {
+      if (zombie.hp <= 0) continue;
+      const dist = Math.hypot(zombie.x - ocx, zombie.y - ocy);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        target = zombie;
+      }
+    }
+
+    if (target) {
+      obs.monolithTargetX = target.x;
+      obs.monolithTargetY = target.y;
+      obs.monolithFacingAngle = Math.atan2(target.y - ocy, target.x - ocx);
+    }
+
+    obs.monolithVolleyShotsRemaining = 5;
+    obs.monolithVolleyOwnerId = ownerId;
+    obs.monolithShotCooldown = 160;
+    obs.monolithLaunchPulse = 220;
+
+    this.hitEffects.push({ x: ocx, y: ocy, type: 'blue_circle', lifetime: 520, maxLifetime: 520 });
+    this.hitEffects.push({ x: ocx, y: ocy, type: 'white_sparks', lifetime: 500, maxLifetime: 500 });
+    for (let burst = 0; burst < 8; burst++) {
+      const burstAngle = (burst / 8) * Math.PI * 2 + Math.random() * 0.28;
+      const burstDist = 14 + Math.random() * 22;
+      this.hitEffects.push({
+        x: ocx + Math.cos(burstAngle) * burstDist,
+        y: ocy + Math.sin(burstAngle) * burstDist,
+        type: 'arc_spark',
+        lifetime: 220,
+        maxLifetime: 220,
+        radius: 2.5 + Math.random() * 2.5,
+      });
+    }
+    this.shakeTimer = Math.max(this.shakeTimer, 110);
+  }
   private explodeObstacle(obs: Obstacle) { _explodeObstacle(this, obs); }
   private dropVendingMachineItems(obs: Obstacle) { _dropVendingMachineItems(this, obs); }
   handlePlayerAttacks(player: Player) { _handlePlayerAttacks(this, player); }
@@ -1820,6 +2014,25 @@ export class Game {
       }
     }
 
+    // Draw altars as floor decals — must render BELOW all entities
+    {
+      const CHUNK_SIZE = 800;
+      const fcx = Math.floor((renderCameraX + CONSTANTS.CANVAS_WIDTH / 2) / CHUNK_SIZE);
+      const fcy = Math.floor((renderCameraY + CONSTANTS.CANVAS_HEIGHT / 2) / CHUNK_SIZE);
+      for (let i = fcx - 2; i <= fcx + 2; i++) {
+        for (let j = fcy - 2; j <= fcy + 2; j++) {
+          const chunk = this.mapManager.obstacles.get(`${i},${j}`);
+          if (chunk) {
+            for (const obs of chunk) {
+              if (obs.type === 'altar' || (obs.type === 'vending_machine' && obs.isDestroyed)) {
+                obs.draw(ctx, this.players);
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Draw slime trails
     for (const trail of this.slimeTrails) {
       ctx.beginPath();
@@ -1847,10 +2060,51 @@ export class Game {
     drawArcProjectiles(this.arcProjectiles, ctx);
     drawSwordProjectiles(this.swordProjectiles, ctx);
     if (this.arenaLootBag) this.drawArenaLootBag(ctx, this.arenaLootBag);
-    for (const zombie of this.zombies) {
-      if (zombie.hp > 0) zombie.draw(ctx);
+
+    // DEPTH SORTING (Y-Sorting) for Obstacles, Zombies, and Players
+    const renderables: { y: number; draw: () => void }[] = [];
+
+    const CHUNK_SIZE = 800;
+    const cx = Math.floor((renderCameraX + CONSTANTS.CANVAS_WIDTH / 2) / CHUNK_SIZE);
+    const cy = Math.floor((renderCameraY + CONSTANTS.CANVAS_HEIGHT / 2) / CHUNK_SIZE);
+    
+    for (let i = cx - 2; i <= cx + 2; i++) {
+      for (let j = cy - 2; j <= cy + 2; j++) {
+        const chunk = this.mapManager.obstacles.get(`${i},${j}`);
+        if (chunk) {
+          for (const obs of chunk) {
+            if (obs.type === 'altar' || (obs.type === 'vending_machine' && obs.isDestroyed)) continue;
+            renderables.push({
+              y: obs.y + obs.height, // Sort by bottom edge
+              draw: () => obs.draw(ctx, this.players)
+            });
+          }
+        }
+      }
     }
-    for (const player of this.players) player.draw(ctx);
+
+    for (const zombie of this.zombies) {
+      if (zombie.hp > 0) {
+        renderables.push({
+          y: zombie.y + zombie.radius,
+          draw: () => zombie.draw(ctx)
+        });
+      }
+    }
+
+    for (const player of this.players) {
+      renderables.push({
+        y: player.y + player.radius,
+        draw: () => player.draw(ctx)
+      });
+    }
+
+    // Sort from top to bottom
+    renderables.sort((a, b) => a.y - b.y);
+
+    for (const entity of renderables) {
+      entity.draw();
+    }
 
     // Apply Mechanism Filters (Fog of War, etc.)
     this.drawWaveFilters(ctx);

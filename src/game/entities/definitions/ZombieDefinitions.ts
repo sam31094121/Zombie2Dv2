@@ -288,7 +288,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
-    weight: 1,
+    weight: 2,
     knockbackResistLevel: 1,   // ??normal
     leavesTrail: true,
     splitOnDeath: slimeSplit,
@@ -313,7 +313,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#4caf50',
     orbValue: 1,
-    weight: 1,
+    weight: 3,
     knockbackResistLevel: 1,   // ??normal
     updateBehavior: spitterBehavior,
   },
@@ -325,7 +325,7 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     orbCount: 2,
     orbColor: '#c4b5fd',
     orbValue: 1,
-    weight: 1,
+    weight: 2,
     knockbackResistLevel: 1,
   },
 

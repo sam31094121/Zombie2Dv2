@@ -16,14 +16,30 @@ export class Obstacle {
   hp: number;
   maxHp: number;
   isDestroyed: boolean = false;
-  lastEffectTime: number = 0;
-  isTriggered: boolean = false; // For explosive barrels or vending machines
+  lastEffectTime: number = 0;       // zombie effect timer (electric fence)
+  lastPlayerEffectTime: number = 0; // player effect timer (electric fence, separate)
+  isTriggered: boolean = false;
   triggerTimer: number = 0;
   respawnTimer: number = 0;
-  lastHealTick: number = 0; // For streetlight healing
+  lastHealTick: number = 0;
+  // Tombstone ghost tracking
   tombstoneSummonTimer: number = 3000;
   tombstoneMaxHits: number = 0;
+  tombstoneCooldown: number = 0;           // countdown after all ghosts die
+  spawnedGhostIds: Set<number> = new Set();
   isArenaWaveObstacle: boolean = false;
+  // Monolith charge accumulator
+  monolithCharge: number = 0;
+  monolithVolleyShotsRemaining: number = 0;
+  monolithShotCooldown: number = 0;
+  monolithLaunchPulse: number = 0;
+  monolithFacingAngle: number = -Math.PI / 2;
+  monolithTargetX: number = 0;
+  monolithTargetY: number = 0;
+  monolithVolleyOwnerId: number = 0;
+  destroyedAt: number = 0;
+  wreckFadeDelayMs: number = 2200;
+  wreckFadeDurationMs: number = 1800;
 
   constructor(x: number, y: number, width: number, height: number, type: ObstacleType) {
     this.x = x;
@@ -37,7 +53,7 @@ export class Obstacle {
     if (type === 'sandbag') this.maxHp = 100;
     else if (type === 'explosive_barrel') this.maxHp = 20;
     else if (type === 'tombstone') this.maxHp = 10;
-    else if (type === 'vending_machine') this.maxHp = 80;
+    else if (type === 'vending_machine') this.maxHp = 18;
     else this.maxHp = 1000000; // Indestructible
     
     this.hp = this.maxHp;
@@ -55,6 +71,7 @@ export class Obstacle {
         this.isTriggered = false;
         this.hp = this.maxHp;
         this.respawnTimer = 0;
+        this.destroyedAt = 0;
       }
     }
 
@@ -81,6 +98,11 @@ export class Obstacle {
         this.lastHealTick = now;
       }
     }
+
+    if (this.type === 'monolith') {
+      this.monolithShotCooldown = Math.max(0, this.monolithShotCooldown - dt);
+      this.monolithLaunchPulse = Math.max(0, this.monolithLaunchPulse - dt);
+    }
   }
 
   takeDamage(amount: number) {
@@ -92,6 +114,9 @@ export class Obstacle {
     }
     if (this.hp <= 0 || this.type === 'explosive_barrel') {
       this.isDestroyed = true;
+      if (this.type === 'vending_machine') {
+        this.destroyedAt = Date.now();
+      }
       if (this.type === 'explosive_barrel') {
         this.isTriggered = true;
         this.triggerTimer = 1; // Explode immediately
@@ -103,12 +128,26 @@ export class Obstacle {
     }
   }
 
+  getDestroyedVisualAlpha(now: number = Date.now()) {
+    if (this.type !== 'vending_machine' || !this.isDestroyed) return 1;
+    if (this.destroyedAt <= 0) return 1;
+
+    const elapsed = now - this.destroyedAt;
+    if (elapsed <= this.wreckFadeDelayMs) return 1;
+
+    const fadeProgress = (elapsed - this.wreckFadeDelayMs) / this.wreckFadeDurationMs;
+    return Math.max(0, 1 - fadeProgress);
+  }
+
   draw(ctx: CanvasRenderingContext2D, players?: Player[]) {
     drawObstacle(this, ctx, players);
   }
 
   collidesWithCircle(cx: number, cy: number, r: number): boolean {
-    if (this.isDestroyed && this.type !== 'explosive_barrel' && this.type !== 'vending_machine') return false;
+    // altar has no collision box at all
+    if (this.type === 'altar') return false;
+    // destroyed obstacles lose collision (vending_machine no longer special-cased — items become pickable)
+    if (this.isDestroyed && this.type !== 'explosive_barrel') return false;
 
     if (this.type === 'pillar' || this.type === 'rock' || this.type === 'building' || 
         this.type === 'sandbag' || this.type === 'explosive_barrel' || this.type === 'streetlight' || 

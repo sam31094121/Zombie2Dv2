@@ -6,6 +6,26 @@ import { ZOMBIE_REGISTRY } from '../entities/definitions/ZombieDefinitions';
 import { ZombieType } from '../types';
 import type { ActiveEffect } from '../types';
 
+type LavaMarkConfig = {
+  level: number;
+  radius: number;
+  tickDamage: number;
+  tickInterval: number;
+  embedDuration: number;
+  explodeDamage: number;
+  explodeRadius: number;
+};
+
+const ALTAR_SWORD_LAVA_CONFIG: LavaMarkConfig = {
+  level: 6,
+  radius: 20,
+  tickDamage: 2,
+  tickInterval: 200,
+  embedDuration: 350,
+  explodeDamage: 35,
+  explodeRadius: 140,
+};
+
 export function updateSwordProjectiles(
   swords: SwordProjectile[],
   game: Game,
@@ -96,6 +116,8 @@ function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
           const lt = sword.branch === 'A' ? 300 : 180;
           game.hitEffects.push({ x: z.x, y: z.y, type: fx, lifetime: lt, maxLifetime: lt });
         }
+
+        _tryProcAltarLavaMark(sword, game, z.id);
       }
     }
   }
@@ -173,13 +195,20 @@ function _startReturning(sword: SwordProjectile, travelDist: number): void {
 
 function _tryHitSwordObstacles(sword: SwordProjectile, game: Game): void {
   const nearby = game.mapManager.getNearbyObstacles(sword.x, sword.y);
+  const SWORD_DAMAGEABLE: Set<string> = new Set(['tombstone', 'vending_machine', 'sandbag', 'explosive_barrel', 'monolith']);
   for (const obs of nearby) {
-    if (obs.isDestroyed || obs.type !== 'tombstone') continue;
+    if (obs.isDestroyed || !SWORD_DAMAGEABLE.has(obs.type)) continue;
     if (!obs.collidesWithCircle(sword.x, sword.y, sword.config.passRadius)) continue;
 
     const hitKey = `${obs.type}:${obs.x}:${obs.y}:${obs.seed}`;
     if (sword.hitObstacleKeys.has(hitKey)) continue;
     sword.hitObstacleKeys.add(hitKey);
+
+    if (obs.type === 'monolith') {
+      game.chargeMonolith(obs, sword.config.damage * sword.config.dmgMult, sword.ownerId, sword.x, sword.y);
+      audioManager.playHit();
+      continue;
+    }
 
     obs.takeDamage(sword.config.damage * sword.config.dmgMult);
     game.hitEffects.push({
@@ -214,23 +243,15 @@ function _deployTornado(sword: SwordProjectile, game: Game): void {
 
 function _deployLavaMark(sword: SwordProjectile, game: Game, zombieId: number, _travelDist: number): void {
   const { config } = sword;
-  const effect: ActiveEffect = {
-    type: 'lava_mark',
-    x: sword.x,
-    y: sword.y,
-    radius: 20,
-    lifetime: config.embedDuration,
-    maxLifetime: config.embedDuration,
-    damage: 2 * config.dmgMult,
-    tickInterval: 200,
-    tickTimer: 200,
-    ownerId: sword.ownerId,
+  _pushLavaMark(game, sword, zombieId, {
     level: sword.level,
-    targetZombieId: zombieId,
+    radius: 20,
+    tickDamage: 2,
+    tickInterval: 200,
+    embedDuration: config.embedDuration,
+    explodeDamage: config.explodeDamage,
     explodeRadius: config.explodeRadius,
-    explodeDamage: config.explodeDamage * config.dmgMult,
-  };
-  game.activeEffects.push(effect);
+  });
 }
 
 function _clearSwordOut(game: Game, ownerId: number): void {
@@ -255,4 +276,73 @@ function _pushForward(
 ): void {
   z.vx += Math.cos(sword.angle) * force * _knockbackMult(z);
   z.vy += Math.sin(sword.angle) * force * _knockbackMult(z);
+}
+
+function _tryProcAltarLavaMark(
+  sword: SwordProjectile,
+  game: Game,
+  zombieId: number,
+): void {
+  if (sword.altarProcConsumed || sword.branch === 'B') return;
+
+  const owner = game.players.find(player => player.id === sword.ownerId);
+  if (!owner?.isAtAltar) return;
+
+  sword.altarProcConsumed = true;
+  _pushLavaMark(game, sword, zombieId, ALTAR_SWORD_LAVA_CONFIG);
+}
+
+function _pushLavaMark(
+  game: Game,
+  sword: SwordProjectile,
+  zombieId: number,
+  baseConfig: LavaMarkConfig,
+): void {
+  const effect = _createLavaMarkEffect(game, sword, zombieId, baseConfig);
+  game.activeEffects.push(effect);
+}
+
+function _createLavaMarkEffect(
+  game: Game,
+  sword: SwordProjectile,
+  zombieId: number,
+  baseConfig: LavaMarkConfig,
+): ActiveEffect {
+  const config = _resolveLavaMarkConfig(game, sword, baseConfig);
+
+  return {
+    type: 'lava_mark',
+    x: sword.x,
+    y: sword.y,
+    radius: config.radius,
+    lifetime: config.embedDuration,
+    maxLifetime: config.embedDuration,
+    damage: config.tickDamage * sword.config.dmgMult,
+    tickInterval: config.tickInterval,
+    tickTimer: config.tickInterval,
+    ownerId: sword.ownerId,
+    level: config.level,
+    targetZombieId: zombieId,
+    explodeRadius: config.explodeRadius,
+    explodeDamage: config.explodeDamage * sword.config.dmgMult,
+  };
+}
+
+function _resolveLavaMarkConfig(
+  game: Game,
+  sword: SwordProjectile,
+  baseConfig: LavaMarkConfig,
+): LavaMarkConfig {
+  const owner = game.players.find(player => player.id === sword.ownerId);
+  if (!owner?.isAtAltar) return baseConfig;
+
+  return {
+    level: Math.max(baseConfig.level, ALTAR_SWORD_LAVA_CONFIG.level),
+    radius: Math.max(baseConfig.radius, ALTAR_SWORD_LAVA_CONFIG.radius),
+    tickDamage: ALTAR_SWORD_LAVA_CONFIG.tickDamage,
+    tickInterval: ALTAR_SWORD_LAVA_CONFIG.tickInterval,
+    embedDuration: Math.max(baseConfig.embedDuration, ALTAR_SWORD_LAVA_CONFIG.embedDuration),
+    explodeDamage: Math.max(baseConfig.explodeDamage, ALTAR_SWORD_LAVA_CONFIG.explodeDamage),
+    explodeRadius: Math.max(baseConfig.explodeRadius, ALTAR_SWORD_LAVA_CONFIG.explodeRadius),
+  };
 }

@@ -57,7 +57,7 @@ export function spawnZombie(game: Game): void {
   spawnZombieAt(game, x, y, type);
 }
 
-export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' | 'big' | 'slime' | 'spitter' | 'ghost'): void {
+export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' | 'big' | 'slime' | 'spitter' | 'ghost'): import('../Zombie').Zombie {
   const zombie = game.zombiePool.get(x, y, type);
   zombie.id = ++game._zombieIdCounter;
 
@@ -88,17 +88,23 @@ export function spawnZombieAt(game: Game, x: number, y: number, type: 'normal' |
   }
 
   game.zombies.push(zombie);
+  return zombie;
 }
 
 export function spawnItemAt(game: Game, x: number, y: number): void {
   const rand = Math.random();
   let type: ItemType;
   if (game.mode === 'arena') {
-    type = rand < 0.5 ? 'shield' : 'speed';
-  } else if (rand < 0.4) type = 'weapon_sword';
-  else if (rand < 0.8) type = 'weapon_gun';
-  else if (rand < 0.9) type = 'shield';
-  else type = 'speed';
+    if (rand < 0.45) type = 'shield';
+    else if (rand < 0.9) type = 'speed';
+    else type = 'magnet';
+  } else {
+    if (rand < 0.35) type = 'weapon_sword';
+    else if (rand < 0.70) type = 'weapon_gun';
+    else if (rand < 0.80) type = 'shield';
+    else if (rand < 0.90) type = 'speed';
+    else type = 'magnet';
+  }
 
   game.items.push(new Item(x, y, type, CONSTANTS.ITEM_LIFETIME));
 }

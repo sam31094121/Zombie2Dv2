@@ -14,6 +14,7 @@ export class Projectile {
   radius: number;
   knockback: boolean;
   hitZombies: Set<Zombie> = new Set();
+  hitObstacleKeys: Set<string> = new Set();
   ownerId: number;
   level: number;
   maxLifetime: number;

@@ -19,6 +19,13 @@ export interface MissileConfig {
   splitAfter: number;
   groundFireRadius: number;
   groundFireDuration: number; // ms
+  /** How many zombies this missile can pierce through (default 1 = no pierce) */
+  pierceRemaining?: number;
+  /** Visual variant for rendering */
+  variant?: 'fire' | 'energy';
+  homingDelayMs?: number;
+  obstacleGraceMs?: number;
+  splashRadius?: number;
 }
 
 export class MissileProjectile {
@@ -42,6 +49,11 @@ export class MissileProjectile {
   lifetime: number = 3000;
   maxLifetime: number = 3000;
   alive: boolean = true;
+  pierceRemaining: number = 1;
+  variant: 'fire' | 'energy' = 'fire';
+  homingDelayTimer: number = 0;
+  obstacleGraceTimer: number = 0;
+  splashRadius: number = 0;
 
   constructor(cfg: MissileConfig) {
     this.id         = ++MissileProjectile._nextId;
@@ -59,5 +71,10 @@ export class MissileProjectile {
     this.splitTimer = cfg.splitAfter;
     this.groundFireRadius   = cfg.groundFireRadius;
     this.groundFireDuration = cfg.groundFireDuration;
+    this.pierceRemaining    = cfg.pierceRemaining ?? 1;
+    this.variant            = cfg.variant ?? 'fire';
+    this.homingDelayTimer   = cfg.homingDelayMs ?? 0;
+    this.obstacleGraceTimer = cfg.obstacleGraceMs ?? 0;
+    this.splashRadius       = cfg.splashRadius ?? 0;
   }
 }

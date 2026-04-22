@@ -9,6 +9,8 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
     if (!m.alive) { missiles.splice(i, 1); continue; }
 
     m.lifetime -= dt;
+    m.homingDelayTimer = Math.max(0, m.homingDelayTimer - dt);
+    m.obstacleGraceTimer = Math.max(0, m.obstacleGraceTimer - dt);
     if (m.lifetime <= 0) { missiles.splice(i, 1); continue; }
 
     if (!m.isSmall && m.splitAfter > 0) {
@@ -28,7 +30,7 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
       if (d < nearestDist) { nearestDist = d; nearest = z; }
     }
 
-    if (nearest) {
+    if (nearest && m.homingDelayTimer <= 0) {
       const cur = Math.atan2(m.vy, m.vx);
       const tgt = Math.atan2(nearest.y - m.y, nearest.x - m.x);
       let diff = tgt - cur;
@@ -44,12 +46,14 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
     m.x += m.vx * (dt / 16);
     m.y += m.vy * (dt / 16);
 
-    const obs = game.mapManager.getNearbyObstacles(m.x, m.y);
     let hitWall = false;
-    for (const o of obs) {
-      if (!o.isDestroyed && o.collidesWithCircle(m.x, m.y, m.radius)) {
-        hitWall = true;
-        break;
+    if (m.obstacleGraceTimer <= 0) {
+      const obs = game.mapManager.getNearbyObstacles(m.x, m.y);
+      for (const o of obs) {
+        if (!o.isDestroyed && o.collidesWithCircle(m.x, m.y, m.radius)) {
+          hitWall = true;
+          break;
+        }
       }
     }
 
@@ -59,7 +63,7 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
       continue;
     }
 
-    let hit = false;
+    let destroyed = false;
     for (const z of game.zombies) {
       if (z.hp <= 0) continue;
       if (Math.hypot(z.x - m.x, z.y - m.y) < z.radius + m.radius) {
@@ -68,13 +72,22 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
         if (z.hp <= 0) {
           game.queueZombieDeath(z, m.ownerId, 5, Math.atan2(m.vy, m.vx));
         }
-        _onImpact(m, game, z);
-        hit = true;
-        break;
+        m.pierceRemaining--;
+        if (m.pierceRemaining <= 0) {
+          _onImpact(m, game, z);
+          destroyed = true;
+          break;
+        }
+        // Pierced — flash effect but missile continues
+        if (m.variant === 'energy') {
+          _spawnEnergyImpactEffects(game, z.x, z.y, false);
+        } else {
+          game.hitEffects.push({ x: z.x, y: z.y, type: 'white_sparks', lifetime: 150, maxLifetime: 150 });
+        }
       }
     }
 
-    if (hit) {
+    if (destroyed) {
       missiles.splice(i, 1);
       continue;
     }
@@ -88,6 +101,11 @@ function _onImpact(
   game: Game,
   _zombie: (typeof game.zombies[0]) | null,
 ): void {
+  if (m.variant === 'energy') {
+    _applySplashDamage(game, m.x, m.y, m.splashRadius, m.damage, m.ownerId, _zombie);
+    _spawnEnergyImpactEffects(game, m.x, m.y, true);
+    return;
+  }
   game.activeEffects.push({
     type: 'ground_fire',
     x: m.x,
@@ -126,6 +144,10 @@ function _spawnSplitMissiles(
       splitAfter: 0,
       groundFireRadius: parent.groundFireRadius * 0.65,
       groundFireDuration: parent.groundFireDuration * 0.7,
+      variant: parent.variant,
+      homingDelayMs: parent.homingDelayTimer,
+      obstacleGraceMs: parent.obstacleGraceTimer,
+      splashRadius: parent.splashRadius * 0.75,
     });
 
     const childLifetime = (SPLIT_MAX_RANGE / child.speed) * (1000 / 60);
@@ -141,4 +163,73 @@ function _spawnSplitMissiles(
     lifetime: 250,
     maxLifetime: 250,
   });
+}
+
+function _applySplashDamage(
+  game: Game,
+  x: number,
+  y: number,
+  radius: number,
+  baseDamage: number,
+  ownerId: number,
+  directTarget: (typeof game.zombies[0]) | null,
+): void {
+  if (radius <= 0) return;
+
+  for (const zombie of game.zombies) {
+    if (zombie.hp <= 0 || zombie === directTarget) continue;
+
+    const dist = Math.hypot(zombie.x - x, zombie.y - y);
+    if (dist >= radius) continue;
+
+    const splashDamage = Math.max(1, baseDamage * 0.45 * (1 - dist / radius));
+    zombie.hp -= splashDamage;
+    zombie.flashWhiteTimer = Math.max(zombie.flashWhiteTimer, 70);
+    if (zombie.hp <= 0) {
+      game.queueZombieDeath(zombie, ownerId, 5, Math.atan2(zombie.y - y, zombie.x - x));
+    }
+  }
+}
+
+function _spawnEnergyImpactEffects(
+  game: Game,
+  x: number,
+  y: number,
+  isLargeBurst: boolean,
+): void {
+  game.hitEffects.push({
+    x,
+    y,
+    type: 'blue_circle',
+    lifetime: isLargeBurst ? 260 : 150,
+    maxLifetime: isLargeBurst ? 260 : 150,
+  });
+  game.hitEffects.push({
+    x,
+    y,
+    type: 'white_sparks',
+    lifetime: isLargeBurst ? 260 : 140,
+    maxLifetime: isLargeBurst ? 260 : 140,
+  });
+  game.hitEffects.push({
+    x,
+    y,
+    type: 'green_electricity',
+    lifetime: isLargeBurst ? 220 : 140,
+    maxLifetime: isLargeBurst ? 220 : 140,
+  });
+
+  const sparkCount = isLargeBurst ? 6 : 3;
+  for (let i = 0; i < sparkCount; i++) {
+    const angle = (i / sparkCount) * Math.PI * 2 + Math.random() * 0.5;
+    const distance = isLargeBurst ? 10 + Math.random() * 16 : 4 + Math.random() * 8;
+    game.hitEffects.push({
+      x: x + Math.cos(angle) * distance,
+      y: y + Math.sin(angle) * distance,
+      type: 'arc_spark',
+      lifetime: isLargeBurst ? 180 : 120,
+      maxLifetime: isLargeBurst ? 180 : 120,
+      radius: isLargeBurst ? 2.5 : 2,
+    });
+  }
 }

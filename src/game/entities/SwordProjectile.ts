@@ -67,6 +67,7 @@ export class SwordProjectile {
 
   // Visual rotation accumulator (for spinning animation)
   visualAngle: number = 0;
+  altarProcConsumed: boolean = false;
 
   // 飛行殘影軌跡（只有 level 4 base 武士刀使用）
   // 記錄過去 800ms 內的位置，用來繪製 Hamon 流光殘影

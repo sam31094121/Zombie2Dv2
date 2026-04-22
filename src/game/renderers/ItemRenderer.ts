@@ -54,6 +54,7 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
     if (item.type === 'weapon_gun')   glowColor = 'rgba(255,150,0,0.5)';
     if (item.type === 'speed')        glowColor = 'rgba(0,255,255,0.5)';
     if (item.type === 'shield')       glowColor = 'rgba(0,100,255,0.5)';
+    if (item.type === 'magnet')       glowColor = 'rgba(255,50,50,0.5)';
     ctx.shadowColor = glowColor; ctx.shadowBlur = 15;
 
     if (item.type === 'weapon_sword') {
@@ -134,6 +135,32 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
       ctx.fillStyle = '#64b5f6';
       ctx.beginPath(); ctx.moveTo(0,-6); ctx.lineTo(6,-1); ctx.lineTo(5,6); ctx.lineTo(0,10); ctx.lineTo(-5,6); ctx.lineTo(-6,-1); ctx.fill();
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0,2,3,0,Math.PI*2); ctx.fill();
+    } else if (item.type === 'magnet') {
+      ctx.fillStyle = '#e53935'; // Red body
+      ctx.beginPath();
+      ctx.arc(0, -6, 12, Math.PI, 0); // Outer curve
+      ctx.lineTo(12, 6);
+      ctx.lineTo(6, 6);
+      ctx.lineTo(6, -6);
+      ctx.arc(0, -6, 6, 0, Math.PI, true); // Inner curve
+      ctx.lineTo(-6, 6);
+      ctx.lineTo(-12, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      // Silver tips
+      ctx.fillStyle = '#e0e0e0';
+      ctx.fillRect(-12, 6, 6, 6);
+      ctx.fillRect(6, 6, 6, 6);
+      
+      // Highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(0, -6, 9, Math.PI, 0);
+      ctx.lineTo(9,-6);
+      ctx.arc(0, -6, 3, 0, Math.PI, true);
+      ctx.closePath();
+      ctx.fill();
     }
   }
 

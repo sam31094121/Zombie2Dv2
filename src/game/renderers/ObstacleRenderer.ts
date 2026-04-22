@@ -6,11 +6,15 @@ import { Obstacle } from '../map/Obstacle';
 import { Player } from '../Player';
 
 export function drawObstacle(obs: Obstacle, ctx: CanvasRenderingContext2D, players?: Player[]): void {
+  if (obs.type === 'vending_machine' && obs.isDestroyed && obs.getDestroyedVisualAlpha() <= 0) return;
+
   if (obs.isDestroyed) {
-    if (obs.type !== 'explosive_barrel' && obs.type !== 'vending_machine' && obs.type !== 'tombstone') {
-      drawRubble(obs, ctx);
+    if (obs.type === 'vending_machine') {
+      // fall through — drawVendingMachine renders its own destroyed state
+    } else {
+      if (obs.type !== 'explosive_barrel' && obs.type !== 'tombstone') drawRubble(obs, ctx);
+      return;
     }
-    return;
   }
 
   ctx.save();
@@ -29,7 +33,7 @@ export function drawObstacle(obs: Obstacle, ctx: CanvasRenderingContext2D, playe
   else if (obs.type === 'vending_machine')  drawVendingMachine(obs, ctx, cx, cy, r, shadowOffsetX, shadowOffsetY);
   else if (obs.type === 'container')        drawContainer(obs, ctx, shadowOffsetX, shadowOffsetY);
   else if (obs.type === 'altar')            drawAltar(obs, ctx, cx, cy, r, shadowOffsetX, shadowOffsetY);
-  else if (obs.type === 'monolith')         drawMonolith(obs, ctx, cx, cy, r, shadowOffsetX, shadowOffsetY);
+  else if (obs.type === 'monolith')         drawMonolithCannon(obs, ctx, cx, cy, r, shadowOffsetX, shadowOffsetY);
   else if (obs.type === 'tree') {
     const trunkRadius = r * 0.3;
     ctx.beginPath();
@@ -248,41 +252,83 @@ function drawElectricFence(obs: Obstacle, ctx: CanvasRenderingContext2D, sox: nu
   }
 }
 
-function drawExplosiveBarrel(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, sox: number, soy: number) {
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+function drawExplosiveBarrel(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, _sox: number, _soy: number) {
+  const vr = r * 1.7; // visual radius larger than collision radius
+  const t = Date.now();
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.arc(cx + sox, cy + soy, r, 0, Math.PI * 2);
+  ctx.ellipse(cx, cy + vr * 0.58, vr * 0.74, vr * 0.32, 0, 0, Math.PI * 2);
   ctx.fill();
+
   if (obs.isTriggered) {
-    const flash = Math.sin(Date.now() / 30) > 0;
-    ctx.fillStyle = flash ? '#ff0000' : '#d32f2f';
-    const scale = 1 + Math.sin(Date.now() / 30) * 0.15;
+    // Pulsing red-hot explosion warning
+    const pulse = Math.sin(t / 40);
+    const scale = 1 + pulse * 0.22;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
+    // Outer glow
+    const grd = ctx.createRadialGradient(0, 0, vr * 0.3, 0, 0, vr * 1.4);
+    grd.addColorStop(0, 'rgba(255,200,0,0.7)');
+    grd.addColorStop(0.5, 'rgba(255,60,0,0.4)');
+    grd.addColorStop(1, 'rgba(255,0,0,0)');
+    ctx.fillStyle = grd;
     ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.arc(0, 0, vr * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Body
+    ctx.fillStyle = pulse > 0 ? '#ff1a00' : '#cc0000';
+    ctx.strokeStyle = '#ff6600';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, vr, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
   } else {
-    ctx.fillStyle = '#d32f2f';
+    // Main body — dark red steel barrel
+    const bodyGrd = ctx.createRadialGradient(cx - vr * 0.3, cy - vr * 0.3, vr * 0.1, cx, cy, vr);
+    bodyGrd.addColorStop(0, '#ef5350');
+    bodyGrd.addColorStop(0.6, '#c62828');
+    bodyGrd.addColorStop(1, '#7f0000');
+    ctx.fillStyle = bodyGrd;
+    ctx.strokeStyle = '#421010';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.arc(cx, cy, vr, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
-  ctx.strokeStyle = '#000';
+
+  // Steel bands — horizontal stripes across the top-down barrel
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
   ctx.lineWidth = 3;
-  ctx.strokeStyle = '#1a1a1a';
-  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  for (const dy of [-vr * 0.38, 0, vr * 0.38]) {
+    const hw = Math.sqrt(Math.max(0, vr * vr - dy * dy)) * 0.92;
+    ctx.beginPath();
+    ctx.moveTo(cx - hw, cy + dy);
+    ctx.lineTo(cx + hw, cy + dy);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+
+  // Hazard ☠ label
+  if (!obs.isTriggered) {
+    ctx.fillStyle = '#ffeb3b';
+    ctx.font = `bold ${Math.round(vr * 0.9)}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('☠', cx, cy + 1);
+  }
+
+  // Top cap highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.8, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = '#ffeb3b';
-  ctx.font = 'bold 12px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('☠', cx, cy + 5);
+  ctx.ellipse(cx - vr * 0.18, cy - vr * 0.3, vr * 0.35, vr * 0.18, -0.5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawStreetlight(_obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, _r: number, _sox: number, _soy: number) {
@@ -353,28 +399,161 @@ function drawTombstone(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number,
   ctx.strokeRect(cx - barW / 2, cy - 38, barW, barH);
 }
 
-function drawVendingMachine(obs: Obstacle, ctx: CanvasRenderingContext2D, _cx: number, _cy: number, _r: number, sox: number, soy: number) {
+function drawVendingMachine(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, _r: number, sox: number, soy: number) {
+  const W = obs.width;
+  const H = obs.height;
+  const x = obs.x;
+  const y = obs.y;
+
+  if (obs.isDestroyed) {
+    const alpha = obs.getDestroyedVisualAlpha();
+    if (alpha <= 0) return;
+
+    // Knocked-over wreckage
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.translate(cx, cy + H * 0.3);
+    ctx.rotate(0.42); // tipped over
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(-W / 2 + 4, -H * 0.28 + 4, W, H * 0.55);
+    ctx.fillStyle = '#7f1212';
+    ctx.strokeStyle = '#2a0000';
+    ctx.lineWidth = 3;
+    ctx.fillRect(-W / 2, -H * 0.28, W, H * 0.55);
+    ctx.strokeRect(-W / 2, -H * 0.28, W, H * 0.55);
+    // Shattered glass panel
+    ctx.fillStyle = 'rgba(150,210,255,0.18)';
+    ctx.fillRect(-W / 2 + 4, -H * 0.25, W - 8, H * 0.32);
+    ctx.strokeStyle = 'rgba(180,230,255,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const bx = -W / 2 + 4 + (i % 2) * (W * 0.4) + Math.sin(obs.seed + i) * 8;
+      const by = -H * 0.22 + Math.floor(i / 2) * (H * 0.15) + Math.cos(obs.seed + i) * 4;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + 8 + Math.sin(obs.seed * i) * 5, by + 5);
+      ctx.lineTo(bx - 3, by + 10);
+      ctx.stroke();
+    }
+    // Scattered items on ground
+    const itemColors = ['#ffeb3b', '#4caf50', '#f44336', '#2196f3'];
+    for (let i = 0; i < 5; i++) {
+      const ix = Math.sin(obs.seed + i * 2.3) * W * 0.8;
+      const iy = Math.cos(obs.seed + i * 1.7) * H * 0.4 + H * 0.3;
+      ctx.fillStyle = itemColors[i % itemColors.length];
+      ctx.beginPath();
+      ctx.arc(ix, iy, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
+  // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.fillRect(obs.x + sox, obs.y + soy, obs.width, obs.height);
-  ctx.fillStyle = '#c62828';
-  ctx.strokeStyle = '#000';
+  ctx.fillRect(x + sox * 0.8, y + soy * 0.8, W, H);
+
+  // Main body
+  ctx.fillStyle = '#b71c1c';
+  ctx.strokeStyle = '#1a0000';
   ctx.lineWidth = 4;
-  ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-  ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height / 2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(obs.x + 10, obs.y + 10);
-  ctx.lineTo(obs.x + 30, obs.y + 30);
-  ctx.moveTo(obs.x + 25, obs.y + 10);
-  ctx.lineTo(obs.x + 15, obs.y + 25);
+  ctx.roundRect(x, y, W, H, 6);
+  ctx.fill();
   ctx.stroke();
+
+  // Top brand strip
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.roundRect(x + 3, y + 3, W - 6, H * 0.14, [6, 6, 0, 0]);
+  ctx.fill();
+
+  // Brand text "VEND"
   ctx.fillStyle = '#ffeb3b';
-  ctx.fillRect(obs.x + 5, obs.y + obs.height - 15, 10, 10);
-  ctx.fillStyle = '#4caf50';
-  ctx.fillRect(obs.x + 20, obs.y + obs.height - 15, 10, 10);
+  ctx.font = `bold ${Math.round(H * 0.1)}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('VEND', cx, y + H * 0.08);
+
+  // Glass display window
+  const winX = x + W * 0.1;
+  const winY = y + H * 0.18;
+  const winW = W * 0.8;
+  const winH = H * 0.46;
+  ctx.fillStyle = '#0d1b2a';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  ctx.fillRect(winX, winY, winW, winH);
+  ctx.strokeRect(winX, winY, winW, winH);
+
+  // Items in window — 2 rows × 3 cols
+  const itemCols = 3;
+  const itemRows = 2;
+  const cellW = winW / itemCols;
+  const cellH = winH / itemRows;
+  const itemDefs = [
+    { color: '#ffeb3b', label: '★' },
+    { color: '#4caf50', label: '+' },
+    { color: '#f44336', label: '♦' },
+    { color: '#2196f3', label: '●' },
+    { color: '#ff9800', label: '▲' },
+    { color: '#e91e63', label: '♥' },
+  ];
+  for (let row = 0; row < itemRows; row++) {
+    for (let col = 0; col < itemCols; col++) {
+      const idx = row * itemCols + col;
+      const item = itemDefs[idx];
+      const ix = winX + cellW * col + cellW / 2;
+      const iy = winY + cellH * row + cellH / 2;
+      ctx.fillStyle = item.color;
+      ctx.font = `bold ${Math.round(cellH * 0.45)}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(item.label, ix, iy);
+    }
+  }
+
+  // Glass glare
+  ctx.fillStyle = 'rgba(255,255,255,0.07)';
+  ctx.fillRect(winX + 2, winY + 2, winW * 0.35, winH);
+
+  // Bottom panel: slot + buttons
+  const panelY = y + H * 0.68;
+  const panelH = H * 0.28;
+  ctx.fillStyle = '#7f1212';
+  ctx.fillRect(x + 3, panelY, W - 6, panelH);
+
+  // Coin slot
+  ctx.fillStyle = '#111';
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(cx - 8, panelY + panelH * 0.12, 16, 5, 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Dispense tray
+  ctx.fillStyle = '#1a1a1a';
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x + W * 0.15, panelY + panelH * 0.55, W * 0.7, panelH * 0.35, 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // HP bar
+  const hpRatio = Math.max(0, obs.hp / Math.max(1, obs.maxHp));
+  const barW = W - 8;
+  const barX = x + 4;
+  const barY = y - 9;
+  ctx.fillStyle = 'rgba(10,10,10,0.8)';
+  ctx.fillRect(barX, barY, barW, 5);
+  const hpColor = hpRatio > 0.5 ? '#4caf50' : hpRatio > 0.25 ? '#ff9800' : '#f44336';
+  ctx.fillStyle = hpColor;
+  ctx.fillRect(barX, barY, barW * hpRatio, 5);
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(barX, barY, barW, 5);
 }
 
 function drawContainer(obs: Obstacle, ctx: CanvasRenderingContext2D, sox: number, soy: number) {
@@ -395,69 +574,94 @@ function drawContainer(obs: Obstacle, ctx: CanvasRenderingContext2D, sox: number
   }
 }
 
-function drawAltar(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, _r: number, sox: number, soy: number) {
-  const w = obs.width;
-  const h = obs.height;
-  const baseW = w * 0.96;
-  const baseH = h * 0.54;
-  const topW = w * 0.64;
-  const topH = h * 0.2;
-  const baseY = cy + h * 0.08;
-  const topY = cy - h * 0.06;
-  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 260);
+function drawAltar(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, _r: number, _sox: number, _soy: number) {
+  if (obs.isDestroyed) return;
+  const t = Date.now();
+  const pulse = 0.5 + 0.5 * Math.sin(t / 320);
+  const rotate = (t / 3000) % (Math.PI * 2);
+  const RANGE = 120;
 
-  ctx.fillStyle = 'rgba(0,0,0,0.26)';
+  // Floor range indicator — subtle glow ring
+  const rangeGrd = ctx.createRadialGradient(cx, cy, RANGE * 0.7, cx, cy, RANGE);
+  rangeGrd.addColorStop(0, `rgba(255,100,0,${0.06 + pulse * 0.04})`);
+  rangeGrd.addColorStop(1, 'rgba(255,100,0,0)');
+  ctx.fillStyle = rangeGrd;
   ctx.beginPath();
-  ctx.ellipse(cx + sox, cy + soy + h * 0.2, baseW * 0.45, baseH * 0.28, 0, 0, Math.PI * 2);
+  ctx.arc(cx, cy, RANGE, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#3f312c';
-  ctx.strokeStyle = '#120d0b';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.roundRect(cx - baseW / 2, baseY - baseH / 2, baseW, baseH, 10);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = '#5f463a';
-  ctx.beginPath();
-  ctx.roundRect(cx - topW / 2, topY - topH / 2, topW, topH, 8);
-  ctx.fill();
-
-  ctx.fillStyle = '#6c5244';
-  ctx.beginPath();
-  ctx.moveTo(cx - topW * 0.28, topY - topH * 0.55);
-  ctx.lineTo(cx - topW * 0.18, topY - topH * 1.25);
-  ctx.lineTo(cx + topW * 0.18, topY - topH * 1.25);
-  ctx.lineTo(cx + topW * 0.28, topY - topH * 0.55);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = `rgba(210, 40, 40, ${0.2 + pulse * 0.18})`;
-  ctx.beginPath();
-  ctx.roundRect(cx - topW * 0.38, topY - topH * 0.28, topW * 0.76, topH * 0.56, 6);
-  ctx.fill();
-
-  ctx.strokeStyle = `rgba(255, 110, 110, ${0.28 + pulse * 0.22})`;
+  // Outer ritual ring
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotate);
+  ctx.strokeStyle = `rgba(230,80,20,${0.35 + pulse * 0.2})`;
   ctx.lineWidth = 2;
+  ctx.setLineDash([6, 8]);
   ctx.beginPath();
-  ctx.moveTo(cx - topW * 0.16, topY);
-  ctx.lineTo(cx + topW * 0.16, topY);
-  ctx.moveTo(cx, topY - topH * 0.22);
-  ctx.lineTo(cx, topY + topH * 0.22);
+  ctx.arc(0, 0, 36, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Rune triangles
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    const x1 = Math.cos(a) * 36, y1 = Math.sin(a) * 36;
+    const x2 = Math.cos(a + (Math.PI * 2 / 3)) * 36, y2 = Math.sin(a + (Math.PI * 2 / 3)) * 36;
+    ctx.strokeStyle = `rgba(255,140,60,${0.4 + pulse * 0.3})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Inner stone base — top-down flat circle
+  const stoneGrd = ctx.createRadialGradient(cx, cy - 4, 6, cx, cy, 22);
+  stoneGrd.addColorStop(0, '#5c3d2e');
+  stoneGrd.addColorStop(1, '#2e1a10');
+  ctx.fillStyle = stoneGrd;
+  ctx.strokeStyle = '#1a0a05';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+  ctx.fill();
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(255, 180, 140, 0.14)';
-  ctx.lineWidth = 1.5;
+  // Central flame cluster (floor-level fire totem)
+  ctx.save();
+  ctx.translate(cx, cy);
+  for (let i = 0; i < 5; i++) {
+    const fa = (i / 5) * Math.PI * 2 + rotate * 0.4;
+    const fr = 6 + Math.sin(t / 200 + i) * 3;
+    const fx = Math.cos(fa) * fr;
+    const fy = Math.sin(fa) * fr;
+    const fh = 9 + Math.sin(t / 150 + i * 1.7) * 4;
+    const fireGrd = ctx.createRadialGradient(fx, fy, 0, fx, fy - fh, fh);
+    fireGrd.addColorStop(0, 'rgba(255,220,50,0.9)');
+    fireGrd.addColorStop(0.4, 'rgba(255,80,10,0.7)');
+    fireGrd.addColorStop(1, 'rgba(200,20,0,0)');
+    ctx.fillStyle = fireGrd;
+    ctx.beginPath();
+    ctx.ellipse(fx, fy - fh * 0.3, 5, fh * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Core hot spot
+  ctx.fillStyle = `rgba(255,255,180,${0.7 + pulse * 0.3})`;
   ctx.beginPath();
-  ctx.moveTo(cx - baseW * 0.32, baseY - baseH * 0.08);
-  ctx.lineTo(cx + baseW * 0.32, baseY - baseH * 0.08);
-  ctx.moveTo(cx - baseW * 0.22, baseY + baseH * 0.1);
-  ctx.lineTo(cx + baseW * 0.22, baseY + baseH * 0.1);
-  ctx.stroke();
+  ctx.arc(0, 0, 4 + pulse * 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
-function drawMonolith(_obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, sox: number, soy: number) {
+function drawMonolith(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, sox: number, soy: number) {
+  const t = Date.now();
+  const CHARGE_MAX = 20;
+  const chargeRatio = Math.min(1, (obs.monolithCharge ?? 0) / CHARGE_MAX);
+  const pulse = 0.5 + 0.5 * Math.sin(t / 220);
+  const nearFull = chargeRatio > 0.7;
+
+  // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.5)';
   ctx.beginPath();
   ctx.moveTo(cx + sox - r, cy + soy);
@@ -466,9 +670,27 @@ function drawMonolith(_obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number,
   ctx.lineTo(cx + sox,     cy + soy + r);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#263238';
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 4;
+
+  // Outer charge aura — grows brighter as charge fills
+  if (chargeRatio > 0) {
+    const auraAlpha = chargeRatio * (nearFull ? 0.45 + pulse * 0.25 : 0.25);
+    const auraGrd = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 2.2);
+    auraGrd.addColorStop(0, `rgba(80,160,255,${auraAlpha})`);
+    auraGrd.addColorStop(1, 'rgba(40,80,200,0)');
+    ctx.fillStyle = auraGrd;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Main crystal body — diamond / obelisk shape
+  const bodyGrd = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+  bodyGrd.addColorStop(0, '#1a2a3f');
+  bodyGrd.addColorStop(0.4, '#263f5a');
+  bodyGrd.addColorStop(1, '#0d1a2a');
+  ctx.fillStyle = bodyGrd;
+  ctx.strokeStyle = '#061018';
+  ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(cx - r, cy);
   ctx.lineTo(cx,     cy - r);
@@ -477,15 +699,208 @@ function drawMonolith(_obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number,
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  ctx.strokeStyle = '#fff';
-  ctx.shadowColor = '#fff';
-  ctx.shadowBlur = 10;
+
+  // Inner crystal facets
+  ctx.strokeStyle = `rgba(100,180,255,0.2)`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.5, cy);
+  ctx.lineTo(cx, cy - r * 0.8);
+  ctx.lineTo(cx + r * 0.5, cy);
+  ctx.moveTo(cx - r * 0.5, cy);
+  ctx.lineTo(cx, cy + r * 0.8);
+  ctx.lineTo(cx + r * 0.5, cy);
+  ctx.stroke();
+
+  // Energy core — glows blue, brightens when charged
+  const coreRadius = 6 + chargeRatio * 6;
+  const coreAlpha = 0.5 + chargeRatio * 0.5;
+  ctx.shadowColor = '#60b0ff';
+  ctx.shadowBlur = 8 + chargeRatio * 14;
+  const coreGrd = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
+  coreGrd.addColorStop(0, `rgba(200,230,255,${coreAlpha})`);
+  coreGrd.addColorStop(0.5, `rgba(80,160,255,${coreAlpha * 0.8})`);
+  coreGrd.addColorStop(1, 'rgba(40,80,200,0)');
+  ctx.fillStyle = coreGrd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Charge arc ring — partial circle showing charge level
+  if (chargeRatio > 0) {
+    const arcColor = nearFull
+      ? `rgba(160,220,255,${0.7 + pulse * 0.3})`
+      : `rgba(80,160,255,${0.5 + chargeRatio * 0.3})`;
+    ctx.strokeStyle = arcColor;
+    ctx.lineWidth = nearFull ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 5, -Math.PI / 2, -Math.PI / 2 + chargeRatio * Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Orbiting energy sparks when nearly full
+  if (nearFull) {
+    const orbitCount = 3;
+    for (let i = 0; i < orbitCount; i++) {
+      const oa = (t / 400 + (i / orbitCount) * Math.PI * 2);
+      const ox = cx + Math.cos(oa) * (r + 8);
+      const oy = cy + Math.sin(oa) * (r + 8);
+      ctx.fillStyle = `rgba(160,220,255,${0.6 + pulse * 0.4})`;
+      ctx.shadowColor = '#60b0ff';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(ox, oy, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+}
+
+function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, sox: number, soy: number) {
+  const t = Date.now();
+  const chargeMax = 10;
+  const chargeRatio = Math.min(1, (obs.monolithCharge ?? 0) / chargeMax);
+  const chargeVisualRatio = obs.monolithVolleyShotsRemaining > 0 ? 1 : chargeRatio;
+  const pulse = 0.55 + 0.45 * Math.sin(t / 180);
+  const launchRatio = Math.max(0, Math.min(1, obs.monolithLaunchPulse / 160));
+  const facing = obs.monolithFacingAngle ?? -Math.PI / 2;
+  const recoil = launchRatio * 5.5;
+  const nearFull = chargeVisualRatio > 0.72 || obs.monolithVolleyShotsRemaining > 0;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.beginPath();
+  ctx.ellipse(cx + sox * 0.5, cy + soy * 0.45, r * 1.25, r * 0.72, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const baseGlow = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r * 1.9);
+  baseGlow.addColorStop(0, `rgba(72,145,255,${0.10 + chargeVisualRatio * 0.15})`);
+  baseGlow.addColorStop(1, 'rgba(10,28,68,0)');
+  ctx.fillStyle = baseGlow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 1.9, 0, Math.PI * 2);
+  ctx.fill();
+
+  const baseGrd = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  baseGrd.addColorStop(0, '#101a30');
+  baseGrd.addColorStop(0.5, '#203352');
+  baseGrd.addColorStop(1, '#08111f');
+  ctx.fillStyle = baseGrd;
+  ctx.strokeStyle = '#020811';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(99,179,255,${0.28 + chargeVisualRatio * 0.35})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(cx - 10, cy - 10);
-  ctx.lineTo(cx + 10, cy + 10);
-  ctx.moveTo(cx + 10, cy - 10);
-  ctx.lineTo(cx - 10, cy + 10);
+  ctx.arc(cx, cy, r * 0.66, -Math.PI / 2, -Math.PI / 2 + chargeVisualRatio * Math.PI * 2);
   ctx.stroke();
+
+  ctx.fillStyle = '#0e182c';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  const coreRadius = 6 + chargeVisualRatio * 5 + launchRatio * 3;
+  const coreGrd = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
+  coreGrd.addColorStop(0, `rgba(248,252,255,${0.85 + chargeVisualRatio * 0.15})`);
+  coreGrd.addColorStop(0.45, `rgba(96,190,255,${0.75 + chargeVisualRatio * 0.2})`);
+  coreGrd.addColorStop(1, 'rgba(19,77,196,0)');
+  ctx.shadowColor = '#67c3ff';
+  ctx.shadowBlur = 10 + chargeVisualRatio * 12 + launchRatio * 8;
+  ctx.fillStyle = coreGrd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+  ctx.fill();
   ctx.shadowBlur = 0;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(facing);
+  ctx.translate(-recoil, 0);
+
+  ctx.fillStyle = '#0d1526';
+  ctx.beginPath();
+  ctx.roundRect(-12, -12, 26, 24, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#06101d';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#173252';
+  ctx.beginPath();
+  ctx.roundRect(-6, -10, 26, 20, 8);
+  ctx.fill();
+
+  const barrelGrd = ctx.createLinearGradient(8, 0, 42, 0);
+  barrelGrd.addColorStop(0, '#10274a');
+  barrelGrd.addColorStop(0.55, '#25589f');
+  barrelGrd.addColorStop(1, '#7fd5ff');
+  ctx.fillStyle = barrelGrd;
+  ctx.beginPath();
+  ctx.roundRect(8, -7, 34, 14, 7);
+  ctx.fill();
+  ctx.strokeStyle = '#041223';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  ctx.fillStyle = `rgba(225,248,255,${0.2 + chargeVisualRatio * 0.32 + launchRatio * 0.25})`;
+  ctx.beginPath();
+  ctx.roundRect(12, -4, 18, 4, 3);
+  ctx.fill();
+
+  ctx.fillStyle = '#244873';
+  ctx.beginPath();
+  ctx.moveTo(10, -11);
+  ctx.lineTo(22, -18);
+  ctx.lineTo(26, -12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(10, 11);
+  ctx.lineTo(22, 18);
+  ctx.lineTo(26, 12);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#0c1a30';
+  ctx.beginPath();
+  ctx.arc(42, 0, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#7fd5ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const muzzleGrd = ctx.createRadialGradient(42, 0, 0, 42, 0, 10 + launchRatio * 6);
+  muzzleGrd.addColorStop(0, `rgba(248,252,255,${0.8 + launchRatio * 0.2})`);
+  muzzleGrd.addColorStop(0.45, `rgba(120,220,255,${0.65 + chargeVisualRatio * 0.2})`);
+  muzzleGrd.addColorStop(1, 'rgba(28,93,255,0)');
+  ctx.fillStyle = muzzleGrd;
+  ctx.beginPath();
+  ctx.arc(42, 0, 10 + launchRatio * 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (launchRatio > 0) {
+    ctx.fillStyle = `rgba(96,190,255,${0.24 + launchRatio * 0.32})`;
+    ctx.beginPath();
+    ctx.ellipse(58, 0, 22 + launchRatio * 10, 8 + launchRatio * 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  if (nearFull) {
+    for (let i = 0; i < 3; i++) {
+      const orbitAngle = (t / 360) + (i / 3) * Math.PI * 2;
+      const ox = cx + Math.cos(orbitAngle) * (r + 10);
+      const oy = cy + Math.sin(orbitAngle) * (r + 10);
+      ctx.fillStyle = `rgba(182,230,255,${0.45 + pulse * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(ox, oy, 3 + pulse, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }
