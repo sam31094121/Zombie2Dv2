@@ -37,6 +37,7 @@ export class Obstacle {
   monolithTargetX: number = 0;
   monolithTargetY: number = 0;
   monolithVolleyOwnerId: number = 0;
+  monolithOverheatTimer: number = 0;
   destroyedAt: number = 0;
   wreckFadeDelayMs: number = 2200;
   wreckFadeDurationMs: number = 1800;
@@ -102,6 +103,7 @@ export class Obstacle {
     if (this.type === 'monolith') {
       this.monolithShotCooldown = Math.max(0, this.monolithShotCooldown - dt);
       this.monolithLaunchPulse = Math.max(0, this.monolithLaunchPulse - dt);
+      this.monolithOverheatTimer = Math.max(0, this.monolithOverheatTimer - dt);
     }
   }
 

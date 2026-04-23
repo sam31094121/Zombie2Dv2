@@ -827,9 +827,16 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
   ctx.ellipse(cx + sox * 0.5, cy + soy * 0.45, r * 1.25, r * 0.72, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  const isOverheated = (obs.monolithOverheatTimer ?? 0) > 0;
   const baseGlow = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r * 1.9);
-  baseGlow.addColorStop(0, `rgba(72,145,255,${0.10 + chargeVisualRatio * 0.15})`);
-  baseGlow.addColorStop(1, 'rgba(10,28,68,0)');
+  if (isOverheated) {
+    const flash = 0.5 + 0.5 * Math.sin(t / 60); // Fast red flash
+    baseGlow.addColorStop(0, `rgba(255,50,50,${0.10 + flash * 0.2})`);
+    baseGlow.addColorStop(1, 'rgba(68,10,10,0)');
+  } else {
+    baseGlow.addColorStop(0, `rgba(72,145,255,${0.10 + chargeVisualRatio * 0.15})`);
+    baseGlow.addColorStop(1, 'rgba(10,28,68,0)');
+  }
   ctx.fillStyle = baseGlow;
   ctx.beginPath();
   ctx.arc(cx, cy, r * 1.9, 0, Math.PI * 2);
@@ -847,10 +854,12 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
   ctx.fill();
   ctx.stroke();
 
-  ctx.strokeStyle = `rgba(99,179,255,${0.28 + chargeVisualRatio * 0.35})`;
+  ctx.strokeStyle = isOverheated 
+    ? `rgba(255,80,80,${0.4 + 0.4 * Math.sin(t / 60)})`
+    : `rgba(99,179,255,${0.28 + chargeVisualRatio * 0.35})`;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.66, -Math.PI / 2, -Math.PI / 2 + chargeVisualRatio * Math.PI * 2);
+  ctx.arc(cx, cy, r * 0.66, -Math.PI / 2, -Math.PI / 2 + (isOverheated ? 1 : chargeVisualRatio) * Math.PI * 2);
   ctx.stroke();
 
   ctx.fillStyle = '#0e182c';
@@ -860,10 +869,18 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
 
   const coreRadius = 6 + chargeVisualRatio * 5 + launchRatio * 3;
   const coreGrd = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
-  coreGrd.addColorStop(0, `rgba(248,252,255,${0.85 + chargeVisualRatio * 0.15})`);
-  coreGrd.addColorStop(0.45, `rgba(96,190,255,${0.75 + chargeVisualRatio * 0.2})`);
-  coreGrd.addColorStop(1, 'rgba(19,77,196,0)');
-  ctx.shadowColor = '#67c3ff';
+  if (isOverheated) {
+    const flash = 0.5 + 0.5 * Math.sin(t / 60);
+    coreGrd.addColorStop(0, `rgba(255,200,200,${0.85 + flash * 0.15})`);
+    coreGrd.addColorStop(0.45, `rgba(255,50,50,${0.75 + flash * 0.2})`);
+    coreGrd.addColorStop(1, 'rgba(196,20,20,0)');
+    ctx.shadowColor = '#ff3333';
+  } else {
+    coreGrd.addColorStop(0, `rgba(248,252,255,${0.85 + chargeVisualRatio * 0.15})`);
+    coreGrd.addColorStop(0.45, `rgba(96,190,255,${0.75 + chargeVisualRatio * 0.2})`);
+    coreGrd.addColorStop(1, 'rgba(19,77,196,0)');
+    ctx.shadowColor = '#67c3ff';
+  }
   ctx.shadowBlur = 10 + chargeVisualRatio * 12 + launchRatio * 8;
   ctx.fillStyle = coreGrd;
   ctx.beginPath();
@@ -890,9 +907,15 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
   ctx.fill();
 
   const barrelGrd = ctx.createLinearGradient(8, 0, 42, 0);
-  barrelGrd.addColorStop(0, '#10274a');
-  barrelGrd.addColorStop(0.55, '#25589f');
-  barrelGrd.addColorStop(1, '#7fd5ff');
+  if (isOverheated) {
+    barrelGrd.addColorStop(0, '#4a1010');
+    barrelGrd.addColorStop(0.55, '#9f2525');
+    barrelGrd.addColorStop(1, '#ff7f7f');
+  } else {
+    barrelGrd.addColorStop(0, '#10274a');
+    barrelGrd.addColorStop(0.55, '#25589f');
+    barrelGrd.addColorStop(1, '#7fd5ff');
+  }
   ctx.fillStyle = barrelGrd;
   ctx.beginPath();
   ctx.roundRect(8, -7, 34, 14, 7);
@@ -901,7 +924,9 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
   ctx.lineWidth = 2.5;
   ctx.stroke();
 
-  ctx.fillStyle = `rgba(225,248,255,${0.2 + chargeVisualRatio * 0.32 + launchRatio * 0.25})`;
+  ctx.fillStyle = isOverheated
+    ? `rgba(255,180,180,${0.4 + 0.4 * Math.sin(t / 60)})`
+    : `rgba(225,248,255,${0.2 + chargeVisualRatio * 0.32 + launchRatio * 0.25})`;
   ctx.beginPath();
   ctx.roundRect(12, -4, 18, 4, 3);
   ctx.fill();
@@ -920,25 +945,34 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = '#0c1a30';
+  ctx.fillStyle = isOverheated ? '#300c0c' : '#0c1a30';
   ctx.beginPath();
   ctx.arc(42, 0, 8, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#7fd5ff';
+  ctx.strokeStyle = isOverheated ? '#ff7f7f' : '#7fd5ff';
   ctx.lineWidth = 2;
   ctx.stroke();
 
   const muzzleGrd = ctx.createRadialGradient(42, 0, 0, 42, 0, 10 + launchRatio * 6);
-  muzzleGrd.addColorStop(0, `rgba(248,252,255,${0.8 + launchRatio * 0.2})`);
-  muzzleGrd.addColorStop(0.45, `rgba(120,220,255,${0.65 + chargeVisualRatio * 0.2})`);
-  muzzleGrd.addColorStop(1, 'rgba(28,93,255,0)');
+  if (isOverheated) {
+    const flash = 0.5 + 0.5 * Math.sin(t / 60);
+    muzzleGrd.addColorStop(0, `rgba(255,200,200,${0.8 + launchRatio * 0.2})`);
+    muzzleGrd.addColorStop(0.45, `rgba(255,80,80,${0.65 + flash * 0.2})`);
+    muzzleGrd.addColorStop(1, 'rgba(255,28,28,0)');
+  } else {
+    muzzleGrd.addColorStop(0, `rgba(248,252,255,${0.8 + launchRatio * 0.2})`);
+    muzzleGrd.addColorStop(0.45, `rgba(120,220,255,${0.65 + chargeVisualRatio * 0.2})`);
+    muzzleGrd.addColorStop(1, 'rgba(28,93,255,0)');
+  }
   ctx.fillStyle = muzzleGrd;
   ctx.beginPath();
   ctx.arc(42, 0, 10 + launchRatio * 6, 0, Math.PI * 2);
   ctx.fill();
 
   if (launchRatio > 0) {
-    ctx.fillStyle = `rgba(96,190,255,${0.24 + launchRatio * 0.32})`;
+    ctx.fillStyle = isOverheated 
+      ? `rgba(255,80,80,${0.24 + launchRatio * 0.32})`
+      : `rgba(96,190,255,${0.24 + launchRatio * 0.32})`;
     ctx.beginPath();
     ctx.ellipse(58, 0, 22 + launchRatio * 10, 8 + launchRatio * 4, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -946,7 +980,7 @@ function drawMonolithCannon(obs: Obstacle, ctx: CanvasRenderingContext2D, cx: nu
 
   ctx.restore();
 
-  if (nearFull) {
+  if (nearFull && !isOverheated) {
     for (let i = 0; i < 3; i++) {
       const orbitAngle = (t / 360) + (i / 3) * Math.PI * 2;
       const ox = cx + Math.cos(orbitAngle) * (r + 10);

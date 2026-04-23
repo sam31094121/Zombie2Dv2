@@ -3,6 +3,7 @@ export class AudioManager {
   private isInitialized = false;
   private audioBufferCache = new Map<string, AudioBuffer>();
   private audioBufferLoads = new Map<string, Promise<AudioBuffer | null>>();
+  private audioBufferFailed = new Set<string>();
 
   // Master volume
   private masterGain: GainNode | null = null;
@@ -69,6 +70,7 @@ export class AudioManager {
 
   private async preloadBuffer(src: string): Promise<AudioBuffer | null> {
     if (!this.ctx) return null;
+    if (this.audioBufferFailed.has(src)) return null;
     const cached = this.audioBufferCache.get(src);
     if (cached) return cached;
 
@@ -85,6 +87,7 @@ export class AudioManager {
       })
       .catch((error) => {
         console.warn('Failed to preload audio buffer', src, error);
+        this.audioBufferFailed.add(src);
         return null;
       })
       .finally(() => {

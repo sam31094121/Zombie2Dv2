@@ -1966,6 +1966,11 @@ export class Game {
   chargeMonolith(obs: Obstacle, amount: number, ownerId: number, hitX: number, hitY: number) {
     if (obs.isDestroyed || amount <= 0) return;
 
+    if (obs.monolithOverheatTimer > 0) {
+      this.hitEffects.push({ x: hitX, y: hitY, type: 'grey_sparks', lifetime: 100, maxLifetime: 100 });
+      return;
+    }
+
     obs.monolithCharge += amount;
     this.hitEffects.push({ x: hitX, y: hitY, type: 'white_sparks', lifetime: 180, maxLifetime: 180 });
     this.hitEffects.push({ x: hitX, y: hitY, type: 'blue_circle', lifetime: 160, maxLifetime: 160 });
@@ -1997,6 +2002,7 @@ export class Game {
     obs.monolithVolleyOwnerId = ownerId;
     obs.monolithShotCooldown = 160;
     obs.monolithLaunchPulse = 220;
+    obs.monolithOverheatTimer = 160 * 5 + 3500; // 5 shots + 3.5s cooldown
 
     this.hitEffects.push({ x: ocx, y: ocy, type: 'blue_circle', lifetime: 520, maxLifetime: 520 });
     this.hitEffects.push({ x: ocx, y: ocy, type: 'white_sparks', lifetime: 500, maxLifetime: 500 });
@@ -2135,15 +2141,17 @@ export class Game {
 
     ctx.save();
 
-    // Screen Shake
+    // Screen Shake & Pixel snap camera to avoid sub-pixel seam artifacts on tiled ground.
+    let shakeX = 0;
+    let shakeY = 0;
     if (this.shakeTimer > 0) {
       const intensity = 5;
-      ctx.translate((Math.random() - 0.5) * intensity, (Math.random() - 0.5) * intensity);
+      shakeX = Math.round((Math.random() - 0.5) * intensity);
+      shakeY = Math.round((Math.random() - 0.5) * intensity);
     }
 
-    // Pixel snap camera in render path to avoid sub-pixel seam artifacts on tiled ground.
-    const renderCameraX = Math.round(this.camera.x);
-    const renderCameraY = Math.round(this.camera.y);
+    const renderCameraX = Math.round(this.camera.x) - shakeX;
+    const renderCameraY = Math.round(this.camera.y) - shakeY;
     ctx.translate(-renderCameraX, -renderCameraY);
 
     // Draw map (grid and obstacles)

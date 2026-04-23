@@ -9,6 +9,7 @@ export interface WeaponSlot {
   level: number;
   branch: 'A' | 'B' | null;
   lastAttackTime: number;
+  investedCost?: number;
   aimAngle?: number; // 獨立索敵的當前鎖定角度
 }
 

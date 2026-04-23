@@ -6,6 +6,16 @@ import { STAT_REGISTRY } from '../../game/items/StatDefinitions';
 import { ITEM_REGISTRY } from '../../game/items/ItemDefinitions';
 import { WeaponPreviewCanvas } from './WeaponPreviewCanvas';
 import { StarRating } from './StarRating';
+import {
+  ARENA_BRANCH_MAX_LEVEL,
+  canArenaWeaponMerge,
+  formatArenaWeaponLevel,
+  getArenaWeaponInvestedCost,
+  getArenaWeaponMergePreviewLevel,
+  getArenaWeaponSellPrice,
+  weaponCost,
+  willArenaWeaponBranchEvolve,
+} from './arenaWeaponUtils';
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
@@ -25,7 +35,6 @@ export function getWeaponLevel(wave: number): number {
   if (r < 0.05) return 2; if (r < 0.25) return 3; if (r < 0.65) return 4;
   return 5 + Math.floor(Math.random() * 3);
 }
-export function weaponCost(level: number): number { return Math.floor(15 * Math.pow(2, level - 1)); }
 export function drawCards(wave: number, count = 5): ShopCard[] {
   const wc = Math.random() < 0.5 ? Math.floor(count / 2) : Math.ceil(count / 2);
   const ic = count - wc;
@@ -205,7 +214,14 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
   const handleBuyWeapon = (card: WeaponCard) => {
     if (player.materials < card.cost || player.weapons.length >= 6) return;
     player.materials -= card.cost;
-    player.weapons.push({ id: Math.random().toString(36).substr(2, 9), type: card.type, level: card.level, branch: card.branch, lastAttackTime: 0 });
+    player.weapons.push({
+      id: Math.random().toString(36).substr(2, 9),
+      type: card.type,
+      level: card.level,
+      branch: card.branch,
+      lastAttackTime: 0,
+      investedCost: card.cost,
+    });
     audioManager.playPickup(); setShopCards(prev => prev.filter(c => c.id !== card.id)); rerender();
   };
 
@@ -228,10 +244,13 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
   };
 
   const handleInventoryClick = (w: WeaponSlot) => {
-    const match = player.weapons.find(o => o.id !== w.id && o.type === w.type && o.level === w.level && o.branch === w.branch);
+    const match = canArenaWeaponMerge(w)
+      ? player.weapons.find(o => o.id !== w.id && o.type === w.type && o.level === w.level && o.branch === w.branch)
+      : undefined;
     if (match) { setMergePending({ keepId: w.id, removeId: match.id }); return; }
-    const price = Math.floor(weaponCost(w.level) * 0.5);
-    if (window.confirm(`售出 Lv.${w.level} ${w.type === 'sword' ? '劍' : '槍'}${w.branch ?? ''} → 💰${price}?`)) {
+    const price = getArenaWeaponSellPrice(w);
+    const levelLabel = formatArenaWeaponLevel(w.level, w.branch);
+    if (window.confirm(`售出 ${levelLabel} ${w.type === 'sword' ? '劍' : '槍'}${w.branch ?? ''} → 💰${price}?`)) {
       const idx = player.weapons.findIndex(x => x.id === w.id);
       if (idx !== -1) { player.weapons.splice(idx, 1); player.materials += price; }
       audioManager.playPickup(); rerender();
@@ -252,16 +271,26 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
     const keep = player.weapons.find(w => w.id === mergePending.keepId);
     const ri = player.weapons.findIndex(w => w.id === mergePending.removeId);
     if (!keep || ri === -1) { setMergePending(null); return; }
-    player.weapons.splice(ri, 1); keep.level += 1; keep.lastAttackTime = 0;
+    const consumed = player.weapons[ri];
+    if (!consumed) { setMergePending(null); return; }
+    player.weapons.splice(ri, 1);
+    keep.investedCost = getArenaWeaponInvestedCost(keep) + getArenaWeaponInvestedCost(consumed);
+    keep.lastAttackTime = 0;
     audioManager.playPickup(); setMergePending(null);
-    if (keep.level === 5 && keep.branch === null) setBranchPending({ weaponId: keep.id });
-    else rerender();
+    if (willArenaWeaponBranchEvolve(keep)) setBranchPending({ weaponId: keep.id });
+    else {
+      keep.level = Math.min(ARENA_BRANCH_MAX_LEVEL, keep.level + 1);
+      rerender();
+    }
   };
 
   const handleSelectBranch = (branch: 'A' | 'B') => {
     if (!branchPending) return;
     const w = player.weapons.find(x => x.id === branchPending.weaponId);
-    if (w) w.branch = branch;
+    if (w) {
+      w.branch = branch;
+      w.level = ARENA_BRANCH_MAX_LEVEL;
+    }
     setBranchPending(null); rerender();
   };
 
@@ -388,7 +417,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                 }}>+</div>
               );
               const col = weaponColor(w.level);
-              const hasMatch = player.weapons.some(o => o.id !== w.id && o.type === w.type && o.level === w.level && o.branch === w.branch);
+              const hasMatch = canArenaWeaponMerge(w) && player.weapons.some(o => o.id !== w.id && o.type === w.type && o.level === w.level && o.branch === w.branch);
               return (
                 <div key={w.id} onClick={() => handleInventoryClick(w)} style={{
                   width: 64, height: 64, flexShrink: 0, position: 'relative',
@@ -496,7 +525,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                     <span style={{
                       fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: col,
                       textShadow: `0 0 8px ${col}80`,
-                    }}>Lv.{card.level}{card.branch ?? ''}</span>
+                    }}>{formatArenaWeaponLevel(card.level, card.branch)}{card.branch ? ` ${card.branch}` : ''}</span>
                     <StarRating level={card.level} branch={card.branch} size="sm" />
                     <button onClick={() => canBuy && handleBuyWeapon(card)} style={{
                       width: '100%', marginTop: 2, border: 'none',
@@ -769,8 +798,9 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
       {mergePending && (() => {
         const w = player.weapons.find(x => x.id === mergePending.keepId);
         if (!w) return null;
-        const nextLv = w.level + 1;
-        const col = weaponColor(nextLv);
+        const evolvesToBranchMax = willArenaWeaponBranchEvolve(w);
+        const nextLv = getArenaWeaponMergePreviewLevel(w);
+        const col = evolvesToBranchMax ? C.purple : weaponColor(nextLv);
         return (
           <div style={{
             position: 'fixed',
@@ -800,19 +830,42 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                     <WeaponPreviewCanvas type={w.type} level={w.level} branch={w.branch} bufW={240} bufH={144} bg={C.panelAlt} />
                   </div>
                   <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 14, color: C.gold }}>→</span>
-                  <div style={{ width: 80, overflow: 'hidden', boxShadow: `0 0 0 2px ${col}, 0 0 12px ${col}50` }}>
-                    <WeaponPreviewCanvas type={w.type} level={nextLv} branch={w.branch} bufW={240} bufH={144} bg={C.panelAlt} />
-                  </div>
+                  {evolvesToBranchMax ? (
+                    <div style={{
+                      width: 80,
+                      height: 48,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      boxShadow: `0 0 0 2px ${col}, 0 0 12px ${col}50`,
+                      background: `linear-gradient(180deg, ${C.panelAlt} 0%, ${C.panel} 100%)`,
+                    }}>
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 10, color: col }}>A / B</span>
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: C.gold }}>MAX</span>
+                    </div>
+                  ) : (
+                    <div style={{ width: 80, overflow: 'hidden', boxShadow: `0 0 0 2px ${col}, 0 0 12px ${col}50` }}>
+                      <WeaponPreviewCanvas type={w.type} level={nextLv} branch={w.branch} bufW={240} bufH={144} bg={C.panelAlt} />
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: 8 }}>
                   <StarRating level={w.level} branch={w.branch} size="sm" />
                   <span style={{ color: C.textSm }}>→</span>
-                  <StarRating level={nextLv} branch={w.branch} size="sm" />
+                  {evolvesToBranchMax ? (
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: C.gold }}>MAX</span>
+                  ) : (
+                    <StarRating level={nextLv} branch={w.branch} size="sm" />
+                  )}
                 </div>
                 <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textSm, lineHeight: 2, marginBottom: 20 }}>
-                  Lv.{w.level} × 2 → <span style={{ color: col, textShadow: `0 0 8px ${col}80` }}>Lv.{nextLv}</span>
-                  {nextLv === 5 && w.branch === null && (
-                    <span style={{ color: C.purple }}><br />→ 流派選擇</span>
+                  {formatArenaWeaponLevel(w.level, w.branch)} × 2 → <span style={{ color: col, textShadow: `0 0 8px ${col}80` }}>
+                    {evolvesToBranchMax ? 'MAX' : formatArenaWeaponLevel(nextLv, w.branch)}
+                  </span>
+                  {evolvesToBranchMax && (
+                    <span style={{ color: C.purple }}><br />→ 選擇流派，直接升到 MAX</span>
                   )}
                 </p>
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -862,7 +915,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                   ◆ 流派覺醒
                 </div>
                 <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textSm, lineHeight: 2, marginBottom: 24 }}>
-                  {w.type === 'sword' ? '劍' : '槍'} 進化至 Lv.5<br />選擇你的道路
+                  {w.type === 'sword' ? '劍' : '槍'} 在 Lv.4 合成後會直接覺醒<br />選擇流派後立刻升到 MAX
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {(['A', 'B'] as const).map(branch => {
