@@ -269,7 +269,19 @@ export const GameUI: React.FC = () => {
       game.networkPlayerId = 2;
       game.onSendInput     = (dx, dy) => nm.sendInput(dx, dy);
 
-      nm.onStateUpdate = (state) => { game.applyNetworkState(state); };
+      nm.onStateUpdate = (state) => {
+        game.applyNetworkState(state);
+        // Bug 1B Fix：P2 商店觸發改由此處直接驅動
+        // 原本依賴 makeOnUpdate 的 isArenaShopReady check，但 P2 的清場時機不對導致永遠不觸發
+        // 現在 applyNetworkState 設定 _p2ShopTrigger，這裡直接切換到 shopping 畫面
+        if ((game as any)._p2ShopTrigger && gameStateRef.current === 'playing' && !arenaShopEnteredRef.current) {
+          (game as any)._p2ShopTrigger = false;
+          arenaShopEnteredRef.current = true;
+          gameStateRef.current = 'shopping';
+          setGameState('shopping');
+          resetPlayerInputState();
+        }
+      };
       nm.onGameOver = (time, kills) => {
         setGameStats({ time, kills }); setGameState('gameover'); audioManager.stopBGM();
       };
@@ -472,6 +484,8 @@ export const GameUI: React.FC = () => {
     setP1ShopReady(false);
     setP2ShopReady(false);
     onlineShopReadyRef.current = { myReady: false, otherReady: false };
+    // 清除 P2 商店觸發旗標，避免舊旗標殘留影響下一波
+    if (gameRef.current) (gameRef.current as any)._p2ShopTrigger = false;
   };
 
   // 本地雙人模式：兩人都準備好才開始下一波（線上模式由 WAVE_START 訊息協調，不走這裡）

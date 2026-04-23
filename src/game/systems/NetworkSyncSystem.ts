@@ -6,6 +6,7 @@ import type { Game } from '../Game';
 import { Zombie } from '../Zombie';
 import { Projectile } from '../Projectile';
 import { Item, ItemType } from '../Item';
+import { SwordProjectile } from '../entities/SwordProjectile';
 
 export function serializeState(game: Game, tick: number, hardSync: boolean): object {
   return {
@@ -63,6 +64,41 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       v:  i.value,
       c:  i.color,
     })),
+    // Bug 3 Fix：序列化剣系投射物，P2 才能看到剥筍動畫
+    sp: game.swordProjectiles
+      .filter(s => !s.isDone)
+      .map(s => ({
+        x:   Math.round(s.x),
+        y:   Math.round(s.y),
+        ag:  s.angle,
+        va:  s.visualAngle,
+        st:  s.state,
+        lv:  s.level,
+        br:  s.branch,
+        oi:  s.ownerId,
+        ox:  Math.round(s.originX),
+        oy:  Math.round(s.originY),
+        cfg: {
+          branch: s.config.branch,
+          level:  s.config.level,
+          ownerId: s.config.ownerId,
+          x: s.config.x, y: s.config.y,
+          angle: s.config.angle,
+          dmgMult: s.config.dmgMult,
+          passRadius: s.config.passRadius,
+          damage: s.config.damage,
+          speed: s.config.speed,
+          maxRange: s.config.maxRange,
+          attackInterval: s.config.attackInterval,
+          spinRadius: s.config.spinRadius,
+          spinDamage: s.config.spinDamage,
+          spinDuration: s.config.spinDuration,
+          spinTickMs: s.config.spinTickMs,
+          embedDuration: s.config.embedDuration,
+          explodeDamage: s.config.explodeDamage,
+          explodeRadius: s.config.explodeRadius,
+        },
+      })),
     wv: {
       w: game.waveManager.currentWave,
       r: game.waveManager.isResting,
@@ -104,6 +140,10 @@ export function applyNetworkState(game: Game, state: any): void {
         (player as any)._tvy = ps.y - prevTy;
       }
       player.aimAngle = ps.aim;
+      // Bug 2 Fix：同步武器槽角度，確保 PlayerRenderer 渲染遠端玩家的武器旋轉正確
+      for (const slot of player.weapons) {
+        if (slot) slot.aimAngle = ps.aim;
+      }
     } else {
       (player as any)._serverX = ps.x;
       (player as any)._serverY = ps.y;
@@ -245,7 +285,8 @@ export function applyNetworkState(game: Game, state: any): void {
   game.items = (state.it as any[]).map((is) => {
     // 先嘗試找同類型、位置相近的既有物件（距離 < 40px 視為同一個 orb）
     const existIdx = prevItems.findIndex(
-      e => e.type === is.tp && Math.hypot(e.x - is.x, e.y - is.y) < 40
+      // Bug 4 Fix：擴大匹配半徑 40→80，避免磁鐵吸引移動中的 orb 被誤判為新物件導致 spawnTime 重置抖動
+      e => e.type === is.tp && Math.hypot(e.x - is.x, e.y - is.y) < 80
     );
     let item: Item;
     if (existIdx >= 0) {
@@ -274,9 +315,50 @@ export function applyNetworkState(game: Game, state: any): void {
   game.waveManager.isInfinite      = state.wv.i;
   game.waveManager.activeMechanics = state.wv.m;
 
-  // 同步 Host 的商店開放旗標：P2 端的 isArenaShopReady 依此驅動
+  // Bug 3 Fix：重建劍系投射物（P2 端純視覺，不執行傷害邏輯）
+  // 使用 ID-based 匹配複用既有物件，保留 trail / visualAngle 視覺狀態
+  if (Array.isArray(state.sp)) {
+    const prevSwords = game.swordProjectiles;
+    const prevById = new Map(prevSwords.map(s => [s.id, s]));
+    game.swordProjectiles = (state.sp as any[]).map((ss) => {
+      // 嘗試找到對應的現有劍（依 ownerId + branch + level 近似匹配，因 id 是本地遞增的）
+      let existing: SwordProjectile | undefined;
+      for (const [, s] of prevById) {
+        if (s.ownerId === ss.oi && s.branch === ss.br && s.level === ss.lv && !s.isDone) {
+          existing = s;
+          prevById.delete(s.id);
+          break;
+        }
+      }
+      if (existing) {
+        // 只更新位置與狀態，保留 trail 等視覺資料
+        existing.x = ss.x;
+        existing.y = ss.y;
+        existing.angle = ss.ag;
+        existing.visualAngle = ss.va;
+        existing.state = ss.st;
+        return existing;
+      }
+      // 找不到就新建
+      const s = new SwordProjectile(ss.cfg);
+      s.x = ss.x;
+      s.y = ss.y;
+      s.angle = ss.ag;
+      s.visualAngle = ss.va;
+      s.state = ss.st;
+      return s;
+    });
+  }
+
+  // Bug 1A Fix：同步 Host 的商店開放旗標，並補呼叫 clearEntitiesForShop()
+  // 原本只設旗標但沒清場，導致 hasArenaGroundOrbs === true，P2 永遠進不了商店
   if (state.wv.sr && !(game as any)._shopReadyToOpen) {
     (game as any)._shopReadyToOpen = true;
-    (game as any)._shopCleared     = true;
+    if (!(game as any)._shopCleared) {
+      (game as any)._shopCleared = true;
+      game.clearEntitiesForShop(); // 執行清場：清除殭屍、子彈、地面 orb
+    }
+    // 設定旗標讓 GameUI.tsx 的 onStateUpdate 回呼知道應切換到 shopping 畫面
+    (game as any)._p2ShopTrigger = true;
   }
 }
