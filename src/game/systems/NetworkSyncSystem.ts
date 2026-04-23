@@ -25,6 +25,10 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       lv: p.level,
       pl: p.prestigeLevel,
       wp: p.weapon,
+      wls: p.weaponLevels.sword,
+      wlg: p.weaponLevels.gun,
+      wbs: p.weaponBranches.sword,
+      wbg: p.weaponBranches.gun,
       aim: p.aimAngle,
       sh: p.shield,
       st: Math.round(p.shieldTimer),
@@ -65,6 +69,7 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       t: Math.round(game.waveManager.timer),
       i: game.waveManager.isInfinite,
       m: game.waveManager.activeMechanics,
+      sr: (game as any)._shopReadyToOpen ?? false,
     },
   };
 }
@@ -175,6 +180,11 @@ export function applyNetworkState(game: Game, state: any): void {
     player.level = ps.lv;
     player.prestigeLevel = ps.pl;
     player.weapon = ps.wp as 'sword' | 'gun';
+    if (ps.wls !== undefined) player.weaponLevels.sword  = ps.wls;
+    if (ps.wlg !== undefined) player.weaponLevels.gun    = ps.wlg;
+    if (ps.wbs !== undefined) player.weaponBranches.sword = ps.wbs;
+    if (ps.wbg !== undefined) player.weaponBranches.gun   = ps.wbg;
+    player.syncWeaponToSlot();
     player.shield = player.shieldTimer > 0 || ps.sh;
   }
 
@@ -228,11 +238,25 @@ export function applyNetworkState(game: Game, state: any): void {
     return p;
   });
 
-  // 模組 H：道具
+  // 模組 H：道具 — 複用現有 Item 物件以避免 spawnTime 每幀重置導致 wobble 抖動
   const nowMs = Date.now();
   game.pendingPickups = game.pendingPickups.filter(p => nowMs - p.time < 600);
+  const prevItems = game.items;
   game.items = (state.it as any[]).map((is) => {
-    const item = new Item(is.x, is.y, is.tp as ItemType, 99999, is.v, is.c);
+    // 先嘗試找同類型、位置相近的既有物件（距離 < 40px 視為同一個 orb）
+    const existIdx = prevItems.findIndex(
+      e => e.type === is.tp && Math.hypot(e.x - is.x, e.y - is.y) < 40
+    );
+    let item: Item;
+    if (existIdx >= 0) {
+      item = prevItems.splice(existIdx, 1)[0];
+      // 只更新位置，保留 spawnTime 確保 wobble 穩定
+      item.x = is.x;
+      item.y = is.y;
+      item.value = is.v ?? item.value;
+    } else {
+      item = new Item(is.x, is.y, is.tp as ItemType, 99999, is.v, is.c);
+    }
     const pendingIdx = game.pendingPickups.findIndex(
       p => Math.hypot(p.x - is.x, p.y - is.y) < 12 && p.type === is.tp
     );
@@ -249,4 +273,10 @@ export function applyNetworkState(game: Game, state: any): void {
   game.waveManager.timer           = state.wv.t;
   game.waveManager.isInfinite      = state.wv.i;
   game.waveManager.activeMechanics = state.wv.m;
+
+  // 同步 Host 的商店開放旗標：P2 端的 isArenaShopReady 依此驅動
+  if (state.wv.sr && !(game as any)._shopReadyToOpen) {
+    (game as any)._shopReadyToOpen = true;
+    (game as any)._shopCleared     = true;
+  }
 }

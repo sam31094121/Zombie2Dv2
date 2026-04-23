@@ -49,6 +49,12 @@ export function useGameLoop(opts: UseGameLoopOptions) {
     if (gameRef.current && canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
+        // 暫停時跳過 update/draw，讓暫停 UI 覆蓋靜止畫面
+        if (gameRef.current.isPaused) {
+          requestRef.current = requestAnimationFrame(gameLoopRef.current!);
+          return;
+        }
+
         // ── High-DPI 座標映射 (2x Upsampling) ──
         // 這會讓 800x600 的邏輯座標正確映射到 1600x1200 的實體畫布。
         // 當 transform.a > 1.1 時，武器渲染模組會自動啟動平滑描邊。

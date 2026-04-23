@@ -508,6 +508,34 @@ export class Game {
   activeTombstones: Obstacle[] = [];
   activeBoss: Zombie | null = null;
 
+  /** 序列化本波所有 isArenaWaveObstacle 障礙物，供 Host 傳送給 P2 */
+  getArenaWaveObstacleData(): { x: number; y: number; w: number; h: number; tp: string; sd: number; hp: number; mhp: number }[] {
+    const result: { x: number; y: number; w: number; h: number; tp: string; sd: number; hp: number; mhp: number }[] = [];
+    for (const list of this.mapManager.obstacles.values()) {
+      for (const obs of list) {
+        if (obs.isArenaWaveObstacle) {
+          result.push({ x: obs.x, y: obs.y, w: obs.width, h: obs.height, tp: obs.type, sd: obs.seed, hp: obs.hp, mhp: obs.maxHp });
+        }
+      }
+    }
+    return result;
+  }
+
+  /** P2 端：清除自己的波次障礙物，套用 Host 傳來的資料 */
+  applyArenaWaveObstacles(data: { x: number; y: number; w: number; h: number; tp: string; sd: number; hp: number; mhp: number }[]) {
+    this.clearArenaWaveObstacles();
+    this.activeTombstones = [];
+    for (const d of data) {
+      const obs = new Obstacle(d.x, d.y, d.w, d.h, d.tp as import('./types').ObstacleType);
+      obs.seed = d.sd;
+      obs.hp   = d.hp;
+      obs.maxHp = d.mhp;
+      obs.isArenaWaveObstacle = true;
+      this.addObstacleToMap(obs);
+      if (obs.type === 'tombstone') this.activeTombstones.push(obs);
+    }
+  }
+
   addObstacleToMap(obs: Obstacle) {
     const CHUNK_SIZE = 800;
     const key = `${Math.floor(obs.x / CHUNK_SIZE)},${Math.floor(obs.y / CHUNK_SIZE)}`;
@@ -1135,6 +1163,11 @@ export class Game {
           localPlayer.aimAngle += Math.abs(angleDiff) <= maxRot ? angleDiff : Math.sign(angleDiff) * maxRot;
           while (localPlayer.aimAngle > Math.PI) localPlayer.aimAngle -= Math.PI * 2;
           while (localPlayer.aimAngle < -Math.PI) localPlayer.aimAngle += Math.PI * 2;
+
+          // 同步旋轉角度到武器槽，確保 PlayerRenderer slot.aimAngle 隨自動瞄準轉動
+          for (const slot of localPlayer.weapons) {
+            slot.aimAngle = localPlayer.aimAngle;
+          }
         }
 
         // ?蔣璈??冽?啁摰塚?摮暑??

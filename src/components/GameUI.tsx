@@ -60,6 +60,8 @@ export const GameUI: React.FC = () => {
   // ── 競技場商店雙人準備狀態 ────────────────────────────────
   const [p1ShopReady, setP1ShopReady] = useState(false);
   const [p2ShopReady, setP2ShopReady] = useState(false);
+  // 線上模式商店協調：紀錄自己和對方是否都按下了「準備」
+  const onlineShopReadyRef = useRef({ myReady: false, otherReady: false });
 
   // ── 重賽準備狀態 ──────────────────────────────────────────
   const [readyState, setReadyState] = useState({ myReady: false, otherReady: false });
@@ -240,6 +242,7 @@ export const GameUI: React.FC = () => {
     arenaShopEnteredRef.current = false;
     setP1ShopReady(false);
     setP2ShopReady(false);
+    onlineShopReadyRef.current = { myReady: false, otherReady: false };
 
     if (gameRef.current) gameRef.current.destroy();
 
@@ -306,6 +309,29 @@ export const GameUI: React.FC = () => {
         nm.sendControl({ t: 'START' });
         startOnlineGame(nm, 1, gameRef.current?.mode || onlineLobbyMode);
       }
+    };
+
+    // ── 線上競技場商店協調：雙方都按「準備」後 Host 廣播 WAVE_START ──
+    nm.onShopReady = (readyPid) => {
+      const isMe = readyPid === pid;
+      if (isMe) onlineShopReadyRef.current.myReady = true;
+      else      onlineShopReadyRef.current.otherReady = true;
+      if (pid === 1) setP1ShopReady(onlineShopReadyRef.current.myReady);
+      else           setP2ShopReady(onlineShopReadyRef.current.myReady);
+      // Host：雙方都準備好 → 生成下一波，把障礙物一起打包給 P2
+      if (nm.isHost && onlineShopReadyRef.current.myReady && onlineShopReadyRef.current.otherReady) {
+        onlineShopReadyRef.current = { myReady: false, otherReady: false };
+        _doNextArenaWave();
+        const obsData = gameRef.current?.getArenaWaveObstacleData() ?? [];
+        nm.sendControl({ t: 'WAVE_START', obs: obsData });
+      }
+    };
+    nm.onWaveStart = (obsData?: any[]) => {
+      // P2 收到 Host 的 WAVE_START：先套用 Host 的障礙物資料再進入下一波
+      if (obsData && gameRef.current) {
+        gameRef.current.applyArenaWaveObstacles(obsData);
+      }
+      _doNextArenaWave();
     };
 
     gameRef.current      = game;
@@ -416,20 +442,42 @@ export const GameUI: React.FC = () => {
   };
 
   const handleNextArenaWave = () => {
-    if (gameRef.current) {
-      gameRef.current.nextArenaWave();
-      arenaShopEnteredRef.current = false;
-      gameStateRef.current = 'playing';
-      setGameState('playing');
-      setP1ShopReady(false);
-      setP2ShopReady(false);
+    if (!gameRef.current) return;
+    const nm = networkRef.current;
+    if (nm) {
+      // 線上模式：通知對方自己已準備，等待 WAVE_START 或 onShopReady 協調
+      onlineShopReadyRef.current.myReady = true;
+      nm.sendControl({ t: 'SHOP_READY', pid: myPlayerId });
+      if (myPlayerId === 1) setP1ShopReady(true);
+      else                  setP2ShopReady(true);
+      // Host：自己也準備好且對方也準備好，直接推進（生成障礙物後廣播）
+      if (nm.isHost && onlineShopReadyRef.current.otherReady) {
+        onlineShopReadyRef.current = { myReady: false, otherReady: false };
+        _doNextArenaWave();
+        const obsData = gameRef.current?.getArenaWaveObstacleData() ?? [];
+        nm.sendControl({ t: 'WAVE_START', obs: obsData });
+      }
+      return;
     }
+    _doNextArenaWave();
   };
 
-  // 雙人模式：兩人都準備好才開始下一波
+  const _doNextArenaWave = () => {
+    if (!gameRef.current) return;
+    gameRef.current.nextArenaWave();
+    arenaShopEnteredRef.current = false;
+    gameStateRef.current = 'playing';
+    setGameState('playing');
+    setP1ShopReady(false);
+    setP2ShopReady(false);
+    onlineShopReadyRef.current = { myReady: false, otherReady: false };
+  };
+
+  // 本地雙人模式：兩人都準備好才開始下一波（線上模式由 WAVE_START 訊息協調，不走這裡）
   useEffect(() => {
-    if (playerCount === 2 && p1ShopReady && p2ShopReady) {
-      handleNextArenaWave();
+    const isLocalDuoShop = playerCount === 2 && !networkRef.current && p1ShopReady && p2ShopReady;
+    if (isLocalDuoShop) {
+      _doNextArenaWave();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p1ShopReady, p2ShopReady]);
@@ -612,12 +660,15 @@ export const GameUI: React.FC = () => {
               </div>
             );
           }
-          /* 單人 / 線上 */
-          return g.players[0] ? (
+          /* 單人 / 線上：線上模式用 myPlayerId 找到本地玩家 */
+          const localPlayer = isOnlineMode
+            ? (g.players.find(p => p.id === myPlayerId) ?? g.players[0])
+            : g.players[0];
+          return localPlayer ? (
             <div className="absolute inset-0 z-20 overflow-hidden">
               <ShopPanel
                 key={`shop-${waveState?.wave || 1}`}
-                player={g.players[0]}
+                player={localPlayer}
                 wave={waveState?.wave || 1}
                 onNextWave={handleNextArenaWave}
               />
@@ -709,18 +760,20 @@ export const GameUI: React.FC = () => {
                   </div>
                 )}
                 
-                {/* 遊戲暫停按鈕 (置於波次右側) */}
-                <button 
-                  onClick={() => {
-                    const next = !isPausedUI;
-                    setIsPausedUI(next);
-                    if (gameRef.current) gameRef.current.isPaused = next;
-                  }}
-                  className="pointer-events-auto absolute -right-12 top-1/2 -translate-y-1/2 bg-neutral-800/80 border border-neutral-600 text-white rounded p-2 hover:bg-neutral-600 active:scale-95 transition-all w-10 h-10 flex items-center justify-center shadow-lg"
-                  title="暫停遊戲"
-                >
-                  {isPausedUI ? '▶️' : '⏸️'}
-                </button>
+                {/* 遊戲暫停按鈕 (線上模式隱藏，避免單方面暫停) */}
+                {!isOnlineMode && (
+                  <button
+                    onClick={() => {
+                      const next = !isPausedUI;
+                      setIsPausedUI(next);
+                      if (gameRef.current) gameRef.current.isPaused = next;
+                    }}
+                    className="pointer-events-auto absolute -right-12 top-1/2 -translate-y-1/2 bg-neutral-800/80 border border-neutral-600 text-white rounded p-2 hover:bg-neutral-600 active:scale-95 transition-all w-10 h-10 flex items-center justify-center shadow-lg"
+                    title="暫停遊戲"
+                  >
+                    {isPausedUI ? '▶️' : '⏸️'}
+                  </button>
+                )}
               </div>
               {p2State && <P2Card p2State={p2State} p2RespawnCountdown={p2RespawnCountdown} />}
             </div>

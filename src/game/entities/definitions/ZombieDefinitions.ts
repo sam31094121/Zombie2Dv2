@@ -63,13 +63,151 @@ export interface IZombieDefinition {
 // ????????????????????????????????????????????????????????????????????????????
 
 // ?? Spitter嚗?????+ ?豢雯敶??????????????????????????????????????????????
+const SPITTER_MIN_RANGE = 200;
+const SPITTER_MAX_RANGE = 300;
+const SPITTER_SHOT_COOLDOWN_MS = 2500;
+const SPITTER_AIM_MS = 360;
+const SPITTER_REPOSITION_MIN_MS = 800;
+const SPITTER_REPOSITION_MAX_MS = 1500;
+const SPITTER_REPOSITION_SPEED_MULTIPLIER = 1.25;
+const SPITTER_BLOCKED_URGENCY_MS = 4000;
+
+function hasLineOfSight(self: Zombie, target: Player, obstacles: Obstacle[]): boolean {
+  for (const obs of obstacles) {
+    if (obs.isLineBlocked(self.x, self.y, target.x, target.y)) return false;
+  }
+  return true;
+}
+
+function moveSpitter(self: Zombie, dx: number, dy: number, dt: number, speedMultiplier = 1): void {
+  const len = Math.hypot(dx, dy);
+  if (len <= 0.0001) return;
+
+  self.x += (dx / len) * self.speed * speedMultiplier * (dt / 16);
+  self.y += (dy / len) * self.speed * speedMultiplier * (dt / 16);
+}
+
+function chooseSpitterReposition(self: Zombie, toPlayerX: number, toPlayerY: number, nearestDist: number): void {
+  const len = Math.hypot(toPlayerX, toPlayerY);
+  if (len <= 0.0001) return;
+
+  const towardX = toPlayerX / len;
+  const towardY = toPlayerY / len;
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const strafeX = -towardY * side;
+  const strafeY = towardX * side;
+  const rangeBias = nearestDist > SPITTER_MAX_RANGE
+    ? 0.28
+    : nearestDist < SPITTER_MIN_RANGE
+      ? -0.35
+      : (Math.random() - 0.5) * 0.18;
+
+  const jitterAngle = Math.random() * Math.PI * 2;
+  const moveX = strafeX * (0.9 + Math.random() * 0.35) + towardX * rangeBias + Math.cos(jitterAngle) * 0.12;
+  const moveY = strafeY * (0.9 + Math.random() * 0.35) + towardY * rangeBias + Math.sin(jitterAngle) * 0.12;
+  const moveLen = Math.hypot(moveX, moveY);
+  if (moveLen <= 0.0001) return;
+
+  self.extraState.set('spitterRepositionDX', moveX / moveLen);
+  self.extraState.set('spitterRepositionDY', moveY / moveLen);
+  self.extraState.set(
+    'spitterRepositionUntil',
+    self.time + SPITTER_REPOSITION_MIN_MS + Math.random() * (SPITTER_REPOSITION_MAX_MS - SPITTER_REPOSITION_MIN_MS),
+  );
+}
+
+function clearSpitterReposition(self: Zombie): void {
+  self.extraState.delete('spitterBlockedSince');
+  self.extraState.delete('spitterRepositionDX');
+  self.extraState.delete('spitterRepositionDY');
+  self.extraState.delete('spitterRepositionUntil');
+}
+
 function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
   const { dt, nearest, nearestDist, obstacles, projectiles } = ctx;
   if (!nearest) { self.isCloseToPlayer = false; return; }
 
   const dx = nearest.x - self.x;
   const dy = nearest.y - self.y;
+  if (nearestDist <= 0.0001) { self.isCloseToPlayer = true; return; }
 
+  self.angle = Math.atan2(dy, dx);
+
+  if (!hasLineOfSight(self, nearest, obstacles)) {
+    const blockedSince = (self.extraState.get('spitterBlockedSince') as number | undefined) ?? self.time;
+    const repositionUntil = (self.extraState.get('spitterRepositionUntil') as number | undefined) ?? 0;
+    let repositionDX = (self.extraState.get('spitterRepositionDX') as number | undefined) ?? 0;
+    let repositionDY = (self.extraState.get('spitterRepositionDY') as number | undefined) ?? 0;
+
+    self.extraState.set('spitterBlockedSince', blockedSince);
+    self.extraState.delete('spitterAimUntil');
+
+    if (self.time >= repositionUntil || Math.hypot(repositionDX, repositionDY) <= 0.0001) {
+      chooseSpitterReposition(self, dx, dy, nearestDist);
+      repositionDX = (self.extraState.get('spitterRepositionDX') as number | undefined) ?? 0;
+      repositionDY = (self.extraState.get('spitterRepositionDY') as number | undefined) ?? 0;
+    }
+
+    const blockedDuration = self.time - blockedSince;
+    const urgency = blockedDuration > SPITTER_BLOCKED_URGENCY_MS ? 0.35 : 0;
+    moveSpitter(
+      self,
+      repositionDX + (dx / nearestDist) * urgency,
+      repositionDY + (dy / nearestDist) * urgency,
+      dt,
+      SPITTER_REPOSITION_SPEED_MULTIPLIER,
+    );
+    self.isCloseToPlayer = nearestDist < self.radius + 50;
+    return;
+  }
+
+  clearSpitterReposition(self);
+
+  if (nearestDist < SPITTER_MIN_RANGE) {
+    // ?剛? ???綽??
+    moveSpitter(self, -dx, -dy, dt);
+  } else if (nearestDist > SPITTER_MAX_RANGE) {
+    // ?剛? ???蹎?
+    moveSpitter(self, dx, dy, dt);
+  }
+
+  if (!hasLineOfSight(self, nearest, obstacles)) {
+    self.extraState.delete('spitterAimUntil');
+    self.isCloseToPlayer = nearestDist < self.radius + 50;
+    return;
+  }
+
+  if (self.time - self.lastSpitTime > SPITTER_SHOT_COOLDOWN_MS) {
+    const aimUntil = (self.extraState.get('spitterAimUntil') as number | undefined) ?? 0;
+    if (aimUntil <= 0) {
+      self.extraState.set('spitterAimUntil', self.time + SPITTER_AIM_MS);
+      self.isCloseToPlayer = nearestDist < self.radius + 50;
+      return;
+    }
+
+    if (self.time < aimUntil) {
+      self.isCloseToPlayer = nearestDist < self.radius + 50;
+      return;
+    }
+
+    self.lastSpitTime = self.time;
+    self.extraState.delete('spitterAimUntil');
+    const shotDX = nearest.x - self.x;
+    const shotDY = nearest.y - self.y;
+    const angle = Math.atan2(shotDY, shotDX);
+    projectiles.push(new Projectile(
+      -1, self.x, self.y,
+      Math.cos(angle) * 5, Math.sin(angle) * 5,
+      10, 1, 3000, 'zombie_spit', 12, true, 1, true,
+    ));
+  } else {
+    self.extraState.delete('spitterAimUntil');
+  }
+
+  self.isCloseToPlayer = nearestDist < self.radius + 50;
+}
+
+/*
   if (nearestDist < 200) {
     // 憭芾? ??敺
     self.x -= (dx / nearestDist) * self.speed * (dt / 16);
@@ -106,6 +244,7 @@ function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
 }
 
 // ?? slime ???賢? ???????????????????????????????????????????????????????????
+*/
 function slimeSplit(x: number, y: number): ZombieSpawnSpec[] {
   const angle1 = Math.random() * Math.PI * 2;
   const angle2 = angle1 + Math.PI;
