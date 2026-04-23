@@ -32,3 +32,6 @@ Original prompt: 瘝??????
 - 2026-04-23: Spitter AI now treats blocked line-of-sight as a reposition state. In `ZombieDefinitions.ts`, spitters keep a short-lived strafe vector in `extraState`, shuffle laterally with a light range bias while blocked, then require a short re-aim window before firing once LOS is restored.
 - 2026-04-23: `npm run lint` and `npm run build` both passed after the spitter AI change.
 - 2026-04-23: Playwright smoke is still pending. Sandbox launch of `npm run dev` failed with `vite/esbuild spawn EPERM`, so an escalated dev-server launch was requested in order to complete the required browser smoke test.
+- 2026-04-23: Added `output/static-server.cjs` as a tiny local static server helper for build smoke runs, because the sandboxed Vite dev server and Playwright browser launch were both hitting `spawn EPERM`.
+- 2026-04-23: Escalated Playwright smoke against the built app succeeded with a clean fresh output folder at `output/spitter-smoke-clean/shot-0.png`. No fresh `errors-0.json` was emitted there, so this run did not surface a new console error.
+- 2026-04-23: Current browser smoke only confirms the game boots and renders after the spitter AI change. A dedicated obstacle/LOS scenario for visually proving the new reposition behavior is still a follow-up if we want stronger gameplay validation.

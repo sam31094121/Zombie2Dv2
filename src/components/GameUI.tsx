@@ -327,11 +327,12 @@ export const GameUI: React.FC = () => {
       }
     };
     nm.onWaveStart = (obsData?: any[]) => {
-      // P2 收到 Host 的 WAVE_START：先套用 Host 的障礙物資料再進入下一波
+      // P2 收到 Host 的 WAVE_START：先推進波次（會清除並重新隨機生成障礙物），
+      // 再用 Host 的資料覆寫，確保障礙物位置一致。
+      _doNextArenaWave();
       if (obsData && gameRef.current) {
         gameRef.current.applyArenaWaveObstacles(obsData);
       }
-      _doNextArenaWave();
     };
 
     gameRef.current      = game;
