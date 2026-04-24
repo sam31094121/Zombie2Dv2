@@ -52,7 +52,6 @@ export class Player {
   armor: number = 0;               // 每點減少 1 點傷害
   knockback: number = 0;           // 擊退距離加成
   regenPerSecond: number = 0;      // 每秒回復 HP
-  critChance: number = 0;          // 暴擊機率（0.0 ~ 1.0）
   gunDamageBonus: number = 0;      // 槍類傷害平加（配件）
   swordDamageBonus: number = 0;    // 劍類傷害平加（配件）
   statLevels: Record<string, number> = {};   // 各素質已升等數
@@ -174,7 +173,9 @@ export class Player {
     if (amount <= 0) return false;
     if (this.shieldTimer > 0 || this.shield) return false;
 
-    this.hp = Math.max(0, this.hp - amount);
+    // 實裝護甲：每點減少 1 點傷害，但不會讓總傷低於 0
+    const finalDamage = Math.max(0, amount - this.armor);
+    this.hp = Math.max(0, this.hp - finalDamage);
     this.lastDamageTime = sourceTime;
     return true;
   }

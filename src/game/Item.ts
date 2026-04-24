@@ -1,6 +1,13 @@
 import { drawItem } from './renderers/ItemRenderer';
 
-export type ItemType = 'weapon_sword' | 'weapon_gun' | 'speed' | 'shield' | 'energy_orb' | 'magnet';
+export type ItemType =
+  | 'weapon_sword'
+  | 'weapon_gun'
+  | 'speed'
+  | 'shield'
+  | 'energy_orb'
+  | 'magnet'
+  | 'apple';
 
 export class Item {
   x: number;
@@ -30,6 +37,8 @@ export class Item {
     this.color = color;
     if (type === 'energy_orb') {
       this.radius = value && value > 2 ? 12 : 8;
+    } else if (type === 'apple') {
+      this.radius = 11;
     }
   }
 

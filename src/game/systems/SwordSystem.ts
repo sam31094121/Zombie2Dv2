@@ -81,7 +81,8 @@ function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
         sword.hitZombieIds.add(z.id);
         z.hp -= config.damage * config.dmgMult;
         _queueKill(game, z, sword.ownerId, sword.level, sword.angle);
-        _pushForward(sword, z, 26);
+        const pk = game.players.find(p => p.id === sword.ownerId)?.knockback ?? 0;
+        _pushForward(sword, z, 26 + pk * 2.5);
         audioManager.playHit();
         game.hitEffects.push({ x: z.x, y: z.y, type: 'red_blood', lifetime: 300, maxLifetime: 300 });
         game.hitStopTimer = 30;
@@ -97,7 +98,8 @@ function _goingOut(sword: SwordProjectile, game: Game, dt: number): void {
         sword.hitZombieIds.add(z.id);
         z.hp -= config.damage * config.dmgMult;
         _queueKill(game, z, sword.ownerId, sword.level, sword.angle);
-        _pushForward(sword, z, 26);
+        const pk = game.players.find(p => p.id === sword.ownerId)?.knockback ?? 0;
+        _pushForward(sword, z, 26 + pk * 2.5);
         audioManager.playHit();
         if (sword.branch === 'base' && sword.level >= 1 && sword.level <= 4) {
           game.hitEffects.push({

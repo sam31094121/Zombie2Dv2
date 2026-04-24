@@ -90,7 +90,7 @@ export class Zombie {
       debugHpLocked,
     };
 
-    if (this.extraState.get('bagCarrier') === true) {
+    if (this.type === 'goblin_courier') {
       // Decrement spawn pop timer
       const st = (this.extraState.get('spawnTimer') as number) ?? 0;
       if (st > 0) {

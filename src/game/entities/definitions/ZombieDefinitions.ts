@@ -479,4 +479,15 @@ export const ZOMBIE_REGISTRY: Record<ZombieType, IZombieDefinition> = {
     knockbackResistLevel: 7,   // ??嚗撥?餃?嚗鋡急 30%嚗?
     updateBehavior: butcherBehavior,
   },
+
+  goblin_courier: {
+    radius: 13,
+    baseHp: 10,
+    baseSpeed: 1.8,
+    orbCount: 0,
+    orbColor: '#fbbf24',
+    orbValue: 0,
+    weight: 1,
+    knockbackResistLevel: 1,
+  },
 };

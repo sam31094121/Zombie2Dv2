@@ -14,7 +14,7 @@ html, body, #root {
   height: 100dvh; /* dynamic viewport height, for iOS toolbar-aware full-screen */
   overflow: hidden;
   overscroll-behavior: none;
-  touch-action: none;
+  touch-action: auto;
 }
 
 /* Safe area helpers (for notch / dynamic island / home indicator) */

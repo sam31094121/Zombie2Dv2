@@ -55,6 +55,7 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
     if (item.type === 'speed')        glowColor = 'rgba(0,255,255,0.5)';
     if (item.type === 'shield')       glowColor = 'rgba(0,100,255,0.5)';
     if (item.type === 'magnet')       glowColor = 'rgba(255,50,50,0.5)';
+    if (item.type === 'apple')        glowColor = 'rgba(255,80,80,0.45)';
     ctx.shadowColor = glowColor; ctx.shadowBlur = 15;
 
     if (item.type === 'weapon_sword') {
@@ -160,6 +161,35 @@ export function drawItem(item: Item, ctx: CanvasRenderingContext2D): void {
       ctx.lineTo(9,-6);
       ctx.arc(0, -6, 3, 0, Math.PI, true);
       ctx.closePath();
+      ctx.fill();
+    } else if (item.type === 'apple') {
+      ctx.fillStyle = '#b91c1c';
+      ctx.beginPath();
+      ctx.arc(-4, 1, 8, 0, Math.PI * 2);
+      ctx.arc(4, 1, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(-3, -1, 6, 0, Math.PI * 2);
+      ctx.arc(3, -1, 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.beginPath();
+      ctx.arc(-5, -4, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#5b3a29';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, -9);
+      ctx.quadraticCurveTo(1, -14, 4, -16);
+      ctx.stroke();
+
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath();
+      ctx.ellipse(7, -11, 5, 3, -0.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }

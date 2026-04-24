@@ -32,6 +32,7 @@ import { drawSwordProjectiles } from './renderers/SwordRenderer';
 import { drawActiveEffects } from './renderers/EffectRenderer';
 import type { ActiveEffect } from './types';
 import { ArenaBorderLayout, ArenaPlayableBounds, createArenaBorderLayout, drawArenaBorder } from './renderers/ArenaBorderRenderer';
+import { drawArenaAppleTree } from './renderers/ArenaAppleTreeRenderer';
 import { getGeneratedObstacleSize } from './map/MapManager';
 import { updateTombstones } from './systems/TombstoneSystem';
 
@@ -58,6 +59,14 @@ type PendingArenaBagReward = {
   value: number;
   sourceWave: number;
   spawned: boolean;
+};
+
+type ArenaAppleTreeState = {
+  ownerPlayerId: number;
+  x: number;
+  y: number;
+  nextDropAt: number;
+  seed: number;
 };
 
 export class Game {
@@ -97,9 +106,13 @@ export class Game {
   sharedStatPoints: number = 0;   // ?砍?犖璅∪??曹澈蝝釭暺瘙?
   arenaLootBag: ArenaLootBagState | null = null;
   pendingArenaBagReward: PendingArenaBagReward | null = null;
+  arenaAppleTrees: ArenaAppleTreeState[] = [];
   activeBagCarrierId: number | null = null;
   bagCarrierSpawnTimer: number = 0;
   private readonly SLIME_TRAIL_SLOW_MS = 700;
+  private readonly ARENA_APPLE_TREE_ITEM_ID = 'apple_tree';
+  private readonly ARENA_APPLE_DROP_INTERVAL_MS = 10000;
+  private readonly ARENA_APPLE_HEAL_AMOUNT = 15;
 
   // 蝬脰楝憭犖璅∪?
   networkMode: boolean = false;
@@ -201,6 +214,7 @@ export class Game {
     this.slimeTrails = [];
     this.arenaLootBag = null;
     this.pendingArenaBagReward = null;
+    this.arenaAppleTrees = [];
     this.activeBagCarrierId = null;
     this.bagCarrierSpawnTimer = 0;
     this.keys = {};
@@ -262,6 +276,80 @@ export class Game {
       x: left + Math.random() * Math.max(1, right - left),
       y: top + Math.random() * Math.max(1, bottom - top),
     };
+  }
+
+  private playerOwnsArenaAppleTree(player: Player): boolean {
+    return player.ownedItems.some(item => item.defId === this.ARENA_APPLE_TREE_ITEM_ID);
+  }
+
+  private isArenaAppleTreeSpawnSafe(x: number, y: number): boolean {
+    const minObstacleClearance = 38;
+    const minTreeSpacing = 56;
+
+    for (const obs of this.mapManager.getNearbyObstacles(x, y)) {
+      const nearestX = Math.max(obs.x, Math.min(x, obs.x + obs.width));
+      const nearestY = Math.max(obs.y, Math.min(y, obs.y + obs.height));
+      if (Math.hypot(x - nearestX, y - nearestY) < minObstacleClearance) {
+        return false;
+      }
+    }
+
+    for (const tree of this.arenaAppleTrees) {
+      if (Math.hypot(x - tree.x, y - tree.y) < minTreeSpacing) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private findArenaAppleTreeSpawn(player: Player) {
+    for (let attempt = 0; attempt < 14; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 90 + Math.random() * 80;
+      const candidate = this.clampToArenaBounds(
+        player.x + Math.cos(angle) * dist,
+        player.y + Math.sin(angle) * dist,
+        48,
+      );
+      if (this.isArenaAppleTreeSpawnSafe(candidate.x, candidate.y)) {
+        return candidate;
+      }
+    }
+
+    return this.clampToArenaBounds(player.x + player.lastMoveDir.x * 110, player.y + player.lastMoveDir.y * 110, 48);
+  }
+
+  private spawnArenaAppleTrees() {
+    this.arenaAppleTrees = [];
+    if (this.mode !== 'arena') return;
+
+    const now = Date.now();
+    for (const player of this.players) {
+      if (!this.playerOwnsArenaAppleTree(player)) continue;
+      const point = this.findArenaAppleTreeSpawn(player);
+      this.arenaAppleTrees.push({
+        ownerPlayerId: player.id,
+        x: point.x,
+        y: point.y,
+        nextDropAt: now + this.ARENA_APPLE_DROP_INTERVAL_MS,
+        seed: Math.random() * 1000,
+      });
+    }
+  }
+
+  private updateArenaAppleTrees() {
+    if (this.mode !== 'arena' || this.arenaAppleTrees.length === 0) return;
+    const now = Date.now();
+
+    for (const tree of this.arenaAppleTrees) {
+      while (now >= tree.nextDropAt) {
+        const dropX = tree.x + (Math.random() - 0.5) * 18;
+        const dropY = tree.y + 8 + Math.random() * 10;
+        this.items.push(new Item(dropX, dropY, 'apple', Infinity, this.ARENA_APPLE_HEAL_AMOUNT));
+        tree.nextDropAt += this.ARENA_APPLE_DROP_INTERVAL_MS;
+      }
+    }
   }
 
   destroy() {
@@ -498,6 +586,7 @@ export class Game {
     this.activeEffects = [];
     this.slimeTrails = []; // explicitly clear these
     this.items = [];
+    this.arenaAppleTrees = [];
     this.pendingSwordKills.clear();
     this.arenaLootBag = null;
     this._shopReadyToOpen = false;
@@ -572,6 +661,7 @@ export class Game {
     this._shopCleared = false;
     this._shopReadyToOpen = false;
     this.arenaLootBag = null;
+    this.arenaAppleTrees = [];
     this.activeBagCarrierId = null;
     this.bagCarrierSpawnTimer = this.pendingArenaBagReward && !this.pendingArenaBagReward.spawned ? 3000 : 0;
 
@@ -609,6 +699,10 @@ export class Game {
     }
 
     this.generateArenaTacticalObstacles(waveId);
+
+    if (!this.networkMode) {
+      this.spawnArenaAppleTrees();
+    }
   }
 
   private generateArenaTacticalObstacles(waveId: number) {
@@ -1080,7 +1174,7 @@ export class Game {
     const spawnX = srcPlayer ? srcPlayer.x : (this.playableArenaBounds.left + this.playableArenaBounds.right) / 2;
     const spawnY = srcPlayer ? srcPlayer.y : (this.playableArenaBounds.top  + this.playableArenaBounds.bottom) / 2;
 
-    const carrier = new Zombie(spawnX, spawnY, 'normal');
+    const carrier = new Zombie(spawnX, spawnY, 'goblin_courier');
     carrier.id = ++this._zombieIdCounter;
     carrier.hp = Math.max(6, 4 + this.waveManager.currentWave * 2);
     carrier.maxHp = carrier.hp;
@@ -1093,7 +1187,6 @@ export class Game {
     carrier.vy = Math.sin(flingAngle) * flingPower;
 
     const bounds = this.playableArenaBounds;
-    carrier.extraState.set('bagCarrier', true);
     carrier.extraState.set('bagRewardValue', this.pendingArenaBagReward.value);
     carrier.extraState.set('bagRewardWave', this.pendingArenaBagReward.sourceWave);
     carrier.extraState.set('spawnTimer', 600);
@@ -1535,6 +1628,10 @@ export class Game {
       }
     }
 
+    if (!this.networkMode && !this.waveManager.isResting && !this.debugPaused) {
+      this.updateArenaAppleTrees();
+    }
+
     this.flushQueuedZombieDeaths();
 
     // Update zombies
@@ -1742,9 +1839,10 @@ export class Game {
             }
 
             if (!ignoreKnockback) {
+              const pk = this.players.find(p => p.id === proj.ownerId)?.knockback ?? 0;
               if (proj.type === 'slash') {
-                // Push to the edge of the slash radius (or 80% for big zombies)
-                const edgeDist = proj.radius + zombie.radius;
+                // Push to the edge of the slash radius (or 80% for big zombies) + knockback stat bonus
+                const edgeDist = proj.radius + zombie.radius + pk * 4;
                 const targetDist = zombie.type === 'big' ? edgeDist * 0.8 : edgeDist;
                 const currentDist = Math.hypot(zombie.x - proj.x, zombie.y - proj.y);
                 if (currentDist < targetDist) {
@@ -1755,7 +1853,7 @@ export class Game {
                   zombie.vy += Math.sin(angle) * v0;
                 }
               } else {
-                const baseKb = 30;
+                const baseKb = 30 + pk * 4;
                 const kbForce = zombie.type === 'big' ? baseKb * 0.15 : baseKb;
                 const v0 = kbForce * 0.08;
                 zombie.vx += Math.cos(angle) * v0;
@@ -1906,6 +2004,15 @@ export class Game {
               for (const p of this.players) {
                 p.materials += val;
               }
+            } else if (item.type === 'apple') {
+              const healAmount = item.value || this.ARENA_APPLE_HEAL_AMOUNT;
+              player.hp = Math.min(player.maxHp, player.hp + healAmount);
+              this.healVFX.push({
+                x: player.x,
+                y: player.y - 18,
+                alpha: 0.95,
+                startTime: Date.now(),
+              });
             }
 
             this.items.splice(i, 1);
@@ -2051,7 +2158,7 @@ export class Game {
     const isAutoDespawned = zombie.extraState.get("auto_despawned") === true;
     if (!isAutoDespawned) audioManager.playKill();
     const zombieDef = ZOMBIE_REGISTRY[zombie.type];
-    const isBagCarrier = zombie.extraState.get('bagCarrier') === true;
+    const isBagCarrier = zombie.type === 'goblin_courier';
     const bagRewardValue = Number(zombie.extraState.get('bagRewardValue') ?? 0);
       const suppressOrbDrops = options.suppressOrbDrops || isBagCarrier || isAutoDespawned;
     const suppressItemDrop = options.suppressItemDrop || isBagCarrier || isAutoDespawned;
@@ -2193,6 +2300,10 @@ export class Game {
       ctx.fillStyle = `rgba(139, 195, 74, ${(trail.lifetime / trail.maxLifetime) * 0.5})`;
       ctx.fill();
       ctx.closePath();
+    }
+
+    for (const tree of this.arenaAppleTrees) {
+      drawArenaAppleTree(ctx, tree);
     }
 
     // 璅∠? H嚗??瑟楚?乩耨敺拙??恬?_fadeAlpha: 0?? 瞍詨嚗?

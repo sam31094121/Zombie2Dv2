@@ -35,19 +35,42 @@ export function getWeaponLevel(wave: number): number {
   if (r < 0.05) return 2; if (r < 0.25) return 3; if (r < 0.65) return 4;
   return 5 + Math.floor(Math.random() * 3);
 }
-export function drawCards(wave: number, count = 5): ShopCard[] {
-  const wc = Math.random() < 0.5 ? Math.floor(count / 2) : Math.ceil(count / 2);
-  const ic = count - wc;
+function getOwnedItemCount(player: Pick<Player, 'ownedItems'> | undefined, defId: string): number {
+  if (!player) return 0;
+  return player.ownedItems.filter(item => item.defId === defId).length;
+}
+
+function canOfferItem(defId: string, player?: Pick<Player, 'ownedItems'>): boolean {
+  const def = ITEM_REGISTRY[defId];
+  if (!def) return false;
+  if (!def.maxOwned) return true;
+  return getOwnedItemCount(player, defId) < def.maxOwned;
+}
+
+export function drawCards(wave: number, count = 5, player?: Pick<Player, 'ownedItems'>): ShopCard[] {
+  const desiredWeaponCount = Math.random() < 0.5 ? Math.floor(count / 2) : Math.ceil(count / 2);
+  const desiredItemCount = count - desiredWeaponCount;
   const cards: ShopCard[] = [];
-  for (let i = 0; i < wc; i++) {
+  const uniquePool = Object.keys(ITEM_REGISTRY).filter(defId => canOfferItem(defId, player) && (ITEM_REGISTRY[defId]?.maxOwned ?? Infinity) <= 1);
+  const repeatablePool = Object.keys(ITEM_REGISTRY).filter(defId => canOfferItem(defId, player) && (ITEM_REGISTRY[defId]?.maxOwned ?? Infinity) > 1);
+
+  for (let i = 0; i < desiredItemCount; i++) {
+    const pool = [...uniquePool, ...repeatablePool];
+    if (pool.length === 0) break;
+    const defId = pool[Math.floor(Math.random() * pool.length)];
+    cards.push({ id: Math.random().toString(36).substr(2, 9), cardType: 'item', defId });
+    const def = ITEM_REGISTRY[defId];
+    if (def && (def.maxOwned ?? Infinity) <= 1) {
+      const idx = uniquePool.indexOf(defId);
+      if (idx !== -1) uniquePool.splice(idx, 1);
+    }
+  }
+
+  while (cards.length < count) {
     const level = getWeaponLevel(wave);
     const type: 'sword' | 'gun' = Math.random() < 0.5 ? 'sword' : 'gun';
     const branch: 'A' | 'B' | null = level >= 5 ? (Math.random() < 0.5 ? 'A' : 'B') : null;
     cards.push({ id: Math.random().toString(36).substr(2, 9), cardType: 'weapon', type, level, branch, cost: weaponCost(level) });
-  }
-  const itemKeys = Object.keys(ITEM_REGISTRY);
-  for (let i = 0; i < ic; i++) {
-    cards.push({ id: Math.random().toString(36).substr(2, 9), cardType: 'item', defId: itemKeys[Math.floor(Math.random() * itemKeys.length)] });
   }
   return cards.sort(() => Math.random() - 0.5);
 }
@@ -182,7 +205,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
 
   const [mobileTab, setMobileTab] = useState<1 | 2>(effectivePts > 0 ? 1 : 2);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
-  const [shopCards, setShopCards] = useState<ShopCard[]>(() => drawCards(wave, cardCount));
+  const [shopCards, setShopCards] = useState<ShopCard[]>(() => drawCards(wave, cardCount, player));
   const [rerollCost, setRerollCost] = useState(10);
   const [mergePending, setMergePending] = useState<{ keepId: string; removeId: string } | null>(null);
   const [branchPending, setBranchPending] = useState<{ weaponId: string } | null>(null);
@@ -227,6 +250,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
 
   const handleBuyItem = (card: ItemCard) => {
     const def = ITEM_REGISTRY[card.defId];
+    if (!canOfferItem(card.defId, player)) return;
     if (!def || player.materials < def.cost) return;
     player.materials -= def.cost;
     if (def.type === 'permanent') def.apply(player);
@@ -240,7 +264,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
     if (!free && player.materials < rerollCost) return;
     if (free) { player.ownedItems.splice(passIdx, 1); }
     else { player.materials -= rerollCost; setRerollCost(p => p + 5); }
-    audioManager.playPickup(); setShopCards(drawCards(wave, cardCount)); rerender();
+    audioManager.playPickup(); setShopCards(drawCards(wave, cardCount, player)); rerender();
   };
 
   const handleInventoryClick = (w: WeaponSlot) => {
@@ -296,6 +320,16 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
 
   const hasGuestPass = player.ownedItems.some(i => i.defId === 'guest_pass');
   const canReroll = hasGuestPass || player.materials >= rerollCost;
+  const ownedItemStacks: Array<{ defId: string; items: OwnedItem[]; count: number }> = [];
+  for (const item of player.ownedItems) {
+    const existingStack = ownedItemStacks.find(stack => stack.defId === item.defId);
+    if (existingStack) {
+      existingStack.items.push(item);
+      existingStack.count += 1;
+    } else {
+      ownedItemStacks.push({ defId: item.defId, items: [item], count: 1 });
+    }
+  }
 
   // ── Stats panel ────────────────────────────────────────────────────────────
 
@@ -324,7 +358,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
       </div>
 
       {/* Rows */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+      <div className="px-scroll-y" style={{ flex: 1 }}>
         {Object.values(STAT_REGISTRY).map((stat, idx) => {
           const curLv = player.statLevels[stat.id] ?? 0;
           const isMaxed = stat.maxLevel !== -1 && curLv >= stat.maxLevel;
@@ -401,9 +435,9 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               點擊合成 / 點擊售出
             </span>
           </div>
-          <div style={{
+          <div className="px-scroll-x" style={{
             display: 'flex', gap: 6, padding: '8px 14px',
-            overflowX: 'auto', background: C.bg,
+            background: C.bg,
           }}>
             {Array.from({ length: 6 }).map((_, i) => {
               const w = player.weapons[i];
@@ -444,7 +478,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
       )}
 
       {/* Accessories strip */}
-      {player.ownedItems.length > 0 && (
+      {false && player.ownedItems.length > 0 && (
         <div style={{
           flexShrink: 0, padding: '6px 14px',
           display: 'flex', gap: 6, flexWrap: 'wrap',
@@ -472,6 +506,52 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
         </div>
       )}
 
+      {ownedItemStacks.length > 0 && (
+        <div style={{
+          flexShrink: 0, padding: '6px 14px',
+          boxShadow: `0 1px 0 ${C.b1}`, background: C.panel,
+        }}>
+          <div className="px-scroll-x" style={{ display: 'flex', gap: 6, paddingBottom: 2 }}>
+            {ownedItemStacks.map(stack => {
+              const def = ITEM_REGISTRY[stack.defId]; if (!def) return null;
+              const firstItem = stack.items[0];
+              if (!firstItem) return null;
+              return (
+                <div key={stack.defId} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  flexShrink: 0,
+                  boxShadow: `inset 0 0 0 1px ${C.b2}`,
+                  padding: '4px 8px', background: C.bg,
+                }}>
+                  <span style={{ fontSize: 13 }}>{def.icon}</span>
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.text }}>{def.name}</span>
+                  {stack.count > 1 && (
+                    <span style={{
+                      fontFamily: "'Press Start 2P', monospace",
+                      fontSize: 6,
+                      color: C.gold,
+                      boxShadow: `inset 0 0 0 1px ${C.bgold}70`,
+                      padding: '2px 5px',
+                      minWidth: 24,
+                      textAlign: 'center',
+                    }}>
+                      x{stack.count}
+                    </span>
+                  )}
+                  <button onClick={() => handleSellItem(firstItem)} style={{
+                    boxShadow: `inset 0 0 0 1px ${C.red}`,
+                    background: 'transparent', color: C.red, border: 'none',
+                    fontFamily: "'Press Start 2P', monospace", fontSize: 6,
+                    cursor: 'pointer', padding: '2px 6px',
+                    touchAction: 'manipulation',
+                  }}>SELL</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Shop cards */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{
@@ -484,7 +564,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 6, color: C.textDim }}>{shopCards.length} 項</span>
         </div>
 
-        <div style={{
+        <div className="px-scroll-y" style={{
           flex: 1, minHeight: 0,
           display: 'grid',
           gridTemplateColumns: isDesktop
@@ -492,7 +572,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
             : 'repeat(2, 1fr)',
           gridAutoRows: isDesktop ? '1fr' : 'max-content',
           gap: 8, padding: 10,
-          overflowY: 'auto', overflowX: 'hidden', boxSizing: 'border-box',
+          boxSizing: 'border-box',
         }}>
           {shopCards.length === 0 ? (
             <div style={{
@@ -589,6 +669,20 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
         .px-root ::-webkit-scrollbar { width: 4px; height: 4px; }
         .px-root ::-webkit-scrollbar-track { background: ${C.bg}; }
         .px-root ::-webkit-scrollbar-thumb { background: ${C.b2}; border-radius: 2px; }
+        .px-scroll-y {
+          overflow-y: auto;
+          overflow-x: hidden;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+          touch-action: pan-y;
+        }
+        .px-scroll-x {
+          overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-x: contain;
+          touch-action: pan-x;
+        }
         @keyframes px-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
         .px-blink { animation: px-blink 1.2s step-start infinite; }
       `}</style>
@@ -612,7 +706,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
             <div style={{ padding: '10px 18px', boxShadow: `inset -1px 0 0 ${C.b1}`, display: 'flex', alignItems: 'center', gap: 12 }}>
               <span className="px-blink" style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.red }}>☠</span>
               <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: C.gold, letterSpacing: '0.12em', textShadow: `0 0 12px ${C.gold}60` }}>
-                WAVE {wave}
+                波次 {wave}
               </span>
               <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textSm }}>後勤補給</span>
             </div>
@@ -628,7 +722,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
             ))}
             {effectivePts > 0 && (
               <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textSm }}>PT</span>
+                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textSm }}>點數</span>
                 <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 12, color: C.gold, textShadow: `0 0 12px ${C.gold}80` }}>★{effectivePts}</span>
               </div>
             )}
@@ -708,7 +802,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           background: `linear-gradient(180deg, #13172c 0%, #060710 100%)`,
           boxShadow: `0 -6px 30px rgba(0,0,0,0.8), inset 0 2px 0 rgba(255,255,255,0.05)`,
           position: 'relative', zIndex: 10,
-          padding: isDesktop ? '18px 24px' : '14px 12px',
+          padding: isDesktop ? '18px 24px' : '12px 12px calc(12px + env(safe-area-inset-bottom, 18px))',
         }}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent 0%, ${C.gold} 50%, transparent 100%)`, opacity: 0.9, boxShadow: `0 0 15px ${C.gold}` }} />
           

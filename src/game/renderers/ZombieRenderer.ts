@@ -21,7 +21,7 @@ function getButcherFrameIndex(zombie: Zombie): number {
 export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void {
   // ???? ??鈭?謍???箸慫????????祗 ctx.save ??摰?????????????????????????????????????????????????????????
   if (zombie.type === 'butcher') drawButcherWorldFX(zombie, ctx);
-  const isBagCarrier = zombie.extraState.get('bagCarrier') === true;
+  const isBagCarrier = zombie.type === 'goblin_courier';
 
   // ── BAG CARRIER: completely separate draw path ──────────────────────────
   if (isBagCarrier) {
@@ -126,7 +126,7 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
     if (zombie.type === 'normal') {
       const walkCycle = Math.sin(zombie.time / 150);
       // ???
-      ctx.fillStyle = zombie.flashWhiteTimer > 0 ? '#ffffff' : (isBagCarrier ? '#f1e4c6' : '#e0e0ce');
+      ctx.fillStyle = zombie.flashWhiteTimer > 0 ? '#ffffff' : '#e0e0ce';
       ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.roundRect(-zombie.radius * 0.7, -zombie.radius * 0.9, zombie.radius * 1.4, zombie.radius * 1.2, 4);
@@ -152,7 +152,7 @@ export function drawZombie(zombie: Zombie, ctx: CanvasRenderingContext2D): void 
       }
       // ?????
       const armSwing = walkCycle * 5;
-      ctx.fillStyle = isBagCarrier ? '#f1e4c6' : '#e0e0ce'; ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
+      ctx.fillStyle = '#e0e0ce'; ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(-zombie.radius * 0.9,  armSwing, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.arc( zombie.radius * 0.9, -armSwing, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (zombie.type === 'big') {

@@ -62,10 +62,4 @@ export const STAT_REGISTRY: Record<string, StatDef> = {
     maxLevel: 10,
     apply: (p) => { p.regenPerSecond += 0.5; },
   },
-  critChance: {
-    id: 'critChance', name: '暴擊率', icon: '🎯',
-    description: '+3% 暴擊機率（雙倍傷害）',
-    maxLevel: 15,
-    apply: (p) => { p.critChance += 0.03; },
-  },
 };

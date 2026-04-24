@@ -66,6 +66,13 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       v:  i.value,
       c:  i.color,
     })),
+    at: game.arenaAppleTrees.map(tree => ({
+      oi: tree.ownerPlayerId,
+      x:  Math.round(tree.x),
+      y:  Math.round(tree.y),
+      rd: Math.max(0, tree.nextDropAt - Date.now()),
+      sd: tree.seed,
+    })),
     // Bug 3 Fix：序列化剣系投射物，P2 才能看到剥筍動畫
     sp: game.swordProjectiles
       .filter(s => !s.isDone)
@@ -350,6 +357,17 @@ export function applyNetworkState(game: Game, state: any): void {
 
   // 波次狀態
   game.waveManager.currentWave     = state.wv.w;
+  game.waveManager.currentWave     = state.wv.w;
+  game.arenaAppleTrees = Array.isArray((state as any).at)
+    ? ((state as any).at as any[]).map((tree: any) => ({
+        ownerPlayerId: tree.oi,
+        x: tree.x,
+        y: tree.y,
+        nextDropAt: nowMs + Math.max(0, tree.rd ?? 0),
+        seed: tree.sd ?? 0,
+      }))
+    : [];
+
   game.waveManager.isResting       = state.wv.r;
   game.waveManager.timer           = state.wv.t;
   game.waveManager.isInfinite      = state.wv.i;
