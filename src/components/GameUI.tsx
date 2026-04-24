@@ -629,8 +629,8 @@ export const GameUI: React.FC = () => {
           if (!game) return null;
           
           // 將哥布林的世界座標轉換為螢幕百分比位置
-          const screenX = carrier.x - game.camera.x + CONSTANTS.CANVAS_WIDTH / 2;
-          const screenY = carrier.y - game.camera.y + CONSTANTS.CANVAS_HEIGHT / 2;
+          const screenX = carrier.x - game.camera.x;
+          const screenY = carrier.y - game.camera.y;
           
           // 換算成百分比
           const leftPct = (screenX / CONSTANTS.CANVAS_WIDTH) * 100;
@@ -647,7 +647,7 @@ export const GameUI: React.FC = () => {
                 background: `radial-gradient(circle 90px at ${leftPct}% ${topPct}%, transparent 0%, transparent 60px, rgba(0,0,0,0.85) 120px, rgba(0,0,0,0.85) 100%)`
               }}
             >
-              <div className="relative z-10 text-center font-mono animate-pulse mt-[25vh]">
+              <div className="relative z-10 text-center font-mono animate-pulse pointer-events-none">
                 <h3 className="text-yellow-400 font-bold text-2xl mb-4 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] flex items-center justify-center gap-2">
                   <span className="text-3xl">⚠️</span> 偷竊經驗的哥布林出現了！
                 </h3>
