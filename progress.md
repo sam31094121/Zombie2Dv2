@@ -48,3 +48,9 @@ Original prompt: 瘝??????
 - 2026-04-25: Apple pickups now use a dedicated `apple` item render, restore a fixed 15 HP on pickup, and trigger the existing heal VFX flow without adding collision geometry.
 - 2026-04-25: Apple tree state is now serialized through `NetworkSyncSystem`, so online clients can see the tree prop and its drop cadence instead of only the synced apple items.
 - 2026-04-25: `npm run lint`, `npm run build`, and build-smoke boot validation all passed after the apple tree update. Fresh smoke output was captured at `output/spitter-smoke-clean/shot-0.png` with no new `errors-0.json`.
+- 2026-04-25: Arena shop card odds were retuned to skew heavily toward weapons. A 5-card shop now usually rolls around `1 passive / 4 weapons`, with a small variance band that can drift to `0` or `2` passives.
+- 2026-04-25: Removed the `knife` passive from the arena passive pool and cleaned the last `critChance` color mapping residue from the arena shop stat UI.
+- 2026-04-25: Apple tree tuning pass landed: tree visuals are larger, apple drops scatter across a much wider radius so they do not stack on one spot, and each apple now heals `50 HP`.
+- 2026-04-25: Arena wave starts now recenter players at the middle of the arena before combat begins, preventing the next wave from inheriting a corner position from the previous round.
+- 2026-04-25: `npm run lint`, `npm run build`, and build-smoke boot validation all passed after the arena shop ratio / apple tree / recenter pass. `output/spitter-smoke-clean/shot-0.png` was refreshed again with no new `errors-0.json`.
+- 2026-04-25: Arena shop passive odds were tightened so a 5-card shop now always rolls at least 1 passive and at most 2 passives, while still favoring the `1 passive / 4 weapons` layout.

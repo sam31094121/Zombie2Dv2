@@ -16,28 +16,29 @@ export function drawArenaAppleTree(
   now: number = Date.now(),
 ): void {
   const pulse = Math.max(0, 1 - (tree.nextDropAt - now) / 2500);
-  const sway = Math.sin(now / 700 + tree.seed) * 1.6;
-  const canopyBob = Math.sin(now / 900 + tree.seed * 0.7) * 0.8;
+  const sway = Math.sin(now / 700 + tree.seed) * 2.1;
+  const canopyBob = Math.sin(now / 900 + tree.seed * 0.7) * 1.1;
 
   ctx.save();
   ctx.translate(tree.x, tree.y);
 
   ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath();
-  ctx.ellipse(0, 16, 26, 10, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 22, 36, 13, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = '#5f3415';
-  ctx.fillRect(-6 + sway * 0.1, -6, 12, 26);
+  ctx.fillRect(-8 + sway * 0.1, -10, 16, 34);
 
   ctx.fillStyle = '#7c4a24';
-  ctx.fillRect(-2 + sway * 0.15, -4, 4, 22);
+  ctx.fillRect(-3 + sway * 0.15, -8, 6, 28);
 
   const canopy = [
-    { x: -16, y: -10, r: 14 },
-    { x: 0, y: -16, r: 18 },
-    { x: 15, y: -9, r: 13 },
-    { x: -3, y: -1, r: 16 },
+    { x: -22, y: -16, r: 19 },
+    { x: 0, y: -24, r: 24 },
+    { x: 21, y: -15, r: 18 },
+    { x: -6, y: -4, r: 22 },
+    { x: 10, y: -2, r: 18 },
   ];
   for (const blob of canopy) {
     ctx.fillStyle = '#14532d';
@@ -53,9 +54,10 @@ export function drawArenaAppleTree(
 
   const appleAlpha = 0.45 + pulse * 0.55;
   const apples = [
-    { x: -12, y: -2, r: 3.8 },
-    { x: 8, y: 4, r: 3.2 },
-    { x: 3, y: -8, r: 3.4 },
+    { x: -18, y: -6, r: 4.8 },
+    { x: 14, y: 4, r: 4.2 },
+    { x: 6, y: -14, r: 4.3 },
+    { x: -2, y: 6, r: 4.1 },
   ];
   for (let i = 0; i < apples.length; i++) {
     const apple = apples[i];
@@ -77,7 +79,7 @@ export function drawArenaAppleTree(
     ctx.strokeStyle = `rgba(250, 204, 21, ${0.18 + pulse * 0.4})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(0, -8 + canopyBob, 24 + pulse * 4, 0, Math.PI * 2);
+    ctx.arc(0, -10 + canopyBob, 34 + pulse * 6, 0, Math.PI * 2);
     ctx.stroke();
   }
 

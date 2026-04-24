@@ -33,23 +33,9 @@ export const ITEM_REGISTRY: Record<string, ItemDef> = {
     cost: 20,
     icon: '🌳',
     maxOwned: 1,
-    description: '每波開始生成一棵蘋果樹，之後每 10 秒掉 1 顆蘋果回血。',
+    description: '每波生成一棵蘋果樹，之後每 10 秒掉 1 顆蘋果。',
     apply: (_player) => {
       // Wave behavior is driven by Game arena logic.
-    },
-  },
-  knife: {
-    id: 'knife',
-    name: '刀子',
-    type: 'permanent',
-    cost: 20,
-    icon: '🔪',
-    description: '劍類傷害 +1',
-    apply: (player) => {
-      player.swordDamageBonus += 1;
-    },
-    unapply: (player) => {
-      player.swordDamageBonus -= 1;
     },
   },
 };

@@ -48,8 +48,11 @@ function canOfferItem(defId: string, player?: Pick<Player, 'ownedItems'>): boole
 }
 
 export function drawCards(wave: number, count = 5, player?: Pick<Player, 'ownedItems'>): ShopCard[] {
-  const desiredWeaponCount = Math.random() < 0.5 ? Math.floor(count / 2) : Math.ceil(count / 2);
-  const desiredItemCount = count - desiredWeaponCount;
+  let desiredItemCount = Math.min(1, count);
+  const itemRoll = Math.random();
+  if (count > 1) {
+    if (itemRoll > 0.82) desiredItemCount = Math.min(2, count - 1);
+  }
   const cards: ShopCard[] = [];
   const uniquePool = Object.keys(ITEM_REGISTRY).filter(defId => canOfferItem(defId, player) && (ITEM_REGISTRY[defId]?.maxOwned ?? Infinity) <= 1);
   const repeatablePool = Object.keys(ITEM_REGISTRY).filter(defId => canOfferItem(defId, player) && (ITEM_REGISTRY[defId]?.maxOwned ?? Infinity) > 1);
@@ -117,7 +120,6 @@ const STAT_COLOR: Record<string, string> = {
   armor: '#3090d8',
   knockback: '#d06828',
   regen: '#30b858',
-  critChance: '#c03888',
 };
 
 // ── Pixel progress bar ────────────────────────────────────────────────────────
