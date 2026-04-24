@@ -55,6 +55,7 @@ export class NetworkManager {
   onRespawned:     ((pid: number) => void) | null = null;
   onPlayerReady:   ((pid: number) => void) | null = null;
   onShopReady:     ((pid: number) => void) | null = null;
+  onShopOpen:      (() => void) | null = null;
   onWaveStart:     ((obsData?: any[]) => void) | null = null;
   // Host ?交 P2 ?宏?撓?伐???inputTick 靘?Reconciliation嚗?
   onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
@@ -272,6 +273,9 @@ export class NetworkManager {
         break;
       case 'WAVE_START':
         this.onWaveStart?.(msg.obs);
+        break;
+      case 'SHOP_OPEN':
+        this.onShopOpen?.();
         break;
     }
   }

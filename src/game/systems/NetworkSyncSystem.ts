@@ -7,6 +7,8 @@ import { Zombie } from '../Zombie';
 import { Projectile } from '../Projectile';
 import { Item, ItemType } from '../Item';
 import { SwordProjectile } from '../entities/SwordProjectile';
+import { MissileProjectile } from '../entities/MissileProjectile';
+import { ArcProjectile } from '../entities/ArcProjectile';
 
 export function serializeState(game: Game, tick: number, hardSync: boolean): object {
   return {
@@ -98,6 +100,23 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
           explodeDamage: s.config.explodeDamage,
           explodeRadius: s.config.explodeRadius,
         },
+      })),
+    ms: game.missiles.filter(m => m.alive).map(m => ({
+      x: Math.round(m.x), y: Math.round(m.y), vx: m.vx, vy: m.vy,
+      oi: m.ownerId, dm: m.damage, r: m.radius,
+      sm: m.isSmall, va: m.variant,
+      sp: m.speed, ts: m.turnSpeed,
+      lt: m.lifetime, ml: m.maxLifetime,
+      hd: Math.round(m.homingDelayTimer), og: Math.round(m.obstacleGraceTimer),
+      pr: m.pierceRemaining, sr: m.splashRadius,
+    })),
+    ac: game.arcProjectiles
+      .filter(a => a.lifetime > 0 && !a.isEmbedded)
+      .map(a => ({
+        x: Math.round(a.x), y: Math.round(a.y), vx: a.vx, vy: a.vy,
+        oi: a.ownerId, lv: a.level,
+        dm: a.damage, mj: a.maxJumps, pd: a.paralyzeDuration,
+        lt: a.lifetime, ml: a.maxLifetime,
       })),
     wv: {
       w: game.waveManager.currentWave,
@@ -231,6 +250,23 @@ export function applyNetworkState(game: Game, state: any): void {
   // ID-based zombie matching
   const nowStamp = Date.now();
   const serverIds = new Set((state.zs as any[]).map((ns: any) => ns.id ?? 0));
+  // P2 殭屍死亡特效：Host 移除殭屍時，P2 本地生成碎肢/爆炸視覺
+  for (const z of game.zombies) {
+    if (serverIds.has(z.id)) continue;
+    game.hitEffects.push({ x: z.x, y: z.y, type: 'death_burst', lifetime: 450, maxLifetime: 450 });
+    const burstAngle = Math.random() * Math.PI * 2;
+    const gibCount = 3 + Math.floor(Math.random() * 3);
+    for (let g = 0; g < gibCount; g++) {
+      const sa = burstAngle + (Math.random() - 0.5) * 1.4;
+      const spd = 10 + Math.random() * 7;
+      game.hitEffects.push({
+        x: z.x, y: z.y, type: 'gib_blood',
+        lifetime: 400 + Math.random() * 200, maxLifetime: 600,
+        vx: Math.cos(sa) * spd, vy: Math.sin(sa) * spd,
+        rotation: Math.random() * Math.PI * 2, size: 3 + Math.random() * 4,
+      });
+    }
+  }
   game.zombies = game.zombies.filter(z => serverIds.has(z.id));
   for (const ns of state.zs as any[]) {
     const nsId = ns.id ?? 0;
@@ -283,11 +319,15 @@ export function applyNetworkState(game: Game, state: any): void {
   game.pendingPickups = game.pendingPickups.filter(p => nowMs - p.time < 600);
   const prevItems = game.items;
   game.items = (state.it as any[]).map((is) => {
-    // 先嘗試找同類型、位置相近的既有物件（距離 < 40px 視為同一個 orb）
-    const existIdx = prevItems.findIndex(
-      // Bug 4 Fix：擴大匹配半徑 40→80，避免磁鐵吸引移動中的 orb 被誤判為新物件導致 spawnTime 重置抖動
-      e => e.type === is.tp && Math.hypot(e.x - is.x, e.y - is.y) < 80
-    );
+    // 最近優先配對：避免多顆同類型 orb 聚集時幀間換位導致 spawnTime 突變抖動
+    let bestIdx = -1, bestDist = 80;
+    for (let j = 0; j < prevItems.length; j++) {
+      const e = prevItems[j];
+      if (e.type !== is.tp) continue;
+      const d = Math.hypot(e.x - is.x, e.y - is.y);
+      if (d < bestDist) { bestDist = d; bestIdx = j; }
+    }
+    const existIdx = bestIdx;
     let item: Item;
     if (existIdx >= 0) {
       item = prevItems.splice(existIdx, 1)[0];
@@ -350,15 +390,31 @@ export function applyNetworkState(game: Game, state: any): void {
     });
   }
 
-  // Bug 1A Fix：同步 Host 的商店開放旗標，並補呼叫 clearEntitiesForShop()
-  // 原本只設旗標但沒清場，導致 hasArenaGroundOrbs === true，P2 永遠進不了商店
-  if (state.wv.sr && !(game as any)._shopReadyToOpen) {
-    (game as any)._shopReadyToOpen = true;
-    if (!(game as any)._shopCleared) {
-      (game as any)._shopCleared = true;
-      game.clearEntitiesForShop(); // 執行清場：清除殭屍、子彈、地面 orb
-    }
-    // 設定旗標讓 GameUI.tsx 的 onStateUpdate 回呼知道應切換到 shopping 畫面
-    (game as any)._p2ShopTrigger = true;
+  // 飛彈反序列化（P2 純視覺，不執行追蹤 / 傷害邏輯）
+  if (Array.isArray(state.ms)) {
+    game.missiles = (state.ms as any[]).map((ms: any) => {
+      const angle = Math.atan2(ms.vy, ms.vx);
+      const m = new MissileProjectile({
+        ownerId: ms.oi, x: ms.x, y: ms.y, angle,
+        damage: ms.dm, speed: ms.sp, turnSpeed: ms.ts,
+        radius: ms.r, isSmall: ms.sm, splitAfter: 0,
+        groundFireRadius: 0, groundFireDuration: 0,
+        pierceRemaining: ms.pr, variant: ms.va,
+        homingDelayMs: ms.hd, obstacleGraceMs: ms.og, splashRadius: ms.sr,
+      });
+      m.vx = ms.vx; m.vy = ms.vy;
+      m.lifetime = ms.lt; m.maxLifetime = ms.ml;
+      m.homingDelayTimer = ms.hd; m.obstacleGraceTimer = ms.og;
+      return m;
+    });
+  }
+
+  // 電弧反序列化（P2 純視覺）
+  if (Array.isArray(state.ac)) {
+    game.arcProjectiles = (state.ac as any[]).map((ac: any) =>  {
+      const a = new ArcProjectile(ac.oi, ac.lv, ac.x, ac.y, ac.vx, ac.vy, ac.dm, ac.mj, ac.pd);
+      a.lifetime = ac.lt; a.maxLifetime = ac.ml;
+      return a;
+    });
   }
 }

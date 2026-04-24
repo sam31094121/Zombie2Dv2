@@ -27,6 +27,17 @@ export const GameUI: React.FC = () => {
   const fsTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fsBtnRef = useRef<HTMLButtonElement>(null);
   const [gameState, setGameState] = useState<'start' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
+
+  // ── 全螢幕引導提示（只顯示一次）────────────────────────────
+  const [showFsHint, setShowFsHint] = useState(false);
+  const [fsHintFading, setFsHintFading] = useState(false);
+  const fsHintAutoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dismissFsHint = () => {
+    if (fsHintAutoRef.current) clearTimeout(fsHintAutoRef.current);
+    setFsHintFading(true);
+    setTimeout(() => setShowFsHint(false), 500);
+  };
   const [gameStats, setGameStats] = useState({ time: 0, kills: 0 });
   const [p1State, setP1State] = useState<Player | null>(null);
   const [p2State, setP2State] = useState<Player | null>(null);
@@ -80,6 +91,17 @@ export const GameUI: React.FC = () => {
   const hostPrevWave       = useRef(1);
   const hostPrevResting    = useRef(false);
   const hostRespawnTimers  = useRef<Map<number, number>>(new Map());
+
+  // ── 全螢幕引導提示：每次進入都顯示
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setShowFsHint(true);
+      // 5 秒後自動消失
+      fsHintAutoRef.current = setTimeout(dismissFsHint, 5000);
+    }, 600);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── rAF 遊戲主迴圈 Hook ───────────────────────────────────
   const { startLoop } = useGameLoop({
@@ -174,6 +196,10 @@ export const GameUI: React.FC = () => {
             gameStateRef.current = 'shopping';
             setGameState('shopping');
             resetPlayerInputState();
+            // 線上 Host 模式：主動通知 P2 進入商店（sr 旗標在同幀被清除，不可靠）
+            if (networkRef.current?.isHost) {
+              networkRef.current.sendControl({ t: 'SHOP_OPEN' });
+            }
           }
         }
       } else {
@@ -269,18 +295,16 @@ export const GameUI: React.FC = () => {
       game.networkPlayerId = 2;
       game.onSendInput     = (dx, dy) => nm.sendInput(dx, dy);
 
-      nm.onStateUpdate = (state) => {
-        game.applyNetworkState(state);
-        // Bug 1B Fix：P2 商店觸發改由此處直接驅動
-        // 原本依賴 makeOnUpdate 的 isArenaShopReady check，但 P2 的清場時機不對導致永遠不觸發
-        // 現在 applyNetworkState 設定 _p2ShopTrigger，這裡直接切換到 shopping 畫面
-        if ((game as any)._p2ShopTrigger && gameStateRef.current === 'playing' && !arenaShopEnteredRef.current) {
-          (game as any)._p2ShopTrigger = false;
-          arenaShopEnteredRef.current = true;
-          gameStateRef.current = 'shopping';
-          setGameState('shopping');
-          resetPlayerInputState();
-        }
+      nm.onStateUpdate = (state) => { game.applyNetworkState(state); };
+
+      nm.onShopOpen = () => {
+        if (!gameRef.current || arenaShopEnteredRef.current) return;
+        if (gameStateRef.current !== 'playing') return;
+        gameRef.current.clearEntitiesForShop();
+        arenaShopEnteredRef.current = true;
+        gameStateRef.current = 'shopping';
+        setGameState('shopping');
+        resetPlayerInputState();
       };
       nm.onGameOver = (time, kills) => {
         setGameStats({ time, kills }); setGameState('gameover'); audioManager.stopBGM();
@@ -484,8 +508,6 @@ export const GameUI: React.FC = () => {
     setP1ShopReady(false);
     setP2ShopReady(false);
     onlineShopReadyRef.current = { myReady: false, otherReady: false };
-    // 清除 P2 商店觸發旗標，避免舊旗標殘留影響下一波
-    if (gameRef.current) (gameRef.current as any)._p2ShopTrigger = false;
   };
 
   // 本地雙人模式：兩人都準備好才開始下一波（線上模式由 WAVE_START 訊息協調，不走這裡）
@@ -581,6 +603,91 @@ export const GameUI: React.FC = () => {
             </svg>
           )}
         </button>
+
+        {/* ── 全螢幕一次性引導提示（Spotlight） ─────────────── */}
+        {showFsHint && (
+          <div
+            onClick={dismissFsHint}
+            className="pointer-events-auto"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 999,
+              opacity: fsHintFading ? 0 : 1,
+              transition: 'opacity 0.5s ease',
+              // 遮罩：全黑底，右上角挖出聚光燈圓洞（spotlight effect via radial-gradient）
+              background: 'radial-gradient(circle 52px at calc(100% - 28px) 28px, transparent 38px, rgba(0,0,0,0.78) 52px)',
+              cursor: 'pointer',
+            }}
+            aria-label="點擊任意處關閉全螢幕提示"
+          >
+            {/* 說明標籤 */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(max(8px, env(safe-area-inset-top,8px)) + 62px)',
+                right: 'calc(max(8px, env(safe-area-inset-right,8px)) + 2px)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                gap: '6px',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            >
+              {/* 彎曲箭頭 ↑ 指向按鈕 */}
+              <svg
+                width="32" height="40"
+                viewBox="0 0 32 40"
+                style={{
+                  marginRight: '4px',
+                  animation: 'fsHintBounce 1s ease-in-out infinite',
+                }}
+                fill="none"
+              >
+                <path
+                  d="M28 36 C28 18, 8 18, 8 4"
+                  stroke="white" strokeWidth="2.5" strokeLinecap="round"
+                />
+                <path
+                  d="M4 8 L8 2 L12 8"
+                  stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                />
+              </svg>
+              {/* 文字提示 */}
+              <div style={{
+                background: 'rgba(255,255,255,0.12)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '12px',
+                padding: '8px 14px',
+                color: '#fff',
+                fontSize: '13px',
+                fontWeight: 600,
+                lineHeight: 1.5,
+                textAlign: 'right',
+                maxWidth: '160px',
+              }}>
+                點擊此處<br/>進入全螢幕<br/>
+                <span style={{ fontSize: '11px', opacity: 0.65, fontWeight: 400 }}>獲得最佳遊戲體驗</span>
+              </div>
+              {/* 點任意處關閉的提示 */}
+              <div style={{
+                color: 'rgba(255,255,255,0.45)',
+                fontSize: '11px',
+                marginRight: '2px',
+              }}>點任意處關閉</div>
+            </div>
+
+            {/* 全域 keyframes（inline style 方式注入） */}
+            <style>{`
+              @keyframes fsHintBounce {
+                0%, 100% { transform: translateY(0);   }
+                50%       { transform: translateY(-6px); }
+              }
+            `}</style>
+          </div>
+        )}
 
         {/* ── 首頁 ────────────────────────────────────────────── */}
         {gameState === 'start' && (
