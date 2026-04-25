@@ -243,6 +243,11 @@ export const GameUI: React.FC = () => {
       makeOnUpdate(),
       mode
     );
+    gameRef.current.onVictory = (time, kills) => {
+      setGameStats({ time, kills });
+      setGameState('victory');
+      audioManager.stopBGM();
+    };
 
     hasShownGoblinHintRef.current = false;
     gameRef.current.onGoblinSpawned = (carrier) => {

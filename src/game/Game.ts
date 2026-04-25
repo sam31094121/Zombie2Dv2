@@ -97,6 +97,7 @@ export class Game {
   isGameOver: boolean = false;
   shakeTimer: number = 0;
   onGameOver: (time: number, kills: number) => void;
+  onVictory?: (time: number, kills: number) => void;
   onUpdateUI: (p1: Player | null, p2: Player | null, waveManager: WaveManager) => void;
   waveManager: WaveManager;
   mode: GameMode = 'endless';
@@ -1428,6 +1429,8 @@ export class Game {
       } else if (waveId === 10) {
         if (this.activeBoss && this.activeBoss.hp <= 0) {
           this.waveManager.completeObjective();
+          // 勝利保護：魔王死後玩家進入無敵狀態
+          for (const p of this.players) p.isInvincible = true;
         }
       }
     }
@@ -1467,6 +1470,14 @@ export class Game {
         this.activeEffects = [];
         this.slimeTrails = [];
         this.pendingSwordKills.clear();
+        
+        if (this.waveManager.currentWave >= 10) {
+          // 徹底勝利
+          const time = Date.now() - this.startTime;
+          this.onVictory?.(time, this.score);
+          return;
+        }
+
         this.updateArenaLootBagSequence(dt);
       }
 
