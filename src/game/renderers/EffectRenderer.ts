@@ -34,6 +34,44 @@ export interface HealVFX {
   scale?: number;
 }
 
+function withHexAlpha(hex: string, alpha: number): string {
+  const raw = hex.replace('#', '');
+  const normalized = raw.length === 3
+    ? raw.split('').map((ch) => ch + ch).join('')
+    : raw;
+  const channel = Math.max(0, Math.min(255, Math.round(alpha * 255)));
+  return `#${normalized}${channel.toString(16).padStart(2, '0')}`;
+}
+
+const HEAL_VFX_COLORS = {
+  regen: {
+    glowCore: '#F7FFF6',
+    glowMid: '#93F5B8',
+    glowOuter: '#238A57',
+    plusOuter: '#E9FFE8',
+    plusInner: '#66E39A',
+    sparkA: '#F0FFD2',
+    sparkB: '#97F0B4',
+  },
+  aura: {
+    ring: '#B4FFC8',
+    plus: '#E8FFF1',
+    orbA: '#F2FFF6',
+    orbB: '#95F2B8',
+  },
+  burst: {
+    ringOuter: '#7AF0AE',
+    ringInner: '#FFE08B',
+    glowCore: '#FFFFFF',
+    glowMid: '#BEFFD2',
+    glowOuter: '#4DBA72',
+    plusOuter: '#F7FFE8',
+    plusInner: '#59DE7F',
+    sparkA: '#F7DA6D',
+    sparkB: '#C7FFDD',
+  },
+} as const;
+
 function drawPixelPlus(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -62,71 +100,6 @@ function drawDiamondSpark(
   ctx.lineTo(x - size, y);
   ctx.closePath();
   ctx.fill();
-}
-
-function traceRegularPolygonAt(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  sides: number,
-  rotation: number = -Math.PI / 2,
-): void {
-  ctx.beginPath();
-  for (let i = 0; i < sides; i++) {
-    const angle = rotation + (i / sides) * Math.PI * 2;
-    const px = x + Math.cos(angle) * radius;
-    const py = y + Math.sin(angle) * radius;
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-}
-
-function drawOrientedBar(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  rotation: number,
-  color: string,
-): void {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation);
-  ctx.fillStyle = color;
-  ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
-  ctx.restore();
-}
-
-function drawBracketCorners(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  armLength: number,
-  thickness: number,
-  rotation: number,
-  color: string,
-): void {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(rotation);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = thickness;
-  ctx.lineCap = 'square';
-
-  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
-    const cx = sx * radius;
-    const cy = sy * radius;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + sy * armLength);
-    ctx.lineTo(cx, cy);
-    ctx.lineTo(cx + sx * armLength, cy);
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D): void {
@@ -681,145 +654,86 @@ export function drawHealVFX(vfxList: HealVFX[], ctx: CanvasRenderingContext2D, p
     ctx.globalAlpha = fade;
 
     if (variant === 'regen') {
-      const pulse = 0.82 + Math.sin(age / 120) * 0.14;
-      const frameR = 9 * scale + Math.sin(age / 90) * 0.8;
-      const rotation = Math.PI / 4 + age / 600;
-
-      ctx.fillStyle = 'rgba(20,83,45,0.22)';
-      traceRegularPolygonAt(ctx, drawX, drawY, frameR + 3, 4, rotation);
+      const pulse = 0.75 + Math.sin(age / 110) * 0.2;
+      const palette = HEAL_VFX_COLORS.regen;
+      const glow = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, 16 * scale);
+      glow.addColorStop(0, withHexAlpha(palette.glowCore, 0.3));
+      glow.addColorStop(0.45, withHexAlpha(palette.glowMid, 0.28));
+      glow.addColorStop(1, withHexAlpha(palette.glowOuter, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, 13 * scale * pulse, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = 'rgba(220,252,231,0.92)';
-      ctx.lineWidth = 2.2;
-      traceRegularPolygonAt(ctx, drawX, drawY, frameR * pulse, 4, rotation);
-      ctx.stroke();
+      drawPixelPlus(ctx, drawX, drawY, 1.5 * scale, palette.plusOuter);
+      drawPixelPlus(ctx, drawX, drawY, 1 * scale, palette.plusInner);
 
-      ctx.strokeStyle = 'rgba(74,222,128,0.86)';
-      ctx.lineWidth = 1.4;
-      traceRegularPolygonAt(ctx, drawX, drawY, frameR * 0.66, 4, age / 800);
-      ctx.stroke();
-
-      drawPixelPlus(ctx, drawX, drawY, 1.45 * scale, '#ecfdf5');
-      drawPixelPlus(ctx, drawX, drawY, 0.95 * scale, '#4ade80');
-
-      for (let i = 0; i < 4; i++) {
-        const angle = i * (Math.PI / 2) + age / 700;
-        const dist = frameR + 2.2 + (i % 2) * 1.4;
-        const px = drawX + Math.cos(angle) * dist;
-        const py = drawY + Math.sin(angle) * dist;
-        drawOrientedBar(
-          ctx,
-          px,
-          py,
-          3.4 * scale,
-          7.4 * scale,
-          angle,
-          i % 2 === 0 ? 'rgba(187,247,208,0.96)' : 'rgba(74,222,128,0.88)'
-        );
+      for (let i = 0; i < 3; i++) {
+        const orbit = age / 220 + i * 2.1 + vfx.startTime * 0.001;
+        const px = drawX + Math.cos(orbit) * (6 + i * 2) * scale;
+        const py = drawY - 3 - Math.sin(orbit * 1.2) * (4 + i) * scale;
+        ctx.fillStyle = i === 0 ? palette.sparkA : palette.sparkB;
+        ctx.beginPath();
+        ctx.ellipse(px, py, 1.6 * scale, 3.2 * scale, orbit * 0.5, 0, Math.PI * 2);
+        ctx.fill();
       }
       continue;
     }
 
     if (variant === 'aura') {
-      const pulse = 0.74 + Math.sin(age / 95) * 0.12;
-      const frameR = (9 + age * 0.016) * scale;
-
-      ctx.fillStyle = 'rgba(17,63,38,0.18)';
-      traceRegularPolygonAt(ctx, drawX, drawY, frameR + 2.5, 8, Math.PI / 8);
-      ctx.fill();
-
-      ctx.strokeStyle = 'rgba(187,247,208,0.9)';
-      ctx.lineWidth = 2.1;
-      traceRegularPolygonAt(ctx, drawX, drawY, frameR * pulse, 8, Math.PI / 8);
+      const pulse = 0.7 + Math.sin(age / 100) * 0.25;
+      const palette = HEAL_VFX_COLORS.aura;
+      ctx.strokeStyle = withHexAlpha(palette.ring, 0.74);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, 8 * scale + age * 0.015, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.strokeStyle = 'rgba(74,222,128,0.82)';
-      ctx.lineWidth = 1.5;
-      traceRegularPolygonAt(ctx, drawX, drawY, frameR * 0.62, 4, Math.PI / 4);
-      ctx.stroke();
-
-      drawBracketCorners(
-        ctx,
-        drawX,
-        drawY,
-        frameR * 0.58,
-        3.8 * scale,
-        1.9 * scale,
-        Math.PI / 4,
-        'rgba(134,239,172,0.88)'
-      );
-
-      drawPixelPlus(ctx, drawX, drawY - 1, 1.25 * scale, '#f0fdf4');
-      drawPixelPlus(ctx, drawX, drawY - 1, 0.85 * scale, '#4ade80');
+      drawPixelPlus(ctx, drawX, drawY - 1, 1.2 * scale, palette.plus);
 
       for (let i = 0; i < 3; i++) {
-        const lift = ((age / 320) + i * 0.3) % 1;
-        const px = drawX + (i - 1) * 5 * scale;
-        const py = drawY + 7 * scale - lift * 15 * scale;
-        drawOrientedBar(
-          ctx,
-          px,
-          py,
-          3.1 * scale,
-          (6 - lift * 1.8) * scale,
-          0,
-          i === 1 ? 'rgba(240,253,244,0.96)' : 'rgba(134,239,172,0.9)'
-        );
+        const lift = ((age / 320) + i * 0.28) % 1;
+        const px = drawX + (i - 1) * 4.5 * scale;
+        const py = drawY + 6 * scale - lift * 14 * scale;
+        ctx.fillStyle = i === 1 ? palette.orbA : palette.orbB;
+        ctx.beginPath();
+        ctx.arc(px, py, (2.1 - lift * 0.5) * scale * pulse, 0, Math.PI * 2);
+        ctx.fill();
       }
       continue;
     }
 
-    const frameR = (11 + age * 0.02) * scale;
-    const rotation = Math.PI / 8 + age / 700;
+    const palette = HEAL_VFX_COLORS.burst;
+    const ringRadius = (10 + age * 0.02) * scale;
+    ctx.strokeStyle = withHexAlpha(palette.ringOuter, 0.84);
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, ringRadius, 0, Math.PI * 2);
+    ctx.stroke();
 
-    ctx.fillStyle = 'rgba(63,98,18,0.18)';
-    traceRegularPolygonAt(ctx, drawX, drawY, frameR + 4, 8, rotation);
+    ctx.strokeStyle = withHexAlpha(palette.ringInner, 0.74);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, ringRadius * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const glow = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, 18 * scale);
+    glow.addColorStop(0, withHexAlpha(palette.glowCore, 0.35));
+    glow.addColorStop(0.35, withHexAlpha(palette.glowMid, 0.34));
+    glow.addColorStop(1, withHexAlpha(palette.glowOuter, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, 16 * scale, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = 'rgba(250,204,21,0.92)';
-    ctx.lineWidth = 2.5;
-    traceRegularPolygonAt(ctx, drawX, drawY, frameR + 1.5, 8, rotation);
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(134,239,172,0.88)';
-    ctx.lineWidth = 1.7;
-    traceRegularPolygonAt(ctx, drawX, drawY, frameR * 0.72, 4, Math.PI / 4 + age / 900);
-    ctx.stroke();
-
-    drawBracketCorners(
-      ctx,
-      drawX,
-      drawY,
-      frameR * 0.74,
-      4.6 * scale,
-      2 * scale,
-      Math.PI / 4,
-      'rgba(253,224,71,0.9)'
-    );
-
-    drawPixelPlus(ctx, drawX, drawY, 1.9 * scale, '#f7fee7');
-    drawPixelPlus(ctx, drawX, drawY, 1.15 * scale, '#4ade80');
+    drawPixelPlus(ctx, drawX, drawY, 1.9 * scale, palette.plusOuter);
+    drawPixelPlus(ctx, drawX, drawY, 1.2 * scale, palette.plusInner);
 
     for (let i = 0; i < 4; i++) {
-      const angle = Math.PI / 4 + (i / 4) * Math.PI * 2;
-      const px = drawX + Math.cos(angle) * (frameR + 4.6);
-      const py = drawY + Math.sin(angle) * (frameR + 4.6);
-      drawOrientedBar(
-        ctx,
-        px,
-        py,
-        3.6 * scale,
-        9.4 * scale,
-        angle,
-        i % 2 === 0 ? 'rgba(253,224,71,0.92)' : 'rgba(187,247,208,0.9)'
-      );
-      drawDiamondSpark(
-        ctx,
-        drawX + Math.cos(angle) * (frameR + 8.5),
-        drawY + Math.sin(angle) * (frameR + 8.5),
-        (2.4 + (i % 2) * 0.8) * scale,
-        i % 2 === 0 ? '#fde68a' : '#bbf7d0'
-      );
+      const angle = (i / 4) * Math.PI * 2 + age / 260;
+      const px = drawX + Math.cos(angle) * (11 + Math.sin(age / 180 + i) * 2) * scale;
+      const py = drawY + Math.sin(angle) * (11 + Math.cos(age / 180 + i) * 2) * scale;
+      drawDiamondSpark(ctx, px, py, (2.5 + (i % 2)) * scale, i % 2 === 0 ? palette.sparkA : palette.sparkB);
     }
   }
   ctx.restore();

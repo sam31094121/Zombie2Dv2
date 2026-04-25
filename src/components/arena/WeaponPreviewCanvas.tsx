@@ -39,16 +39,25 @@ export const WeaponPreviewCanvas: React.FC<Props> = ({
     // 套用 3x 渲染解析度
     ctx.scale(3, 3);
 
-    // 中心位置校準：
-    // 因為武器原點在握柄，直接放 0.5 會導致視覺偏右。
-    // 透過偏移，讓武器的「幾何中心」落在畫布中央。
+    // ── 中心位置與縮放校準 ──
     const isSword = type === 'sword';
     const rotation = isSword ? -Math.PI / 4 : 0;
     
-    // 槍：長度約 40，握柄在左，需左移約 15~18 單位
-    // 劍：斜放後，需同時補償水平與垂直位移
-    const cx = isSword ? LOGICAL_W * 0.48 : LOGICAL_W * 0.38;
-    const cy = isSword ? LOGICAL_H * 0.56 : LOGICAL_H * 0.50;
+    // 武器在本地座標系（原點位於握柄）的視覺中心偏移量
+    const localCx = isSword ? 24 : 18;
+    const localCy = isSword ? 0 : 2;
+
+    // ── 使用者指定的微調 (螢幕像素空間) ──
+    let screenOffsetX = 0;
+    let screenOffsetY = 0;
+    
+    if (isSword) {
+      // 刀子全部向上兩格像素
+      screenOffsetY = -2;
+    } else if (type === 'gun' && branch === 'B') {
+      // 槍枝（只有閃電狙擊槍）向左邊移動 6 格像素
+      screenOffsetX = -6;
+    }
 
     const slot: WeaponSlot = {
       id: 'preview', type, level, branch,
@@ -69,11 +78,25 @@ export const WeaponPreviewCanvas: React.FC<Props> = ({
 
     try {
       ctx.save();
-      ctx.translate(cx, cy);
-      // 旋轉畫布進行繪製
+      
+      // 1. 先將畫布原點移動到「邏輯畫布」的正中心
+      ctx.translate(LOGICAL_W / 2, LOGICAL_H / 2);
+      
+      // 套用使用者的微調 (螢幕空間)
+      ctx.translate(screenOffsetX, screenOffsetY);
+      
+      // 2. 智慧縮放：確保最大型武器（長度約 70）不會超出邊框
+      const safeSize = 75; 
+      const scaleToFit = Math.min(1.0, LOGICAL_W / safeSize, LOGICAL_H / safeSize);
+      ctx.scale(scaleToFit, scaleToFit);
+      
+      // 3. 旋轉武器
       ctx.rotate(rotation);
       
-      // ── 使用統一的高級渲染模組 (維持 1.0x 原始比例) ──
+      // 4. 反向平移武器的「本地中心點」，使其對齊畫布正中心
+      ctx.translate(-localCx, -localCy);
+      
+      // ── 使用統一的高級渲染模組 ──
       drawWeaponWithPremiumStyle(ctx, mock, slot, { scale: 1.0 });
       ctx.restore();
     } catch (e) {
