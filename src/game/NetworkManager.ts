@@ -60,6 +60,9 @@ export class NetworkManager {
   onCountdownStart: (() => void) | null = null;
   onCountdownCancel: (() => void) | null = null;
   onWaveStart:     ((obsData?: any[]) => void) | null = null;
+  onRemotePause:   ((pid: number) => void) | null = null;
+  onRemoteResume:  (() => void) | null = null;
+  onUrge:          (() => void) | null = null;
   // Host ?交 P2 ?宏?撓?伐???inputTick 靘?Reconciliation嚗?
   onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
 
@@ -288,6 +291,15 @@ export class NetworkManager {
         break;
       case 'SHOP_OPEN':
         this.onShopOpen?.();
+        break;
+      case 'PAUSE':
+        this.onRemotePause?.(msg.pid);
+        break;
+      case 'RESUME':
+        this.onRemoteResume?.();
+        break;
+      case 'URGE':
+        this.onUrge?.();
         break;
     }
   }

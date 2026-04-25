@@ -45,8 +45,16 @@ export const GameUI: React.FC = () => {
   const [p2State, setP2State] = useState<Player | null>(null);
   const [waveState, setWaveState] = useState<{ wave: number; isResting: boolean; timer: number | null; objectiveText: string | null } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [isPausedUI, setIsPausedUI] = useState(false); // 新增暫停 UI 狀態
-  const [isTestModeEnabled, setIsTestModeEnabled] = useState(false); // 控制測試面板是否顯示
+  const [isPausedUI, setIsPausedUI] = useState(false);
+  const [isTestModeEnabled, setIsTestModeEnabled] = useState(false);
+  // 線上暫停：哪個 pid 按了暫停（null = 未暫停）
+  const [onlinePausedByPid, setOnlinePausedByPid] = useState<number | null>(null);
+  const onlinePausedByRef = useRef<number | null>(null);
+  // 催促閃爍提示
+  const [urgeFlash, setUrgeFlash] = useState(false);
+  const urgeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 催促 cooldown（防連打）
+  const [urgeCooldown, setUrgeCooldown] = useState(false);
   const gameRef = useRef<Game | null>(null);
   const gameStateRef = useRef<'start' | 'playing' | 'shopping' | 'gameover' | 'victory'>('start');
   const arenaShopEnteredRef = useRef(false);
@@ -241,6 +249,12 @@ export const GameUI: React.FC = () => {
     setP2ShopReady(false);
     if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
     setShopCountdown(null);
+    setIsPausedUI(false);
+    setOnlinePausedByPid(null);
+    onlinePausedByRef.current = null;
+    setUrgeFlash(false);
+    setUrgeCooldown(false);
+    if (urgeTimeoutRef.current) { clearTimeout(urgeTimeoutRef.current); urgeTimeoutRef.current = null; }
 
     gameRef.current = new Game(
       count,
@@ -291,6 +305,12 @@ export const GameUI: React.FC = () => {
     onlineShopReadyRef.current = { myReady: false, otherReady: false };
     if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
     setShopCountdown(null);
+    setIsPausedUI(false);
+    setOnlinePausedByPid(null);
+    onlinePausedByRef.current = null;
+    setUrgeFlash(false);
+    setUrgeCooldown(false);
+    if (urgeTimeoutRef.current) { clearTimeout(urgeTimeoutRef.current); urgeTimeoutRef.current = null; }
 
     if (gameRef.current) gameRef.current.destroy();
 
@@ -465,6 +485,23 @@ export const GameUI: React.FC = () => {
       }
     };
 
+    // ── 線上暫停協調 ──────────────────────────────────────────
+    nm.onRemotePause = (pausePid) => {
+      onlinePausedByRef.current = pausePid;
+      setOnlinePausedByPid(pausePid);
+      if (gameRef.current) gameRef.current.isPaused = true;
+    };
+    nm.onRemoteResume = () => {
+      onlinePausedByRef.current = null;
+      setOnlinePausedByPid(null);
+      if (gameRef.current) gameRef.current.isPaused = false;
+    };
+    nm.onUrge = () => {
+      if (urgeTimeoutRef.current) clearTimeout(urgeTimeoutRef.current);
+      setUrgeFlash(true);
+      urgeTimeoutRef.current = setTimeout(() => setUrgeFlash(false), 2500);
+    };
+
     gameRef.current      = game;
     gameStateRef.current = 'playing';
     setGameState('playing');
@@ -549,6 +586,24 @@ export const GameUI: React.FC = () => {
   // ── 按鈕 handlers ─────────────────────────────────────────
   const handleCancelWait = () => { networkRef.current?.disconnect(); setOnlineStep('menu'); setRoomCode(''); };
 
+  // 共用：恢復遊戲（線上模式同時通知對方）
+  const _doUnpause = () => {
+    setIsPausedUI(false);
+    setOnlinePausedByPid(null);
+    onlinePausedByRef.current = null;
+    if (gameRef.current) gameRef.current.isPaused = false;
+    networkRef.current?.sendControl({ t: 'RESUME' });
+  };
+
+  const _clearPauseState = () => {
+    setIsPausedUI(false);
+    setOnlinePausedByPid(null);
+    onlinePausedByRef.current = null;
+    setUrgeFlash(false);
+    setUrgeCooldown(false);
+    if (urgeTimeoutRef.current) { clearTimeout(urgeTimeoutRef.current); urgeTimeoutRef.current = null; }
+  };
+
   const handleMainMenu = () => {
     setGameState('start'); setOnlineStep('menu');
     setRoomCode(''); setJoinInput(''); setOnlineError('');
@@ -559,6 +614,7 @@ export const GameUI: React.FC = () => {
     setP2ShopReady(false);
     if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
     setShopCountdown(null);
+    _clearPauseState();
     networkRef.current?.disconnect();
   };
 
@@ -960,39 +1016,47 @@ export const GameUI: React.FC = () => {
         {/* ── 測試面板 (預設隱藏，須由暫停選單開啟) ────────────────── */}
         {gameState === 'playing' && isTestModeEnabled && <TestModePanel gameRef={gameRef} />}
 
-        {/* ── 暫停選單 (Pause Modal) ────────────────────────────── */}
+        {/* ── 暫停選單：我按了暫停（單機 or 線上我是暫停者）────── */}
         {isPausedUI && gameState === 'playing' && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
             <div className="bg-neutral-900 border border-neutral-700 rounded-2xl w-80 max-w-[90%] p-6 flex flex-col gap-4 shadow-2xl overflow-hidden relative">
-              <div className="text-center pb-4 border-b border-neutral-800">
+              {/* 催促閃爍提示（線上：被催促時顯示）*/}
+              {urgeFlash && (
+                <div className="absolute top-0 left-0 right-0 bg-yellow-500/20 border-b border-yellow-400/50 text-yellow-300 text-xs font-bold text-center py-2 animate-pulse">
+                  ⚡ 隊友催促你了！快點繼續！
+                </div>
+              )}
+
+              <div className={`text-center pb-4 border-b border-neutral-800 ${urgeFlash ? 'pt-6' : ''}`}>
                 <h2 className="text-white text-2xl font-black tracking-widest">PAUSED</h2>
                 <div className="text-neutral-500 text-sm mt-1">遊戲暫停</div>
               </div>
 
-              <button 
+              <button
                 onClick={() => {
-                  setIsPausedUI(false);
-                  if (gameRef.current) gameRef.current.isPaused = false;
+                  if (isOnlineMode) {
+                    _doUnpause();
+                  } else {
+                    setIsPausedUI(false);
+                    if (gameRef.current) gameRef.current.isPaused = false;
+                  }
                 }}
                 className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl active:scale-95 transition-all outline-none"
               >
                 繼續遊戲
               </button>
 
-              <button 
-                onClick={() => startGame(playerCount, 'normal', gameRef.current?.mode || 'endless')}
+              <button
+                onClick={() => { _doUnpause(); startGame(playerCount, 'normal', gameRef.current?.mode || 'endless'); }}
                 className="w-full bg-neutral-800 hover:bg-neutral-700 text-white font-bold py-3 rounded-xl active:scale-95 transition-all outline-none"
               >
                 重新開始
               </button>
 
-              <button 
+              <button
                 onClick={() => {
-                  setIsPausedUI(false);
-                  if (gameRef.current) {
-                    gameRef.current.isPaused = false;
-                    gameRef.current.destroy();
-                  }
+                  _doUnpause();
+                  if (gameRef.current) { gameRef.current.destroy(); }
                   gameStateRef.current = 'start';
                   setGameState('start');
                 }}
@@ -1004,15 +1068,45 @@ export const GameUI: React.FC = () => {
               <div className="mt-2 pt-4 border-t border-neutral-800 flex items-center justify-between">
                 <span className="text-neutral-400 text-sm font-medium">啟用測試模式</span>
                 <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="sr-only peer" 
-                    checked={isTestModeEnabled} 
-                    onChange={(e) => setIsTestModeEnabled(e.target.checked)} 
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={isTestModeEnabled}
+                    onChange={(e) => setIsTestModeEnabled(e.target.checked)}
                   />
                   <div className="w-11 h-6 bg-neutral-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
                 </label>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── 暫停提示：對方按了暫停（線上：我是被暫停的那方）── */}
+        {!isPausedUI && isOnlineMode && onlinePausedByPid !== null && onlinePausedByPid !== myPlayerId && gameState === 'playing' && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
+            <div className="bg-neutral-900 border border-neutral-700 rounded-2xl w-80 max-w-[90%] p-6 flex flex-col gap-4 shadow-2xl">
+              <div className="text-center pb-4 border-b border-neutral-800">
+                <h2 className="text-white text-2xl font-black tracking-widest">PAUSED</h2>
+                <div className="text-neutral-400 text-sm mt-1">P{onlinePausedByPid} 暫停了遊戲</div>
+              </div>
+
+              <div className="text-center text-neutral-500 text-sm py-2">
+                等待隊友繼續中...
+              </div>
+
+              <button
+                disabled={urgeCooldown}
+                onClick={() => {
+                  if (urgeCooldown) return;
+                  networkRef.current?.sendControl({ t: 'URGE' });
+                  setUrgeCooldown(true);
+                  setTimeout(() => setUrgeCooldown(false), 3000);
+                }}
+                className="w-full font-bold py-3 rounded-xl active:scale-95 transition-all outline-none disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: urgeCooldown ? '#374151' : 'linear-gradient(180deg,#f59e0b,#d97706)', color: '#fff' }}
+              >
+                {urgeCooldown ? '⏳ 已催促' : '⚡ 催促隊友'}
+              </button>
             </div>
           </div>
         )}
@@ -1041,20 +1135,29 @@ export const GameUI: React.FC = () => {
                   </div>
                 )}
                 
-                {/* 遊戲暫停按鈕 (線上模式隱藏，避免單方面暫停) */}
-                {!isOnlineMode && (
-                  <button
-                    onClick={() => {
+                {/* 遊戲暫停按鈕（單機 + 線上都顯示） */}
+                <button
+                  onClick={() => {
+                    const nm = networkRef.current;
+                    if (nm) {
+                      // 線上模式：只有在沒人暫停的情況下才能暫停
+                      if (onlinePausedByRef.current !== null) return;
+                      onlinePausedByRef.current = myPlayerId;
+                      setOnlinePausedByPid(myPlayerId);
+                      setIsPausedUI(true);
+                      if (gameRef.current) gameRef.current.isPaused = true;
+                      nm.sendControl({ t: 'PAUSE', pid: myPlayerId });
+                    } else {
                       const next = !isPausedUI;
                       setIsPausedUI(next);
                       if (gameRef.current) gameRef.current.isPaused = next;
-                    }}
-                    className="pointer-events-auto absolute -right-12 top-1/2 -translate-y-1/2 bg-neutral-800/80 border border-neutral-600 text-white rounded p-2 hover:bg-neutral-600 active:scale-95 transition-all w-10 h-10 flex items-center justify-center shadow-lg"
-                    title="暫停遊戲"
-                  >
-                    {isPausedUI ? '▶️' : '⏸️'}
-                  </button>
-                )}
+                    }
+                  }}
+                  className="pointer-events-auto absolute -right-12 top-1/2 -translate-y-1/2 bg-neutral-800/80 border border-neutral-600 text-white rounded p-2 hover:bg-neutral-600 active:scale-95 transition-all w-10 h-10 flex items-center justify-center shadow-lg"
+                  title="暫停遊戲"
+                >
+                  {isPausedUI || onlinePausedByPid !== null ? '▶️' : '⏸️'}
+                </button>
               </div>
               {p2State && <P2Card p2State={p2State} p2RespawnCountdown={p2RespawnCountdown} />}
             </div>
