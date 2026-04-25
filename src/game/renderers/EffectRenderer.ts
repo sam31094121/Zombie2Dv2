@@ -30,6 +30,38 @@ export interface HealVFX {
   alpha: number;
   startTime: number;
   ownerId?: number;
+  variant?: 'regen' | 'burst' | 'aura';
+  scale?: number;
+}
+
+function drawPixelPlus(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  unit: number,
+  color: string,
+): void {
+  const px = Math.max(1, unit);
+  ctx.fillStyle = color;
+  ctx.fillRect(x - px, y - px * 3, px * 2, px * 6);
+  ctx.fillRect(x - px * 3, y - px, px * 6, px * 2);
+}
+
+function drawDiamondSpark(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x, y + size);
+  ctx.lineTo(x - size, y);
+  ctx.closePath();
+  ctx.fill();
 }
 
 export function drawHitEffect(effect: HitEffect, ctx: CanvasRenderingContext2D): void {
@@ -576,20 +608,92 @@ export function drawHealVFX(vfxList: HealVFX[], ctx: CanvasRenderingContext2D, p
     const owner = vfx.ownerId != null ? players.find((player) => player.id === vfx.ownerId) : null;
     const drawX = owner ? owner.x + vfx.x : vfx.x;
     const drawY = owner ? owner.y + vfx.y : vfx.y;
+    const age = Date.now() - vfx.startTime;
+    const fade = Math.max(0, vfx.alpha);
+    const scale = vfx.scale ?? 1;
+    const variant = vfx.variant ?? 'burst';
 
-    ctx.globalAlpha = vfx.alpha;
-    ctx.fillStyle = '#00ff00'; 
-    ctx.font = 'bold 20px Arial'; 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle'; // 基準線設為正中央
+    ctx.globalAlpha = fade;
 
-    // 文字與光環直接以玩家的中心 (drawX, drawY) 為基礎
-    ctx.fillText('+', drawX, drawY);
-    ctx.strokeStyle = `rgba(0,255,0,${vfx.alpha})`;
-    ctx.beginPath(); 
-    // 外圈光環從中心擴散
-    ctx.arc(drawX, drawY, 15 * (1.5 - vfx.alpha), 0, Math.PI * 2); 
+    if (variant === 'regen') {
+      const pulse = 0.75 + Math.sin(age / 110) * 0.2;
+      const glow = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, 16 * scale);
+      glow.addColorStop(0, 'rgba(255,255,255,0.28)');
+      glow.addColorStop(0.45, 'rgba(110,255,160,0.26)');
+      glow.addColorStop(1, 'rgba(20,140,80,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, 13 * scale * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawPixelPlus(ctx, drawX, drawY, 1.5 * scale, '#dcffe3');
+      drawPixelPlus(ctx, drawX, drawY, 1 * scale, '#67e8a5');
+
+      for (let i = 0; i < 3; i++) {
+        const orbit = age / 220 + i * 2.1 + vfx.startTime * 0.001;
+        const px = drawX + Math.cos(orbit) * (6 + i * 2) * scale;
+        const py = drawY - 3 - Math.sin(orbit * 1.2) * (4 + i) * scale;
+        ctx.fillStyle = i === 0 ? '#ecfccb' : '#86efac';
+        ctx.beginPath();
+        ctx.ellipse(px, py, 1.6 * scale, 3.2 * scale, orbit * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      continue;
+    }
+
+    if (variant === 'aura') {
+      const pulse = 0.7 + Math.sin(age / 100) * 0.25;
+      ctx.strokeStyle = `rgba(144,255,180,${0.7 * fade})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(drawX, drawY, 8 * scale + age * 0.015, 0, Math.PI * 2);
+      ctx.stroke();
+
+      drawPixelPlus(ctx, drawX, drawY - 1, 1.2 * scale, '#dcffe3');
+
+      for (let i = 0; i < 3; i++) {
+        const lift = ((age / 320) + i * 0.28) % 1;
+        const px = drawX + (i - 1) * 4.5 * scale;
+        const py = drawY + 6 * scale - lift * 14 * scale;
+        ctx.fillStyle = i === 1 ? '#f0fdf4' : '#86efac';
+        ctx.beginPath();
+        ctx.arc(px, py, (2.1 - lift * 0.5) * scale * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      continue;
+    }
+
+    const ringRadius = (10 + age * 0.02) * scale;
+    ctx.strokeStyle = `rgba(110,255,170,${0.82 * fade})`;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, ringRadius, 0, Math.PI * 2);
     ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255,220,120,${0.7 * fade})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, ringRadius * 0.62, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const glow = ctx.createRadialGradient(drawX, drawY, 0, drawX, drawY, 18 * scale);
+    glow.addColorStop(0, 'rgba(255,255,255,0.35)');
+    glow.addColorStop(0.35, 'rgba(150,255,180,0.32)');
+    glow.addColorStop(1, 'rgba(70,180,90,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, 16 * scale, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawPixelPlus(ctx, drawX, drawY, 1.9 * scale, '#f7fee7');
+    drawPixelPlus(ctx, drawX, drawY, 1.2 * scale, '#4ade80');
+
+    for (let i = 0; i < 4; i++) {
+      const angle = (i / 4) * Math.PI * 2 + age / 260;
+      const px = drawX + Math.cos(angle) * (11 + Math.sin(age / 180 + i) * 2) * scale;
+      const py = drawY + Math.sin(angle) * (11 + Math.cos(age / 180 + i) * 2) * scale;
+      drawDiamondSpark(ctx, px, py, (2.5 + (i % 2)) * scale, i % 2 === 0 ? '#fde68a' : '#bbf7d0');
+    }
   }
   ctx.restore();
 }

@@ -75,6 +75,9 @@ export const GameUI: React.FC = () => {
   const [p2ShopReady, setP2ShopReady] = useState(false);
   // 線上模式商店協調：紀錄自己和對方是否都按下了「準備」
   const onlineShopReadyRef = useRef({ myReady: false, otherReady: false });
+  // 線上商店倒數：null=未倒數, 3/2/1=倒數中
+  const [shopCountdown, setShopCountdown] = useState<number | null>(null);
+  const shopCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── 重賽準備狀態 ──────────────────────────────────────────
   const [readyState, setReadyState] = useState({ myReady: false, otherReady: false });
@@ -236,6 +239,8 @@ export const GameUI: React.FC = () => {
     arenaShopEnteredRef.current = false;
     setP1ShopReady(false);
     setP2ShopReady(false);
+    if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+    setShopCountdown(null);
 
     gameRef.current = new Game(
       count,
@@ -284,6 +289,8 @@ export const GameUI: React.FC = () => {
     setP1ShopReady(false);
     setP2ShopReady(false);
     onlineShopReadyRef.current = { myReady: false, otherReady: false };
+    if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+    setShopCountdown(null);
 
     if (gameRef.current) gameRef.current.destroy();
 
@@ -370,21 +377,85 @@ export const GameUI: React.FC = () => {
       }
     };
 
-    // ── 線上競技場商店協調：雙方都按「準備」後 Host 廣播 WAVE_START ──
-    nm.onShopReady = (readyPid) => {
+    // ── Loadout 同步：收到對方的裝備清單後，更新 Host 本地該玩家的資料 ──
+    nm.onLoadoutSync = (loadoutPid, ld) => {
+      if (!nm.isHost) return;
+      const target = gameRef.current?.players.find(p => p.id === loadoutPid);
+      if (!target) return;
+      target.weapons = ld.weapons ?? target.weapons;
+      target.ownedItems = ld.ownedItems ?? target.ownedItems;
+      target.materials = ld.materials ?? target.materials;
+      target.arenaStatPoints = ld.arenaStatPoints ?? target.arenaStatPoints;
+    };
+
+    // ── 線上競技場商店協調：Toggle 準備 + 3 秒倒數後 Host 廣播 WAVE_START ──
+    nm.onShopReady = (readyPid, ready) => {
       const isMe = readyPid === pid;
-      if (isMe) onlineShopReadyRef.current.myReady = true;
-      else      onlineShopReadyRef.current.otherReady = true;
+      if (isMe) onlineShopReadyRef.current.myReady = ready;
+      else      onlineShopReadyRef.current.otherReady = ready;
+
       if (pid === 1) setP1ShopReady(onlineShopReadyRef.current.myReady);
       else           setP2ShopReady(onlineShopReadyRef.current.myReady);
-      // Host：雙方都準備好 → 生成下一波，把障礙物一起打包給 P2
-      if (nm.isHost && onlineShopReadyRef.current.myReady && onlineShopReadyRef.current.otherReady) {
-        onlineShopReadyRef.current = { myReady: false, otherReady: false };
-        _doNextArenaWave();
-        const obsData = gameRef.current?.getArenaWaveObstacleData() ?? [];
-        nm.sendControl({ t: 'WAVE_START', obs: obsData });
+      if (pid === 2) {
+        // P2 端也要顯示對方（P1）的燈號
+        if (readyPid === 1) setP1ShopReady(ready);
+        else                setP2ShopReady(ready);
+      } else {
+        if (readyPid === 2) setP2ShopReady(ready);
+      }
+
+      if (!nm.isHost) return;
+      // Host 端管理倒數
+      if (onlineShopReadyRef.current.myReady && onlineShopReadyRef.current.otherReady) {
+        // 兩人都準備：啟動 3 秒倒數
+        if (shopCountdownRef.current) return; // 已在倒數中
+        setShopCountdown(3);
+        nm.sendControl({ t: 'COUNTDOWN_START' });
+        let secs = 3;
+        shopCountdownRef.current = setInterval(() => {
+          secs--;
+          if (secs > 0) {
+            setShopCountdown(secs);
+          } else {
+            if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+            setShopCountdown(null);
+            onlineShopReadyRef.current = { myReady: false, otherReady: false };
+            _doNextArenaWave();
+            const obsData = gameRef.current?.getArenaWaveObstacleData() ?? [];
+            nm.sendControl({ t: 'WAVE_START', obs: obsData });
+          }
+        }, 1000);
+      } else {
+        // 有人取消準備：中止倒數
+        if (shopCountdownRef.current) {
+          clearInterval(shopCountdownRef.current);
+          shopCountdownRef.current = null;
+          setShopCountdown(null);
+          nm.sendControl({ t: 'COUNTDOWN_CANCEL' });
+        }
       }
     };
+
+    // P2 端：收到 Host 的倒數訊號
+    nm.onCountdownStart = () => {
+      setShopCountdown(3);
+      let secs = 3;
+      if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); }
+      shopCountdownRef.current = setInterval(() => {
+        secs--;
+        if (secs > 0) {
+          setShopCountdown(secs);
+        } else {
+          if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+          setShopCountdown(null);
+        }
+      }, 1000);
+    };
+    nm.onCountdownCancel = () => {
+      if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+      setShopCountdown(null);
+    };
+
     nm.onWaveStart = (obsData?: any[]) => {
       // P2 收到 Host 的 WAVE_START：先推進波次（會清除並重新隨機生成障礙物），
       // 再用 Host 的資料覆寫，確保障礙物位置一致。
@@ -486,6 +557,8 @@ export const GameUI: React.FC = () => {
     arenaShopEnteredRef.current = false;
     setP1ShopReady(false);
     setP2ShopReady(false);
+    if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+    setShopCountdown(null);
     networkRef.current?.disconnect();
   };
 
@@ -501,26 +574,41 @@ export const GameUI: React.FC = () => {
     }
   };
 
-  const handleNextArenaWave = () => {
+  const handleToggleReady = () => {
     if (!gameRef.current) return;
     const nm = networkRef.current;
     if (nm) {
-      // 線上模式：通知對方自己已準備，等待 WAVE_START 或 onShopReady 協調
-      onlineShopReadyRef.current.myReady = true;
-      nm.sendControl({ t: 'SHOP_READY', pid: myPlayerId });
-      if (myPlayerId === 1) setP1ShopReady(true);
-      else                  setP2ShopReady(true);
-      // Host：自己也準備好且對方也準備好，直接推進（生成障礙物後廣播）
-      if (nm.isHost && onlineShopReadyRef.current.otherReady) {
-        onlineShopReadyRef.current = { myReady: false, otherReady: false };
-        _doNextArenaWave();
-        const obsData = gameRef.current?.getArenaWaveObstacleData() ?? [];
-        nm.sendControl({ t: 'WAVE_START', obs: obsData });
+      const newReady = !onlineShopReadyRef.current.myReady;
+      onlineShopReadyRef.current.myReady = newReady;
+
+      // 準備前先送裝備快照給 Host（讓 Host 的引擎用正確武器跑下一波）
+      if (newReady) {
+        const localPlayer = gameRef.current.players.find(p => p.id === myPlayerId);
+        if (localPlayer) {
+          nm.sendControl({
+            t: 'LOADOUT_SYNC',
+            pid: myPlayerId,
+            ld: {
+              weapons: localPlayer.weapons,
+              ownedItems: localPlayer.ownedItems,
+              materials: localPlayer.materials,
+              arenaStatPoints: localPlayer.arenaStatPoints,
+            },
+          });
+        }
       }
+
+      nm.sendControl({ t: 'SHOP_READY', pid: myPlayerId, ready: newReady });
+      if (myPlayerId === 1) setP1ShopReady(newReady);
+      else                  setP2ShopReady(newReady);
       return;
     }
+    // 單機模式：直接開始
     _doNextArenaWave();
   };
+
+  // 向後相容：舊呼叫點保留（本地雙人 / ManagementView 用）
+  const handleNextArenaWave = handleToggleReady;
 
   const _doNextArenaWave = () => {
     if (!gameRef.current) return;
@@ -531,6 +619,8 @@ export const GameUI: React.FC = () => {
     setP1ShopReady(false);
     setP2ShopReady(false);
     onlineShopReadyRef.current = { myReady: false, otherReady: false };
+    if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+    setShopCountdown(null);
   };
 
   // 本地雙人模式：兩人都準備好才開始下一波（線上模式由 WAVE_START 訊息協調，不走這裡）
@@ -857,6 +947,11 @@ export const GameUI: React.FC = () => {
                 player={localPlayer}
                 wave={waveState?.wave || 1}
                 onNextWave={handleNextArenaWave}
+                isOnline={isOnlineMode}
+                myReady={myPlayerId === 1 ? p1ShopReady : p2ShopReady}
+                otherReady={myPlayerId === 1 ? p2ShopReady : p1ShopReady}
+                countdown={shopCountdown}
+                onToggleReady={handleToggleReady}
               />
             </div>
           ) : null;

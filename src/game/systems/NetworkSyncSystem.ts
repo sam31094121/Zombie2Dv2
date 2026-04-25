@@ -9,6 +9,7 @@ import { Item, ItemType } from '../Item';
 import { SwordProjectile } from '../entities/SwordProjectile';
 import { MissileProjectile } from '../entities/MissileProjectile';
 import { ArcProjectile } from '../entities/ArcProjectile';
+import type { ActiveEffect } from '../types';
 
 export function serializeState(game: Game, tick: number, hardSync: boolean): object {
   return {
@@ -36,6 +37,7 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       sh: p.shield,
       st: Math.round(p.shieldTimer),
       sl: Math.round(p.slowDebuffTimer),
+      mt: Math.round(p.materials),
     })),
     zs: game.zombies.map(z => ({
       id: z.id,
@@ -134,6 +136,16 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       m: game.waveManager.activeMechanics,
       sr: (game as any)._shopReadyToOpen ?? false,
     },
+    ae: game.activeEffects.map(e => ({
+      tp: e.type,
+      x: Math.round(e.x), y: Math.round(e.y),
+      r: e.radius,
+      lt: Math.round(e.lifetime), ml: e.maxLifetime,
+      dm: e.damage, ti: e.tickInterval, tt: Math.round(e.tickTimer),
+      oi: e.ownerId, lv: e.level,
+      tid: e.targetZombieId,
+      er: e.explodeRadius, ed: e.explodeDamage,
+    })),
   };
 }
 
@@ -253,6 +265,10 @@ export function applyNetworkState(game: Game, state: any): void {
     if (ps.wbg !== undefined) player.weaponBranches.gun   = ps.wbg;
     player.syncWeaponToSlot();
     player.shield = player.shieldTimer > 0 || ps.sh;
+    // 只在戰鬥中同步材料；商店休息期間由本地端自行管理（玩家正在消費）
+    if (!game.waveManager.isResting && ps.mt !== undefined) {
+      player.materials = ps.mt;
+    }
   }
 
   // ID-based zombie matching
@@ -273,6 +289,15 @@ export function applyNetworkState(game: Game, state: any): void {
         vx: Math.cos(sa) * spd, vy: Math.sin(sa) * spd,
         rotation: Math.random() * Math.PI * 2, size: 3 + Math.random() * 4,
       });
+    }
+    // 如果這隻殭屍有 lava_mark 追蹤，同步觸發爆炸灼燒視覺
+    for (const ae of game.activeEffects) {
+      if (ae.type === 'lava_mark' && ae.targetZombieId === z.id) {
+        game.hitEffects.push({
+          x: ae.x, y: ae.y, type: 'charred_body',
+          lifetime: ae.lifetime + 300, maxLifetime: ae.lifetime + 300,
+        });
+      }
     }
   }
   game.zombies = game.zombies.filter(z => serverIds.has(z.id));
@@ -435,5 +460,21 @@ export function applyNetworkState(game: Game, state: any): void {
       a.lifetime = ac.lt; a.maxLifetime = ac.ml;
       return a;
     });
+  }
+
+  // activeEffects 反序列化（P2 純視覺：岩漿標記、龍捲風、地面火焰）
+  if (Array.isArray(state.ae)) {
+    game.activeEffects = (state.ae as any[]).map((ae: any): ActiveEffect => ({
+      type: ae.tp,
+      x: ae.x, y: ae.y,
+      radius: ae.r,
+      lifetime: ae.lt, maxLifetime: ae.ml,
+      damage: ae.dm,
+      tickInterval: ae.ti, tickTimer: ae.tt,
+      ownerId: ae.oi, level: ae.lv,
+      targetZombieId: ae.tid,
+      explodeRadius: ae.er,
+      explodeDamage: ae.ed,
+    }));
   }
 }

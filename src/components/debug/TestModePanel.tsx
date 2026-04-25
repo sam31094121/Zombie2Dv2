@@ -96,7 +96,7 @@ function ZombieCard({
       }}
     >
       <canvas ref={canvasRef} width={80} height={72}
-              style={{ imageRendering: 'pixelated', display: 'block' }} />
+              style={{ imageRendering: 'pixelated', display: 'block', pointerEvents: 'none' }} />
       <div className="w-full text-center text-xs font-bold py-0.5"
            style={{ color, background: '#00000055' }}>
         {label}
@@ -220,7 +220,7 @@ function ItemCard({ type, label, active, onClick }: {
     <button onClick={onClick} title={label}
             className="relative flex flex-col items-center rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-105 active:scale-95"
             style={{ border: `2px solid ${active ? '#60a5fa' : '#333'}`, background: active ? '#0f2a4a' : '#0d0d1a', width: 80, height: 88 }}>
-      <canvas ref={canvasRef} width={80} height={72} style={{ imageRendering: 'pixelated', display: 'block' }} />
+      <canvas ref={canvasRef} width={80} height={72} style={{ imageRendering: 'pixelated', display: 'block', pointerEvents: 'none' }} />
       <div className="w-full text-center text-xs font-bold py-0.5" style={{ color: active ? '#60a5fa' : '#aaa', background: '#00000055' }}>
         {label}
       </div>
@@ -355,7 +355,7 @@ function ObstacleCard({ type, label, active, onClick }: {
     <button onClick={onClick} title={label}
             className="relative flex flex-col items-center rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-105 active:scale-95"
             style={{ border: `2px solid ${active ? '#a3a3a3' : '#333'}`, background: active ? '#1a1a1a' : '#0d0d0d', width: 80, height: 88 }}>
-      <canvas ref={canvasRef} width={80} height={72} style={{ imageRendering: 'pixelated', display: 'block' }} />
+      <canvas ref={canvasRef} width={80} height={72} style={{ imageRendering: 'pixelated', display: 'block', pointerEvents: 'none' }} />
       <div className="w-full text-center text-xs font-bold py-0.5" style={{ color: active ? '#ddd' : '#777', background: '#00000055' }}>
         {label}
       </div>
@@ -500,10 +500,7 @@ export function TestModePanel({ gameRef }: Props) {
   return (
     <div
       className="fixed left-0 top-0 h-full z-[70] flex flex-col w-52 bg-gray-950/97 border-r border-gray-800 overflow-y-auto text-white select-none"
-      style={{ touchAction: 'pan-y', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchMove={(e) => e.stopPropagation()}
-      onTouchEnd={(e) => e.stopPropagation()}
+      style={{ touchAction: 'manipulation', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
     >
 
       {/* 標題 */}

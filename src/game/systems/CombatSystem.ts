@@ -42,6 +42,8 @@ export function handleObstacleInteractions(game: Game, dt: number): void {
         alpha: 1.0,
         startTime: Date.now(),
         ownerId: p.id,
+        variant: 'aura',
+        scale: 0.95,
       });
     });
 

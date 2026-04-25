@@ -4,6 +4,506 @@
 import { Player } from '../Player';
 import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
 
+const TAU = Math.PI * 2;
+
+function noise01(seed: number): number {
+  const value = Math.sin(seed * 127.1) * 43758.5453123;
+  return value - Math.floor(value);
+}
+
+function getFacingVector(player: Player): { x: number; y: number } {
+  const moveLen = Math.hypot(player.lastMoveDir.x, player.lastMoveDir.y);
+  if (moveLen > 0.001) {
+    return { x: player.lastMoveDir.x / moveLen, y: player.lastMoveDir.y / moveLen };
+  }
+
+  const angle = player.aimAngle ?? 0;
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function drawSpeedBoostAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (player.speedBoostTimer <= 0) return;
+
+  const { x: dirX, y: dirY } = getFacingVector(player);
+  const perpX = -dirY;
+  const perpY = dirX;
+  const fade = player.speedBoostTimer < 900
+    ? 0.55 + 0.45 * (Math.sin(now / 55) * 0.5 + 0.5)
+    : 1;
+  const pulse = 0.78 + Math.sin(now / 110) * 0.18;
+  const heading = Math.atan2(dirY, dirX);
+  const wakeLength = player.radius + 32 + pulse * 12;
+
+  ctx.save();
+  ctx.globalAlpha = 0.92 * fade;
+
+  const tailGradient = ctx.createLinearGradient(
+    dirX * (player.radius * 0.3),
+    dirY * (player.radius * 0.3),
+    -dirX * wakeLength,
+    -dirY * wakeLength
+  );
+  tailGradient.addColorStop(0, 'rgba(255,255,255,0.34)');
+  tailGradient.addColorStop(0.28, 'rgba(185,247,255,0.32)');
+  tailGradient.addColorStop(0.7, 'rgba(56,189,248,0.2)');
+  tailGradient.addColorStop(1, 'rgba(14,116,144,0)');
+  ctx.fillStyle = tailGradient;
+  ctx.beginPath();
+  ctx.ellipse(
+    -dirX * (player.radius * 0.72),
+    -dirY * (player.radius * 0.72) + 8,
+    player.radius * (1.42 + pulse * 0.18),
+    player.radius * 0.86,
+    heading,
+    0,
+    TAU,
+  );
+  ctx.fill();
+
+  const bowWave = ctx.createRadialGradient(
+    dirX * (player.radius * 0.72),
+    dirY * (player.radius * 0.72) - 1,
+    player.radius * 0.18,
+    dirX * (player.radius * 0.72),
+    dirY * (player.radius * 0.72) - 1,
+    player.radius * 1.18
+  );
+  bowWave.addColorStop(0, 'rgba(255,255,255,0.24)');
+  bowWave.addColorStop(0.42, 'rgba(186,245,255,0.16)');
+  bowWave.addColorStop(1, 'rgba(34,211,238,0)');
+  ctx.fillStyle = bowWave;
+  ctx.beginPath();
+  ctx.arc(dirX * 5, dirY * 5 - 2, player.radius * (1.02 + pulse * 0.08), 0, TAU);
+  ctx.fill();
+
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#a5f3fc';
+  ctx.shadowBlur = 14;
+  for (let i = 0; i < 5; i++) {
+    const lane = i - 2;
+    const lateral = lane * 6.5;
+    const wobble = Math.sin(now / 135 + i * 1.1) * (2 + Math.abs(lane) * 0.8);
+    const startX = dirX * (player.radius * 0.12) + perpX * lateral;
+    const startY = dirY * (player.radius * 0.12) + perpY * lateral - 1;
+    const midX = perpX * (lateral + wobble * 0.7) - dirX * (player.radius + 10 + i * 4);
+    const midY = perpY * (lateral + wobble * 0.45) - dirY * (player.radius + 10 + i * 4);
+    const endX = perpX * (lateral + wobble) - dirX * (wakeLength + i * 3);
+    const endY = perpY * (lateral + wobble * 0.8) - dirY * (wakeLength + i * 3);
+
+    ctx.strokeStyle = i === 2
+      ? 'rgba(255,255,255,0.52)'
+      : `rgba(110,231,255,${0.34 - Math.abs(lane) * 0.04})`;
+    ctx.lineWidth = i === 2 ? 3.5 : 2.4 - Math.abs(lane) * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(midX, midY, endX, endY);
+    ctx.stroke();
+  }
+
+  ctx.shadowBlur = 10;
+  for (let i = 0; i < 4; i++) {
+    const offset = i * 8 + 8;
+    const px = -dirX * offset + perpX * (i % 2 === 0 ? 6 : -6);
+    const py = -dirY * offset + perpY * (i % 2 === 0 ? 6 : -6) + 1;
+    const width = 7 - i * 0.9;
+    const height = 5 - i * 0.5;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(heading);
+    ctx.fillStyle = i === 0 ? 'rgba(255,255,255,0.24)' : `rgba(125,211,252,${0.18 - i * 0.02})`;
+    ctx.fillRect(-width * 0.5, -height * 0.5, width, height);
+    ctx.restore();
+  }
+
+  ctx.shadowBlur = 8;
+  for (let i = 0; i < 6; i++) {
+    const orbit = now / 230 + i * 1.04;
+    const radius = player.radius + 8 + Math.sin(now / 150 + i) * 2;
+    const px = Math.cos(orbit) * radius + dirX * 5;
+    const py = Math.sin(orbit) * (player.radius * 0.74) + dirY * 4;
+    const size = i % 3 === 0 ? 3.2 : 2.4;
+    ctx.fillStyle = i % 2 === 0 ? '#ecfeff' : '#67e8f9';
+    ctx.fillRect(px - size * 0.5, py - size * 0.5, size, size);
+  }
+  ctx.restore();
+}
+
+function drawSlowDebuffAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (player.slowDebuffTimer <= 0) return;
+
+  const fade = player.slowDebuffTimer < 700
+    ? 0.65 + 0.35 * (Math.sin(now / 80) * 0.5 + 0.5)
+    : 1;
+  const oozePulse = 0.94 + Math.sin(now / 220) * 0.08;
+
+  ctx.save();
+  ctx.globalAlpha = 0.92 * fade;
+
+  const puddle = ctx.createRadialGradient(0, 10, player.radius * 0.2, 0, 10, player.radius * 1.7);
+  puddle.addColorStop(0, 'rgba(163,191,74,0.2)');
+  puddle.addColorStop(0.34, 'rgba(92,112,31,0.32)');
+  puddle.addColorStop(0.72, 'rgba(43,54,18,0.34)');
+  puddle.addColorStop(1, 'rgba(19,24,8,0)');
+  ctx.fillStyle = puddle;
+  ctx.beginPath();
+  ctx.ellipse(0, 10, player.radius * 1.95 * oozePulse, player.radius * 1.08, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(32,39,13,0.24)';
+  ctx.beginPath();
+  ctx.ellipse(0, 11, player.radius * 1.18, player.radius * 0.64, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.shadowColor = 'rgba(176,220,88,0.22)';
+  ctx.shadowBlur = 9;
+  ctx.strokeStyle = 'rgba(168,204,81,0.52)';
+  ctx.lineWidth = 2.6;
+  ctx.setLineDash([4, 9]);
+  ctx.lineDashOffset = -(now / 140);
+  ctx.beginPath();
+  ctx.ellipse(0, 8, player.radius + 8, player.radius * 0.72, 0, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.shadowBlur = 0;
+
+  for (let i = 0; i < 7; i++) {
+    const seed = player.id * 19.7 + i * 7.1;
+    const angle = noise01(seed) * TAU;
+    const dist = player.radius * (0.6 + noise01(seed + 2) * 0.85);
+    const px = Math.cos(angle) * dist;
+    const py = 8 + Math.sin(angle) * player.radius * 0.42;
+    const blobW = 3.4 + noise01(seed + 4) * 3.4;
+    const blobH = 5.2 + noise01(seed + 6) * 5.6 + Math.max(0, Math.sin(now / 170 + i)) * 2.4;
+
+    ctx.fillStyle = `rgba(128,158,44,${0.22 + noise01(seed + 8) * 0.18})`;
+    ctx.beginPath();
+    ctx.ellipse(px, py, blobW, blobH, noise01(seed + 10) * Math.PI, 0, TAU);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = 'rgba(58,72,22,0.58)';
+  ctx.lineWidth = 2.1;
+  for (let i = 0; i < 4; i++) {
+    const startX = (i - 1.5) * 5.5;
+    const startY = 1 + Math.sin(now / 190 + i * 1.4) * 2.5;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(startX + Math.sin(now / 220 + i) * 3.2, 13, startX - 1.8, player.radius + 12);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < 5; i++) {
+    const orbit = now / 520 + i * 1.14;
+    const px = Math.cos(orbit) * (player.radius * 0.92);
+    const py = -2 + Math.sin(orbit * 0.7) * (player.radius * 0.45);
+    const size = 2 + (i % 2) * 0.8;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(180,210,92,0.3)' : 'rgba(86,106,30,0.42)';
+    ctx.beginPath();
+    ctx.ellipse(px, py, size, size * 0.82, orbit, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawAltarGroundAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (!player.isAtAltar) return;
+
+  const pulse = 0.82 + Math.sin(now / 170) * 0.2;
+  const ringR = player.radius + 14;
+
+  ctx.save();
+  ctx.globalAlpha = 0.96;
+
+  const floorGlow = ctx.createRadialGradient(0, 10, ringR * 0.2, 0, 10, ringR * 1.9);
+  floorGlow.addColorStop(0, 'rgba(255,243,190,0.22)');
+  floorGlow.addColorStop(0.26, 'rgba(255,176,68,0.24)');
+  floorGlow.addColorStop(0.6, 'rgba(255,87,24,0.24)');
+  floorGlow.addColorStop(1, 'rgba(120,18,0,0)');
+  ctx.fillStyle = floorGlow;
+  ctx.beginPath();
+  ctx.ellipse(0, 10, ringR * 1.58, ringR * 0.92, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.translate(0, 2);
+  ctx.rotate(now / 1200);
+  ctx.strokeStyle = `rgba(255,165,74,${0.44 + pulse * 0.18})`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([7, 7]);
+  ctx.lineDashOffset = -(now / 120);
+  ctx.beginPath();
+  ctx.arc(0, 0, ringR, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.rotate(-(now / 760));
+  ctx.strokeStyle = 'rgba(255,220,138,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([2, 10]);
+  ctx.beginPath();
+  ctx.arc(0, 0, ringR * 0.62, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * TAU;
+    ctx.save();
+    ctx.rotate(angle);
+    ctx.translate(ringR - 2, 0);
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,232,160,0.84)' : 'rgba(255,144,64,0.76)';
+    ctx.lineWidth = i % 2 === 0 ? 1.7 : 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, -5);
+    ctx.lineTo(4.5, 0);
+    ctx.lineTo(0, 5);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const orbit = now / 340 + i * 0.78;
+    const emberR = ringR * (0.66 + (i % 3) * 0.12);
+    const px = Math.cos(orbit) * emberR;
+    const py = Math.sin(orbit) * emberR * 0.55;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,232,160,0.74)' : 'rgba(255,117,24,0.72)';
+    ctx.fillRect(px - 1.5, py - 1.5, 3, 3);
+  }
+  ctx.restore();
+}
+
+function drawRegenAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (!player.isRegenerating) return;
+
+  const pulse = 0.72 + Math.sin(now / 200) * 0.18;
+  const glow = ctx.createRadialGradient(0, -2, 0, 0, -2, player.radius * 1.55);
+
+  glow.addColorStop(0, 'rgba(235,255,235,0.18)');
+  glow.addColorStop(0.45, 'rgba(120,255,160,0.16)');
+  glow.addColorStop(1, 'rgba(30,140,70,0)');
+
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, -2, player.radius * (1.18 + pulse * 0.08), 0, TAU);
+  ctx.fill();
+
+  for (let i = 0; i < 4; i++) {
+    const orbit = now / 340 + i * 1.55;
+    const px = Math.cos(orbit) * (player.radius * 0.78);
+    const py = -4 + Math.sin(orbit * 1.25) * (player.radius * 0.42);
+    ctx.fillStyle = i % 2 === 0 ? '#d9ffe1' : '#8af0a8';
+    ctx.beginPath();
+    ctx.ellipse(px, py, 2.4, 4.6, orbit * 0.5, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawAltarFrontAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (!player.isAtAltar) return;
+
+  const { x: dirX, y: dirY } = getFacingVector(player);
+  const aim = Math.atan2(dirY, dirX);
+  const pulse = 0.84 + Math.sin(now / 110) * 0.18;
+
+  ctx.save();
+  ctx.globalAlpha = 0.94;
+
+  const heatGlow = ctx.createRadialGradient(0, -4, 0, 0, -4, player.radius * 1.7);
+  heatGlow.addColorStop(0, 'rgba(255,245,204,0.18)');
+  heatGlow.addColorStop(0.34, 'rgba(255,176,72,0.18)');
+  heatGlow.addColorStop(0.68, 'rgba(255,94,32,0.18)');
+  heatGlow.addColorStop(1, 'rgba(255,80,0,0)');
+  ctx.fillStyle = heatGlow;
+  ctx.beginPath();
+  ctx.arc(0, -4, player.radius * (1.2 + pulse * 0.1), 0, TAU);
+  ctx.fill();
+
+  ctx.shadowColor = '#ff8a1f';
+  ctx.shadowBlur = 14;
+  for (let i = 0; i < 11; i++) {
+    const seed = player.id * 31.4 + i * 2.7;
+    const local = (now / 650 + noise01(seed)) % 1;
+    const px = (noise01(seed + 1) - 0.5) * (player.radius * 2);
+    const py = 12 - local * (player.radius * 2.5 + 14);
+    const size = 2.1 + noise01(seed + 2) * 2.9;
+    ctx.fillStyle = local < 0.25 ? '#fff7d1' : local < 0.62 ? '#ffbe5c' : '#ff6b1a';
+    ctx.beginPath();
+    ctx.arc(px, py, size * (1 - local * 0.25), 0, TAU);
+    ctx.fill();
+  }
+
+  ctx.rotate(aim);
+  const frontGlow = ctx.createLinearGradient(player.radius * 0.3, 0, player.radius + 24, 0);
+  frontGlow.addColorStop(0, 'rgba(255,214,128,0)');
+  frontGlow.addColorStop(0.35, 'rgba(255,170,64,0.24)');
+  frontGlow.addColorStop(1, 'rgba(255,96,24,0)');
+  ctx.fillStyle = frontGlow;
+  ctx.beginPath();
+  ctx.ellipse(player.radius + 13, 0, 16 + pulse * 4, 8 + pulse * 2, 0, 0, TAU);
+  ctx.fill();
+
+  for (const side of [-1, 0, 1] as const) {
+    const flameX = player.radius + 12 + (side === 0 ? 2 : 0);
+    const flameY = side * 6;
+    const flameH = (12 + Math.sin(now / 95 + side) * 4 + (side === 0 ? 4 : 0)) * pulse;
+    const flameW = (4.8 + Math.sin(now / 120 + side * 0.4) * 1.3) * (side === 0 ? 1.2 : 1);
+
+    ctx.fillStyle = side === 0 ? 'rgba(255,108,24,0.88)' : 'rgba(255,92,18,0.78)';
+    ctx.beginPath();
+    ctx.moveTo(flameX - flameW, flameY + 2);
+    ctx.quadraticCurveTo(flameX, flameY - flameH, flameX + flameW, flameY + 2);
+    ctx.quadraticCurveTo(flameX, flameY - flameH * 0.22, flameX - flameW, flameY + 2);
+    ctx.fill();
+
+    ctx.fillStyle = side === 0 ? 'rgba(255,241,194,0.86)' : 'rgba(255,226,142,0.78)';
+    ctx.beginPath();
+    ctx.moveTo(flameX - flameW * 0.45, flameY + 1);
+    ctx.quadraticCurveTo(flameX, flameY - flameH * 0.62, flameX + flameW * 0.45, flameY + 1);
+    ctx.quadraticCurveTo(flameX, flameY - flameH * 0.16, flameX - flameW * 0.45, flameY + 1);
+    ctx.fill();
+  }
+
+  for (let i = 0; i < 6; i++) {
+    const drift = (i / 5) * 18;
+    const spread = (i - 2.5) * 3.8;
+    const sparkLen = 6 + (i % 3) * 2;
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,226,142,0.72)' : 'rgba(255,120,32,0.62)';
+    ctx.lineWidth = i % 2 === 0 ? 1.8 : 1.3;
+    ctx.beginPath();
+    ctx.moveTo(player.radius + 10 + drift, spread);
+    ctx.lineTo(player.radius + 10 + drift + sparkLen, spread * 0.6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawShieldAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (!player.shield) return;
+
+  const fade = player.shieldTimer < 700
+    ? 0.55 + 0.45 * (Math.sin(now / 45) * 0.5 + 0.5)
+    : 1;
+  const flash = Math.min(1, player.shieldHitFlashTimer / 220);
+  const shellR = player.radius + 8 + Math.sin(now / 170) * 1.5 + flash * 1.8;
+  const spin = now / 520;
+
+  ctx.save();
+  ctx.globalAlpha = (0.95 + flash * 0.15) * fade;
+
+  const shell = ctx.createRadialGradient(-shellR * 0.3, -shellR * 0.45, 2, 0, 0, shellR + 7);
+  shell.addColorStop(0, `rgba(255,255,255,${0.2 + flash * 0.18})`);
+  shell.addColorStop(0.35, `rgba(130,220,255,${0.18 + flash * 0.1})`);
+  shell.addColorStop(0.75, `rgba(60,150,255,${0.12 + flash * 0.1})`);
+  shell.addColorStop(1, 'rgba(30,90,210,0)');
+  ctx.fillStyle = shell;
+  ctx.beginPath();
+  ctx.arc(0, 0, shellR + 4, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = flash > 0.1 ? 'rgba(244,252,255,0.96)' : 'rgba(180,240,255,0.82)';
+  ctx.lineWidth = 2.2 + flash * 0.9;
+  ctx.beginPath();
+  ctx.arc(0, 0, shellR, 0, TAU);
+  ctx.stroke();
+
+  ctx.lineCap = 'round';
+  ctx.shadowColor = flash > 0.08 ? '#eff6ff' : '#7dd3fc';
+  ctx.shadowBlur = 8 + flash * 10;
+  for (let i = 0; i < 3; i++) {
+    const start = spin + i * 2.12;
+    ctx.strokeStyle = i === 1
+      ? `rgba(255,255,255,${0.82 + flash * 0.12})`
+      : `rgba(110,225,255,${0.72 + flash * 0.08})`;
+    ctx.lineWidth = (i === 1 ? 2.6 : 2) + flash * 0.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, shellR + i * 1.4, start, start + 0.78 + flash * 0.1);
+    ctx.stroke();
+  }
+
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < 6; i++) {
+    const angle = spin * 1.4 + (i / 6) * TAU;
+    const px = Math.cos(angle) * (shellR + 1.5);
+    const py = Math.sin(angle) * (shellR + 1.5);
+    const size = i % 2 === 0 ? 4.5 : 3.4;
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(angle + Math.PI / 4);
+    ctx.fillStyle = i % 2 === 0
+      ? `rgba(180,240,255,${0.78 + flash * 0.1})`
+      : `rgba(93,173,255,${0.72 + flash * 0.12})`;
+    ctx.fillRect(-size * 0.5, -size * 0.5, size, size);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawShieldHitReaction(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
+  if (!player.shield || player.shieldHitFlashTimer <= 0) return;
+
+  const impact = Math.min(1, player.shieldHitFlashTimer / 220);
+  const burst = 1 - impact;
+  const shockR = player.radius + 9 + burst * 12;
+
+  ctx.save();
+  ctx.globalAlpha = impact;
+
+  const flash = ctx.createRadialGradient(0, 0, player.radius * 0.3, 0, 0, shockR + 10);
+  flash.addColorStop(0, 'rgba(255,255,255,0.18)');
+  flash.addColorStop(0.4, 'rgba(191,233,255,0.18)');
+  flash.addColorStop(1, 'rgba(125,211,252,0)');
+  ctx.fillStyle = flash;
+  ctx.beginPath();
+  ctx.arc(0, 0, shockR + 4, 0, TAU);
+  ctx.fill();
+
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = 16;
+  ctx.strokeStyle = `rgba(255,255,255,${0.74 * impact})`;
+  ctx.lineWidth = 3.4 - burst * 1.2;
+  ctx.beginPath();
+  ctx.arc(0, 0, shockR, 0, TAU);
+  ctx.stroke();
+
+  for (let i = 0; i < 7; i++) {
+    const angle = now / 220 + (i / 7) * TAU;
+    const innerR = player.radius + 5 + burst * 3;
+    const outerR = shockR + 6 + (i % 2) * 4;
+    const x1 = Math.cos(angle) * innerR;
+    const y1 = Math.sin(angle) * innerR;
+    const x2 = Math.cos(angle) * outerR;
+    const y2 = Math.sin(angle) * outerR;
+
+    ctx.strokeStyle = i % 2 === 0
+      ? `rgba(255,255,255,${0.68 * impact})`
+      : `rgba(125,211,252,${0.62 * impact})`;
+    ctx.lineWidth = i % 2 === 0 ? 2.1 : 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < 5; i++) {
+    const angle = now / 180 + (i / 5) * TAU;
+    const px = Math.cos(angle) * (shockR + 2);
+    const py = Math.sin(angle) * (shockR + 2);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(angle + Math.PI / 4);
+    ctx.fillStyle = i % 2 === 0
+      ? `rgba(255,255,255,${0.58 * impact})`
+      : `rgba(147,197,253,${0.5 * impact})`;
+    ctx.fillRect(-2.2, -2.2, 4.4, 4.4);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
 // ── 武器槽位座標矩陣（export 供 PlayerPreviewCanvas 點擊熱區使用）────────────
 // 相對於玩家中心的偏移（px），右 3 把 rx>0，左 3 把 rx<0
 export const WEAPON_SLOT_POSITIONS = [
@@ -97,6 +597,7 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
   if (player.hp <= 0) return;
 
   const angle = player.aimAngle;
+  const now = Date.now();
 
   ctx.save();
   if (player.isInsideContainer) ctx.globalAlpha = 0.4;
@@ -118,6 +619,10 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
   // Shadow
   ctx.beginPath(); ctx.arc(4, 6, player.radius, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fill(); ctx.closePath();
+
+  drawSlowDebuffAura(ctx, player, now);
+  drawAltarGroundAura(ctx, player, now);
+  drawSpeedBoostAura(ctx, player, now);
 
   // ── 武器渲染（統一使用浮空武器體系） ─────────────────────────────
   if (player.weapons && player.weapons.length > 0) {
@@ -213,17 +718,10 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
   ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
   ctx.fillStyle = player.color; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#222'; ctx.stroke(); ctx.closePath();
 
-  // Shield ring
-  if (player.shield) {
-    ctx.beginPath(); ctx.arc(0, 0, player.radius + 5, 0, Math.PI * 2);
-    ctx.strokeStyle = 'cyan'; ctx.lineWidth = 2; ctx.stroke(); ctx.closePath();
-  }
-
-  // Slow debuff ring
-  if (player.slowDebuffTimer > 0) {
-    ctx.beginPath(); ctx.arc(0, 0, player.radius + 3, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(139,195,74,0.8)'; ctx.lineWidth = 4; ctx.stroke(); ctx.closePath();
-  }
+  drawRegenAura(ctx, player, now);
+  drawAltarFrontAura(ctx, player, now);
+  drawShieldAura(ctx, player, now);
+  drawShieldHitReaction(ctx, player, now);
 
   ctx.restore();
 

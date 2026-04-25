@@ -193,6 +193,12 @@ interface ShopPanelProps {
   onStatUpgradeOverride?: (statId: string) => void;
   hideInventory?: boolean; cardCount?: number;
   customFooter?: React.ReactNode;
+  // 線上模式專用
+  isOnline?: boolean;
+  myReady?: boolean;
+  otherReady?: boolean;
+  countdown?: number | null;
+  onToggleReady?: () => void;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -202,6 +208,8 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
   isReadyMode = false, isReady = false,
   statPointsOverride, onStatUpgradeOverride,
   hideInventory = false, cardCount = 5, customFooter,
+  isOnline = false, myReady = false, otherReady = false,
+  countdown = null, onToggleReady,
 }) => {
   const effectivePts = statPointsOverride !== undefined ? statPointsOverride : player.arenaStatPoints;
 
@@ -831,54 +839,106 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
             </span>
           </button>
 
-          <button
-            onClick={isReadyMode && isReady ? undefined : onNextWave}
-            disabled={isReadyMode && isReady}
-            style={{
-              flex: 1.2, position: 'relative', border: 'none',
-              background: (isReadyMode && isReady) ? C.disabled : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
-              boxShadow: (isReadyMode && isReady) ? 'none' : `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`,
-              borderRadius: 6, cursor: (isReadyMode && isReady) ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              padding: isDesktop ? '16px 0' : '14px 0',
-              transform: (isReadyMode && isReady) ? 'none' : 'translateY(-2px)',
-              transition: 'all 0.1s',
-            }}
-            onPointerDown={(e) => {
-              if (!(isReadyMode && isReady)) {
-                e.currentTarget.style.transform = 'translateY(4px)';
-                e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.2), 0 0 0 #8c5204, 0 4px 10px rgba(212, 128, 12, 0.4)`;
-              }
-            }}
-            onPointerUp={(e) => {
-              if (!(isReadyMode && isReady)) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`;
-              }
-            }}
-            onPointerLeave={(e) => {
-              if (!(isReadyMode && isReady)) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`;
-              }
-            }}
-          >
-            {isReadyMode ? (
-              isReady ? (
-                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: C.textDim }}>⏳ 等待隊友</span>
+          {/* ── 線上模式：Toggle 準備按鈕 + 雙燈號 ── */}
+          {isOnline ? (
+            <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                onClick={countdown !== null ? undefined : onToggleReady}
+                disabled={countdown !== null}
+                style={{
+                  width: '100%', border: 'none', borderRadius: 6, cursor: countdown !== null ? 'default' : 'pointer',
+                  background: countdown !== null
+                    ? `linear-gradient(180deg, #22c55e 0%, #16a34a 100%)`
+                    : myReady
+                      ? `linear-gradient(180deg, #64748b 0%, #475569 100%)`
+                      : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
+                  boxShadow: myReady && countdown === null
+                    ? 'inset 0 2px 0 rgba(255,255,255,0.15), 0 3px 0 #2d3748'
+                    : countdown !== null
+                      ? 'inset 0 2px 0 rgba(255,255,255,0.3), 0 6px 0 #15803d, 0 10px 20px rgba(34,197,94,0.5)'
+                      : 'inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212,128,12,0.6)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: isDesktop ? '14px 0' : '12px 0',
+                  transform: myReady && countdown === null ? 'none' : 'translateY(-2px)',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {countdown !== null ? (
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 20 : 16, color: '#fff', textShadow: '0 0 12px #86efac' }}>
+                    {countdown}
+                  </span>
+                ) : myReady ? (
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 11 : 9, color: '#cbd5e1' }}>✕ 取消準備</span>
+                ) : (
+                  <>
+                    <span style={{ fontSize: isDesktop ? 20 : 16 }}>✓</span>
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 13 : 11, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備</span>
+                  </>
+                )}
+              </button>
+              {/* 雙燈號 */}
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: myReady ? '#22c55e' : '#374151', boxShadow: myReady ? '0 0 6px #22c55e' : 'none', transition: 'all 0.2s' }} />
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textDim }}>我</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: otherReady ? '#22c55e' : '#374151', boxShadow: otherReady ? '0 0 6px #22c55e' : 'none', transition: 'all 0.2s' }} />
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: C.textDim }}>隊友</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* 單機 / 本地雙人：原來的「下一波」按鈕 */
+            <button
+              onClick={isReadyMode && isReady ? undefined : onNextWave}
+              disabled={isReadyMode && isReady}
+              style={{
+                flex: 1.2, position: 'relative', border: 'none',
+                background: (isReadyMode && isReady) ? C.disabled : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
+                boxShadow: (isReadyMode && isReady) ? 'none' : `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`,
+                borderRadius: 6, cursor: (isReadyMode && isReady) ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                padding: isDesktop ? '16px 0' : '14px 0',
+                transform: (isReadyMode && isReady) ? 'none' : 'translateY(-2px)',
+                transition: 'all 0.1s',
+              }}
+              onPointerDown={(e) => {
+                if (!(isReadyMode && isReady)) {
+                  e.currentTarget.style.transform = 'translateY(4px)';
+                  e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.2), 0 0 0 #8c5204, 0 4px 10px rgba(212, 128, 12, 0.4)`;
+                }
+              }}
+              onPointerUp={(e) => {
+                if (!(isReadyMode && isReady)) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`;
+                }
+              }}
+              onPointerLeave={(e) => {
+                if (!(isReadyMode && isReady)) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`;
+                }
+              }}
+            >
+              {isReadyMode ? (
+                isReady ? (
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: C.textDim }}>⏳ 等待隊友</span>
+                ) : (
+                  <>
+                    <span style={{ fontSize: isDesktop ? 22 : 18 }}>✓</span>
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 14 : 12, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備好了</span>
+                  </>
+                )
               ) : (
                 <>
-                  <span style={{ fontSize: isDesktop ? 22 : 18 }}>✓</span>
-                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 14 : 12, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備好了</span>
+                  <span style={{ fontSize: isDesktop ? 24 : 20, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>⚔</span>
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 15 : 13, color: '#fff', textShadow: '0 2px 6px rgba(0,0,0,0.6)', letterSpacing: '0.05em' }}>下一波</span>
                 </>
-              )
-            ) : (
-              <>
-                <span style={{ fontSize: isDesktop ? 24 : 20, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>⚔</span>
-                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 15 : 13, color: '#fff', textShadow: '0 2px 6px rgba(0,0,0,0.6)', letterSpacing: '0.05em' }}>下一波</span>
-              </>
-            )}
-          </button>
+              )}
+            </button>
+          )}
         </footer>
 
         {customFooter && (

@@ -1,8 +1,8 @@
 // ── VictoryScreen.tsx ─────────────────────────────────────────────────────────
-// 競技場模式通關畫面 (Ultra Premium Visuals)
+// 競技場模式通關畫面 (Ultra Premium Visuals - Mobile Responsive)
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 
 interface Props {
   kills: number;
@@ -52,8 +52,12 @@ const Particle: React.FC<{ delay: number }> = ({ delay }) => (
 
 export const VictoryScreen: React.FC<Props> = ({ kills, playerCount, onMainMenu }) => {
   const [counter, setCounter] = useState(0);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    
     // 數字跳動效果
     const duration = 2000;
     const steps = 60;
@@ -68,14 +72,18 @@ export const VictoryScreen: React.FC<Props> = ({ kills, playerCount, onMainMenu 
         setCounter(Math.floor(current));
       }
     }, duration / steps);
-    return () => clearInterval(timer);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearInterval(timer);
+    };
   }, [kills]);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="absolute inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden"
+      className="absolute inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden p-4"
       style={{
         background: 'radial-gradient(circle at center, #251a05 0%, #050402 100%)',
       }}
@@ -83,7 +91,7 @@ export const VictoryScreen: React.FC<Props> = ({ kills, playerCount, onMainMenu 
       {/* 1. 進入時的閃光衝擊波 */}
       <motion.div
         initial={{ scale: 0, opacity: 1 }}
-        animate={{ scale: 4, opacity: 0 }}
+        animate={{ scale: 6, opacity: 0 }}
         transition={{ duration: 1, ease: "easeOut" }}
         className="absolute w-64 h-64 bg-white rounded-full z-[110] pointer-events-none"
       />
@@ -92,44 +100,55 @@ export const VictoryScreen: React.FC<Props> = ({ kills, playerCount, onMainMenu 
       <GodRays />
 
       {/* 3. 上升的慶祝粒子 */}
-      {Array.from({ length: 30 }).map((_, i) => <Particle key={i} delay={i * 0.2} />)}
+      {Array.from({ length: isMobile ? 15 : 30 }).map((_, i) => (
+        <Particle key={i} delay={i * 0.2} />
+      ))}
 
       {/* 4. 主要內容 */}
-      <div className="relative z-10 flex flex-col items-center">
+      <div className="relative z-10 flex flex-col items-center w-full max-w-4xl">
         
         {/* 勳章/獎盃 */}
         <motion.div
           initial={{ scale: 0, rotate: -180 }}
           animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: "spring", damping: 10, stiffness: 100, delay: 0.5 }}
-          className="relative mb-8"
+          transition={{ type: "spring", damping: 12, stiffness: 100, delay: 0.5 }}
+          className="relative mb-4 md:mb-8"
         >
-          <div className="absolute inset-0 bg-yellow-500 blur-[60px] opacity-40 animate-pulse" />
-          <div className="text-9xl filter drop-shadow-[0_0_30px_rgba(251,191,36,0.8)]">🏆</div>
+          <div className="absolute inset-0 bg-yellow-500 blur-[40px] md:blur-[60px] opacity-40 animate-pulse" />
+          <div 
+            className="filter drop-shadow-[0_0_30px_rgba(251,191,36,0.8)]"
+            style={{ fontSize: 'clamp(5rem, 25vw, 10rem)' }}
+          >
+            🏆
+          </div>
         </motion.div>
 
         {/* 標題 */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-6 md:mb-12 w-full">
           <motion.h1
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.8 }}
-            className="text-7xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-yellow-100 via-yellow-400 to-amber-600 mb-2"
-            style={{ filter: 'drop-shadow(0 0 20px rgba(251,191,36,0.4))' }}
+            className="font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-yellow-100 via-yellow-400 to-amber-600 mb-2 px-2"
+            style={{ 
+              fontSize: 'clamp(2.5rem, 12vw, 5rem)',
+              filter: 'drop-shadow(0 0 20px rgba(251,191,36,0.4))',
+              lineHeight: 1.1
+            }}
           >
             完全勝利
           </motion.h1>
           <motion.div
             initial={{ width: 0 }}
-            animate={{ width: '100%' }}
+            animate={{ width: '80%' }}
             transition={{ delay: 1.2, duration: 0.8 }}
-            className="h-[2px] bg-gradient-to-r from-transparent via-yellow-500 to-transparent"
+            className="h-[2px] bg-gradient-to-r from-transparent via-yellow-500 to-transparent mx-auto"
           />
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.5 }}
-            className="text-amber-500/80 font-bold tracking-[0.4em] text-sm mt-4 uppercase"
+            className="text-amber-500/80 font-bold tracking-[0.2em] md:tracking-[0.4em] text-[10px] md:text-sm mt-4 uppercase"
           >
             Ultimate Survivor • Wave 10 Cleared
           </motion.p>
@@ -140,19 +159,19 @@ export const VictoryScreen: React.FC<Props> = ({ kills, playerCount, onMainMenu 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.8 }}
-          className="flex gap-4 p-1 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] mb-16"
+          className="flex flex-row md:flex-row gap-2 md:gap-4 p-1 bg-white/5 backdrop-blur-xl rounded-2xl md:rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] mb-8 md:mb-16 w-full md:w-auto"
         >
-          <div className="px-10 py-6 text-center border-r border-white/10">
-            <p className="text-[10px] text-neutral-400 font-black tracking-widest uppercase mb-1">擊殺總數</p>
-            <p className="text-4xl font-black text-white italic">{counter}</p>
+          <div className="flex-1 px-3 py-4 md:px-10 md:py-6 text-center border-r border-white/10">
+            <p className="text-[8px] md:text-[10px] text-neutral-400 font-black tracking-widest uppercase mb-1">擊殺</p>
+            <p className="text-xl md:text-4xl font-black text-white italic">{counter}</p>
           </div>
-          <div className="px-10 py-6 text-center border-r border-white/10">
-            <p className="text-[10px] text-neutral-400 font-black tracking-widest uppercase mb-1">完成進度</p>
-            <p className="text-4xl font-black text-yellow-400 italic">100%</p>
+          <div className="flex-1 px-3 py-4 md:px-10 md:py-6 text-center border-r border-white/10">
+            <p className="text-[8px] md:text-[10px] text-neutral-400 font-black tracking-widest uppercase mb-1">進度</p>
+            <p className="text-xl md:text-4xl font-black text-yellow-400 italic">100%</p>
           </div>
-          <div className="px-10 py-6 text-center">
-            <p className="text-[10px] text-neutral-400 font-black tracking-widest uppercase mb-1">參與人數</p>
-            <p className="text-4xl font-black text-white italic">{playerCount}P</p>
+          <div className="flex-1 px-3 py-4 md:px-10 md:py-6 text-center">
+            <p className="text-[8px] md:text-[10px] text-neutral-400 font-black tracking-widest uppercase mb-1">人數</p>
+            <p className="text-xl md:text-4xl font-black text-white italic">{playerCount}P</p>
           </div>
         </motion.div>
 
@@ -164,7 +183,7 @@ export const VictoryScreen: React.FC<Props> = ({ kills, playerCount, onMainMenu 
           whileHover={{ scale: 1.05, boxShadow: '0 0 40px rgba(251,191,36,0.5)' }}
           whileTap={{ scale: 0.95 }}
           onClick={onMainMenu}
-          className="relative px-16 py-5 rounded-2xl font-black text-xl tracking-[0.2em] overflow-hidden group"
+          className="relative px-10 py-4 md:px-16 md:py-5 rounded-xl md:rounded-2xl font-black text-sm md:text-xl tracking-[0.2em] overflow-hidden group"
           style={{
             background: 'linear-gradient(to right, #92400e, #fbbf24, #92400e)',
             backgroundSize: '200% auto',

@@ -54,8 +54,11 @@ export class NetworkManager {
   onRespawnStart:  ((pid: number, duration: number) => void) | null = null;
   onRespawned:     ((pid: number) => void) | null = null;
   onPlayerReady:   ((pid: number) => void) | null = null;
-  onShopReady:     ((pid: number) => void) | null = null;
+  onShopReady:     ((pid: number, ready: boolean) => void) | null = null;
   onShopOpen:      (() => void) | null = null;
+  onLoadoutSync:   ((pid: number, loadout: any) => void) | null = null;
+  onCountdownStart: (() => void) | null = null;
+  onCountdownCancel: (() => void) | null = null;
   onWaveStart:     ((obsData?: any[]) => void) | null = null;
   // Host ?交 P2 ?宏?撓?伐???inputTick 靘?Reconciliation嚗?
   onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
@@ -269,7 +272,16 @@ export class NetworkManager {
         this.onPlayerReady?.(msg.pid);
         break;
       case 'SHOP_READY':
-        this.onShopReady?.(msg.pid);
+        this.onShopReady?.(msg.pid, msg.ready !== false);
+        break;
+      case 'LOADOUT_SYNC':
+        this.onLoadoutSync?.(msg.pid, msg.ld);
+        break;
+      case 'COUNTDOWN_START':
+        this.onCountdownStart?.();
+        break;
+      case 'COUNTDOWN_CANCEL':
+        this.onCountdownCancel?.();
         break;
       case 'WAVE_START':
         this.onWaveStart?.(msg.obs);

@@ -1590,6 +1590,8 @@ export class Game {
               alpha: 0.8,
               startTime: now,
               ownerId: player.id,
+              variant: 'regen',
+              scale: 0.9,
             });
             player.lastRegenVfxTime = now;
           }
@@ -2050,6 +2052,8 @@ export class Game {
                 y: player.y - 18,
                 alpha: 0.95,
                 startTime: Date.now(),
+                variant: 'burst',
+                scale: 1.2,
               });
             }
 

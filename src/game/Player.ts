@@ -67,8 +67,10 @@ export class Player {
   aimAngle: number = 0;
   shield: boolean = false;
   shieldTimer: number = 0;
+  shieldHitFlashTimer: number = 0;
   speedBoostTimer: number = 0;
   slowDebuffTimer: number = 0;
+  isInvincible: boolean = false;
   color: string;
   weaponSwitchTimer: number = 0;
   weaponSwitchType: 'sword' | 'gun' | null = null;
@@ -171,7 +173,11 @@ export class Player {
 
   takeDamage(amount: number, sourceTime: number = Date.now()): boolean {
     if (amount <= 0) return false;
-    if (this.shieldTimer > 0 || this.shield) return false;
+    if (this.isInvincible) return false;
+    if (this.shieldTimer > 0 || this.shield) {
+      this.shieldHitFlashTimer = Math.max(this.shieldHitFlashTimer, 220);
+      return false;
+    }
 
     // 實裝護甲：每點減少 1 點傷害，但不會讓總傷低於 0
     const finalDamage = Math.max(0, amount - this.armor);
@@ -226,6 +232,9 @@ export class Player {
       this.shieldTimer = Math.max(0, this.shieldTimer - dt);
     }
     this.shield = this.shieldTimer > 0;
+    if (this.shieldHitFlashTimer > 0) {
+      this.shieldHitFlashTimer = Math.max(0, this.shieldHitFlashTimer - dt);
+    }
 
     if (this.weaponSwitchTimer > 0) {
       this.weaponSwitchTimer -= dt;
