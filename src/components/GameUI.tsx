@@ -332,6 +332,7 @@ export const GameUI: React.FC = () => {
       hasShownGoblinHintRef.current = true;
       game.isPaused = true;
       setGoblinHint({ carrier });
+      if (nm.isHost) nm.sendControl({ t: 'GOBLIN_SPAWNED' });
     };
 
     if (pid === 1) {
@@ -355,6 +356,13 @@ export const GameUI: React.FC = () => {
         gameStateRef.current = 'shopping';
         setGameState('shopping');
         resetPlayerInputState();
+      };
+      nm.onGoblinSpawned = () => {
+        if (hasShownGoblinHintRef.current) return;
+        hasShownGoblinHintRef.current = true;
+        if (gameRef.current) gameRef.current.isPaused = true;
+        const carrier = gameRef.current?.zombies.find(z => z.type === 'goblin_courier') ?? null;
+        if (carrier) setGoblinHint({ carrier });
       };
       nm.onGameOver = (time, kills) => {
         setGameStats({ time, kills }); setGameState('gameover'); audioManager.stopBGM();
@@ -657,6 +665,34 @@ export const GameUI: React.FC = () => {
       nm.sendControl({ t: 'SHOP_READY', pid: myPlayerId, ready: newReady });
       if (myPlayerId === 1) setP1ShopReady(newReady);
       else                  setP2ShopReady(newReady);
+      // Host 自己按準備時，onShopReady 不會收到自己的訊息，需在這裡額外檢查
+      if (nm.isHost) {
+        if (onlineShopReadyRef.current.myReady && onlineShopReadyRef.current.otherReady) {
+          if (!shopCountdownRef.current) {
+            setShopCountdown(3);
+            nm.sendControl({ t: 'COUNTDOWN_START' });
+            let secs = 3;
+            shopCountdownRef.current = setInterval(() => {
+              secs--;
+              if (secs > 0) {
+                setShopCountdown(secs);
+              } else {
+                if (shopCountdownRef.current) { clearInterval(shopCountdownRef.current); shopCountdownRef.current = null; }
+                setShopCountdown(null);
+                onlineShopReadyRef.current = { myReady: false, otherReady: false };
+                _doNextArenaWave();
+                const obsData = gameRef.current?.getArenaWaveObstacleData() ?? [];
+                nm.sendControl({ t: 'WAVE_START', obs: obsData });
+              }
+            }, 1000);
+          }
+        } else if (!newReady && shopCountdownRef.current) {
+          clearInterval(shopCountdownRef.current);
+          shopCountdownRef.current = null;
+          setShopCountdown(null);
+          nm.sendControl({ t: 'COUNTDOWN_CANCEL' });
+        }
+      }
       return;
     }
     // 單機模式：直接開始

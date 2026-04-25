@@ -146,6 +146,14 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       tid: e.targetZombieId,
       er: e.explodeRadius, ed: e.explodeDamage,
     })),
+    str: game.slimeTrails.map(t => ({
+      x: Math.round(t.x), y: Math.round(t.y), r: t.radius,
+      lt: Math.round(t.lifetime), ml: t.maxLifetime,
+    })),
+    hv: game.healVFX.map(v => ({
+      x: Math.round(v.x), y: Math.round(v.y), al: v.alpha,
+      st: v.startTime, oi: v.ownerId, va: v.variant, sc: v.scale,
+    })),
   };
 }
 
@@ -475,6 +483,21 @@ export function applyNetworkState(game: Game, state: any): void {
       targetZombieId: ae.tid,
       explodeRadius: ae.er,
       explodeDamage: ae.ed,
+    }));
+  }
+
+  // slimeTrails 反序列化（P2 純視覺：地板黏液）
+  if (Array.isArray(state.str)) {
+    game.slimeTrails = (state.str as any[]).map((t: any) => ({
+      x: t.x, y: t.y, radius: t.r, lifetime: t.lt, maxLifetime: t.ml,
+    }));
+  }
+
+  // healVFX 反序列化（P2 純視覺：回血特效）
+  if (Array.isArray(state.hv)) {
+    game.healVFX = (state.hv as any[]).map((v: any) => ({
+      x: v.x, y: v.y, alpha: v.al, startTime: v.st,
+      ownerId: v.oi, variant: v.va, scale: v.sc,
     }));
   }
 }

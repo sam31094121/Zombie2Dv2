@@ -21,6 +21,43 @@ function getFacingVector(player: Player): { x: number; y: number } {
   return { x: Math.cos(angle), y: Math.sin(angle) };
 }
 
+function traceRegularPolygon(
+  ctx: CanvasRenderingContext2D,
+  radius: number,
+  sides: number,
+  rotation: number = -Math.PI / 2,
+): void {
+  ctx.beginPath();
+  for (let i = 0; i < sides; i++) {
+    const angle = rotation + (i / sides) * TAU;
+    const px = Math.cos(angle) * radius;
+    const py = Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function traceRadialPlate(
+  ctx: CanvasRenderingContext2D,
+  innerR: number,
+  outerR: number,
+  centerAngle: number,
+  halfSpread: number,
+): void {
+  const innerLeft = centerAngle - halfSpread * 0.82;
+  const innerRight = centerAngle + halfSpread * 0.82;
+  const outerLeft = centerAngle - halfSpread;
+  const outerRight = centerAngle + halfSpread;
+
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(innerLeft) * innerR, Math.sin(innerLeft) * innerR);
+  ctx.lineTo(Math.cos(outerLeft) * outerR, Math.sin(outerLeft) * outerR);
+  ctx.lineTo(Math.cos(outerRight) * outerR, Math.sin(outerRight) * outerR);
+  ctx.lineTo(Math.cos(innerRight) * innerR, Math.sin(innerRight) * innerR);
+  ctx.closePath();
+}
+
 function drawSpeedBoostAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
   if (player.speedBoostTimer <= 0) return;
 
@@ -274,28 +311,48 @@ function drawAltarGroundAura(ctx: CanvasRenderingContext2D, player: Player, now:
 function drawRegenAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
   if (!player.isRegenerating) return;
 
-  const pulse = 0.72 + Math.sin(now / 200) * 0.18;
-  const glow = ctx.createRadialGradient(0, -2, 0, 0, -2, player.radius * 1.55);
-
-  glow.addColorStop(0, 'rgba(235,255,235,0.18)');
-  glow.addColorStop(0.45, 'rgba(120,255,160,0.16)');
-  glow.addColorStop(1, 'rgba(30,140,70,0)');
+  const pulse = 0.78 + Math.sin(now / 200) * 0.12;
+  const coreR = player.radius * (0.9 + pulse * 0.06);
+  const frameR = player.radius * 1.08 + Math.sin(now / 150) * 1.6;
 
   ctx.save();
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(0, -2, player.radius * (1.18 + pulse * 0.08), 0, TAU);
+  ctx.globalAlpha = 0.8;
+
+  ctx.fillStyle = 'rgba(17,63,38,0.22)';
+  traceRegularPolygon(ctx, frameR + 4, 4, Math.PI / 4);
   ctx.fill();
 
+  ctx.fillStyle = 'rgba(34,197,94,0.16)';
+  traceRegularPolygon(ctx, coreR + 2, 4, 0);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(220,252,231,0.9)';
+  ctx.lineWidth = 2.1;
+  traceRegularPolygon(ctx, frameR, 4, Math.PI / 4);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(74,222,128,0.82)';
+  ctx.lineWidth = 1.5;
+  traceRegularPolygon(ctx, coreR, 4, 0);
+  ctx.stroke();
+
+  ctx.fillStyle = '#ecfdf5';
+  ctx.fillRect(-1.9, -7, 3.8, 14);
+  ctx.fillRect(-7, -1.9, 14, 3.8);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(-1.1, -5.2, 2.2, 10.4);
+  ctx.fillRect(-5.2, -1.1, 10.4, 2.2);
+
   for (let i = 0; i < 4; i++) {
-    const orbit = now / 340 + i * 1.55;
-    const px = Math.cos(orbit) * (player.radius * 0.78);
-    const py = -4 + Math.sin(orbit * 1.25) * (player.radius * 0.42);
-    ctx.fillStyle = i % 2 === 0 ? '#d9ffe1' : '#8af0a8';
-    ctx.beginPath();
-    ctx.ellipse(px, py, 2.4, 4.6, orbit * 0.5, 0, TAU);
-    ctx.fill();
+    const angle = i * (TAU / 4) + now / 900;
+    const px = Math.cos(angle) * (frameR + 2);
+    const py = Math.sin(angle) * (frameR + 2);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(angle);
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(187,247,208,0.94)' : 'rgba(74,222,128,0.86)';
+    ctx.fillRect(-1.8, -4.8, 3.6, 9.6);
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -386,56 +443,60 @@ function drawShieldAura(ctx: CanvasRenderingContext2D, player: Player, now: numb
     ? 0.55 + 0.45 * (Math.sin(now / 45) * 0.5 + 0.5)
     : 1;
   const flash = Math.min(1, player.shieldHitFlashTimer / 220);
-  const shellR = player.radius + 8 + Math.sin(now / 170) * 1.5 + flash * 1.8;
+  const shellR = player.radius + 10 + Math.sin(now / 170) * 1.2 + flash * 2.2;
+  const innerR = shellR - 6.2;
   const spin = now / 520;
+  const rotation = spin * 0.18 + Math.PI / 8;
 
   ctx.save();
-  ctx.globalAlpha = (0.95 + flash * 0.15) * fade;
+  ctx.globalAlpha = (0.94 + flash * 0.18) * fade;
 
-  const shell = ctx.createRadialGradient(-shellR * 0.3, -shellR * 0.45, 2, 0, 0, shellR + 7);
-  shell.addColorStop(0, `rgba(255,255,255,${0.2 + flash * 0.18})`);
-  shell.addColorStop(0.35, `rgba(130,220,255,${0.18 + flash * 0.1})`);
-  shell.addColorStop(0.75, `rgba(60,150,255,${0.12 + flash * 0.1})`);
-  shell.addColorStop(1, 'rgba(30,90,210,0)');
-  ctx.fillStyle = shell;
-  ctx.beginPath();
-  ctx.arc(0, 0, shellR + 4, 0, TAU);
+  ctx.fillStyle = `rgba(20,70,150,${0.2 + flash * 0.08})`;
+  traceRegularPolygon(ctx, shellR + 5, 8, rotation);
   ctx.fill();
 
-  ctx.strokeStyle = flash > 0.1 ? 'rgba(244,252,255,0.96)' : 'rgba(180,240,255,0.82)';
-  ctx.lineWidth = 2.2 + flash * 0.9;
-  ctx.beginPath();
-  ctx.arc(0, 0, shellR, 0, TAU);
-  ctx.stroke();
+  ctx.fillStyle = `rgba(12,30,74,${0.26 + flash * 0.08})`;
+  traceRegularPolygon(ctx, innerR - 1.5, 8, rotation + TAU / 16);
+  ctx.fill();
 
-  ctx.lineCap = 'round';
-  ctx.shadowColor = flash > 0.08 ? '#eff6ff' : '#7dd3fc';
-  ctx.shadowBlur = 8 + flash * 10;
-  for (let i = 0; i < 3; i++) {
-    const start = spin + i * 2.12;
-    ctx.strokeStyle = i === 1
-      ? `rgba(255,255,255,${0.82 + flash * 0.12})`
-      : `rgba(110,225,255,${0.72 + flash * 0.08})`;
-    ctx.lineWidth = (i === 1 ? 2.6 : 2) + flash * 0.6;
-    ctx.beginPath();
-    ctx.arc(0, 0, shellR + i * 1.4, start, start + 0.78 + flash * 0.1);
+  ctx.lineJoin = 'round';
+  for (let i = 0; i < 8; i++) {
+    const plateAngle = rotation + (i / 8) * TAU;
+    const plateOuter = shellR + (i % 2 === 0 ? 2.8 : 1.2) + flash * 1.6;
+    ctx.fillStyle = i % 2 === 0
+      ? `rgba(160,228,255,${0.56 + flash * 0.12})`
+      : `rgba(84,169,255,${0.52 + flash * 0.12})`;
+    traceRadialPlate(ctx, innerR, plateOuter, plateAngle, 0.24);
+    ctx.fill();
+
+    ctx.strokeStyle = i % 2 === 0
+      ? `rgba(245,252,255,${0.8 + flash * 0.12})`
+      : `rgba(180,232,255,${0.72 + flash * 0.1})`;
+    ctx.lineWidth = 1.25 + flash * 0.35;
+    traceRadialPlate(ctx, innerR, plateOuter, plateAngle, 0.24);
     ctx.stroke();
   }
 
-  ctx.shadowBlur = 0;
-  for (let i = 0; i < 6; i++) {
-    const angle = spin * 1.4 + (i / 6) * TAU;
-    const px = Math.cos(angle) * (shellR + 1.5);
-    const py = Math.sin(angle) * (shellR + 1.5);
-    const size = i % 2 === 0 ? 4.5 : 3.4;
+  ctx.strokeStyle = flash > 0.1 ? 'rgba(255,255,255,0.98)' : 'rgba(220,246,255,0.92)';
+  ctx.lineWidth = 2.4 + flash * 0.7;
+  traceRegularPolygon(ctx, shellR + 3, 8, rotation);
+  ctx.stroke();
 
+  ctx.strokeStyle = 'rgba(104,193,255,0.84)';
+  ctx.lineWidth = 1.55 + flash * 0.3;
+  traceRegularPolygon(ctx, innerR - 0.6, 8, rotation + TAU / 16);
+  ctx.stroke();
+
+  for (let i = 0; i < 4; i++) {
+    const angle = spin * 0.95 + (i / 4) * TAU;
+    const px = Math.cos(angle) * (shellR + 3.5);
+    const py = Math.sin(angle) * (shellR + 3.5);
     ctx.save();
     ctx.translate(px, py);
-    ctx.rotate(angle + Math.PI / 4);
-    ctx.fillStyle = i % 2 === 0
-      ? `rgba(180,240,255,${0.78 + flash * 0.1})`
-      : `rgba(93,173,255,${0.72 + flash * 0.12})`;
-    ctx.fillRect(-size * 0.5, -size * 0.5, size, size);
+    ctx.rotate(angle);
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(224,247,255,0.94)' : 'rgba(96,198,255,0.9)';
+    ctx.fillRect(-2.1, -6, 4.2, 12);
+    ctx.fillRect(-5.4, -1.3, 10.8, 2.6);
     ctx.restore();
   }
   ctx.restore();
@@ -447,49 +508,42 @@ function drawShieldHitReaction(ctx: CanvasRenderingContext2D, player: Player, no
   const impact = Math.min(1, player.shieldHitFlashTimer / 220);
   const burst = 1 - impact;
   const shockR = player.radius + 9 + burst * 12;
+  const rotation = now / 220 + Math.PI / 8;
 
   ctx.save();
   ctx.globalAlpha = impact;
 
-  const flash = ctx.createRadialGradient(0, 0, player.radius * 0.3, 0, 0, shockR + 10);
-  flash.addColorStop(0, 'rgba(255,255,255,0.18)');
-  flash.addColorStop(0.4, 'rgba(191,233,255,0.18)');
-  flash.addColorStop(1, 'rgba(125,211,252,0)');
-  ctx.fillStyle = flash;
-  ctx.beginPath();
-  ctx.arc(0, 0, shockR + 4, 0, TAU);
+  ctx.fillStyle = 'rgba(191,233,255,0.18)';
+  traceRegularPolygon(ctx, shockR + 7, 8, rotation);
   ctx.fill();
 
-  ctx.shadowColor = '#ffffff';
-  ctx.shadowBlur = 16;
   ctx.strokeStyle = `rgba(255,255,255,${0.74 * impact})`;
   ctx.lineWidth = 3.4 - burst * 1.2;
-  ctx.beginPath();
-  ctx.arc(0, 0, shockR, 0, TAU);
+  traceRegularPolygon(ctx, shockR, 8, rotation);
   ctx.stroke();
 
-  for (let i = 0; i < 7; i++) {
-    const angle = now / 220 + (i / 7) * TAU;
-    const innerR = player.radius + 5 + burst * 3;
-    const outerR = shockR + 6 + (i % 2) * 4;
-    const x1 = Math.cos(angle) * innerR;
-    const y1 = Math.sin(angle) * innerR;
-    const x2 = Math.cos(angle) * outerR;
-    const y2 = Math.sin(angle) * outerR;
+  ctx.strokeStyle = `rgba(125,211,252,${0.66 * impact})`;
+  ctx.lineWidth = 1.8;
+  traceRegularPolygon(ctx, shockR - 5, 8, rotation + TAU / 16);
+  ctx.stroke();
 
-    ctx.strokeStyle = i % 2 === 0
-      ? `rgba(255,255,255,${0.68 * impact})`
-      : `rgba(125,211,252,${0.62 * impact})`;
-    ctx.lineWidth = i % 2 === 0 ? 2.1 : 1.6;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+  for (let i = 0; i < 8; i++) {
+    const angle = rotation + (i / 8) * TAU;
+    const outerR = shockR + 7 + (i % 2) * 5;
+    ctx.fillStyle = i % 2 === 0
+      ? `rgba(255,255,255,${0.54 * impact})`
+      : `rgba(125,211,252,${0.48 * impact})`;
+    traceRadialPlate(ctx, shockR - 1, outerR, angle, 0.08);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255,255,255,${0.58 * impact})`;
+    ctx.lineWidth = 1.2;
+    traceRadialPlate(ctx, shockR - 1, outerR, angle, 0.08);
     ctx.stroke();
   }
 
-  ctx.shadowBlur = 0;
   for (let i = 0; i < 5; i++) {
-    const angle = now / 180 + (i / 5) * TAU;
+    const angle = rotation + (i / 5) * TAU;
     const px = Math.cos(angle) * (shockR + 2);
     const py = Math.sin(angle) * (shockR + 2);
     ctx.save();

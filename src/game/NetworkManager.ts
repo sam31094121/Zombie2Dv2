@@ -63,6 +63,7 @@ export class NetworkManager {
   onRemotePause:   ((pid: number) => void) | null = null;
   onRemoteResume:  (() => void) | null = null;
   onUrge:          (() => void) | null = null;
+  onGoblinSpawned: (() => void) | null = null;
   // Host ?交 P2 ?宏?撓?伐???inputTick 靘?Reconciliation嚗?
   onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
 
@@ -300,6 +301,9 @@ export class NetworkManager {
         break;
       case 'URGE':
         this.onUrge?.();
+        break;
+      case 'GOBLIN_SPAWNED':
+        this.onGoblinSpawned?.();
         break;
     }
   }
