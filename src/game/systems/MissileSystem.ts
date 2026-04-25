@@ -1,5 +1,6 @@
 ﻿import type { Game } from '../Game';
 import { MissileProjectile } from '../entities/MissileProjectile';
+import { applyGunKnockback } from './GunKnockback';
 
 export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: number): void {
   const toSpawn: MissileProjectile[] = [];
@@ -64,11 +65,13 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
     }
 
     let destroyed = false;
+    const ownerKnockback = game.players.find(p => p.id === m.ownerId)?.knockback ?? 0;
     for (const z of game.zombies) {
       if (z.hp <= 0) continue;
       if (Math.hypot(z.x - m.x, z.y - m.y) < z.radius + m.radius) {
         z.hp -= m.damage;
         z.flashWhiteTimer = 100;
+        applyGunKnockback(z, m.x, m.y, 1, ownerKnockback);
         if (z.hp <= 0) {
           game.queueZombieDeath(z, m.ownerId, 5, Math.atan2(m.vy, m.vx));
         }
@@ -175,6 +178,7 @@ function _applySplashDamage(
   directTarget: (typeof game.zombies[0]) | null,
 ): void {
   if (radius <= 0) return;
+  const ownerKnockback = game.players.find(p => p.id === ownerId)?.knockback ?? 0;
 
   for (const zombie of game.zombies) {
     if (zombie.hp <= 0 || zombie === directTarget) continue;
@@ -185,6 +189,7 @@ function _applySplashDamage(
     const splashDamage = Math.max(1, baseDamage * 0.45 * (1 - dist / radius));
     zombie.hp -= splashDamage;
     zombie.flashWhiteTimer = Math.max(zombie.flashWhiteTimer, 70);
+    applyGunKnockback(zombie, x, y, 1, ownerKnockback);
     if (zombie.hp <= 0) {
       game.queueZombieDeath(zombie, ownerId, 5, Math.atan2(zombie.y - y, zombie.x - x));
     }

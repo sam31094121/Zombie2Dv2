@@ -35,6 +35,7 @@ import { ArenaBorderLayout, ArenaPlayableBounds, createArenaBorderLayout, drawAr
 import { drawArenaAppleTree } from './renderers/ArenaAppleTreeRenderer';
 import { getGeneratedObstacleSize } from './map/MapManager';
 import { updateTombstones } from './systems/TombstoneSystem';
+import { applyGunKnockback } from './systems/GunKnockback';
 
 type KillZombieOptions = {
   suppressOrbDrops?: boolean;
@@ -1859,7 +1860,7 @@ export class Game {
             this.hitStopTimer = 20; // 0.02s hit stop
           }
 
-          if (proj.knockback) {
+          if (proj.knockback > 0) {
             const angle = Math.atan2(zombie.y - proj.y, zombie.x - proj.x);
 
             // Check if big zombie ignores knockback from low level weapons
@@ -1883,11 +1884,7 @@ export class Game {
                   zombie.vy += Math.sin(angle) * v0;
                 }
               } else {
-                const baseKb = 30 + pk * 4;
-                const kbForce = zombie.type === 'big' ? baseKb * 0.15 : baseKb;
-                const v0 = kbForce * 0.08;
-                zombie.vx += Math.cos(angle) * v0;
-                zombie.vy += Math.sin(angle) * v0;
+                applyGunKnockback(zombie, proj.x, proj.y, proj.knockback, pk);
               }
             }
           }

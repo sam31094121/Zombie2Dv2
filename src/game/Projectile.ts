@@ -12,7 +12,7 @@ export class Projectile {
   lifetime: number;
   type: 'bullet' | 'slash' | 'zombie_spit';
   radius: number;
-  knockback: boolean;
+  knockback: number;
   hitZombies: Set<Zombie> = new Set();
   hitObstacleKeys: Set<string> = new Set();
   ownerId: number;
@@ -25,7 +25,7 @@ export class Projectile {
     ownerId: number,
     x: number, y: number, vx: number, vy: number,
     damage: number, pierce: number, lifetime: number,
-    type: 'bullet' | 'slash' | 'zombie_spit', radius: number, knockback: boolean = false,
+    type: 'bullet' | 'slash' | 'zombie_spit', radius: number, knockback: number = 0,
     level: number = 1, isEnemy: boolean = false,
     bulletType: string = 'blue_ellipse',
   ) {

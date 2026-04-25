@@ -56,7 +56,7 @@ export interface ProjectileSpec {
   lifetime: number;
   type: 'bullet' | 'slash';
   radius: number;
-  knockback: boolean;
+  knockback: number;
   level: number;
   bulletType?: string; // 子彈外觀模組鍵值（對應 BULLET_REGISTRY）
 }

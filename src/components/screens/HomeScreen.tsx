@@ -1,6 +1,7 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CharacterShowcase } from './CharacterShowcase';
 import { OnlineMenuScreen } from './OnlineMenuScreen';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface Props {
   platform: 'pc' | 'mobile';
@@ -32,6 +33,7 @@ export const HomeScreen: React.FC<Props> = ({
   const [selectedMode, setSelectedMode] = useState<'arena' | 'endless'>('arena');
   const [selectedCount, setSelectedCount] = useState<1 | 2 | 'online'>(1);
   const [showOnlinePanel, setShowOnlinePanel] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [toast, setToast] = useState('');
   const [vp, setVp] = useState(() => ({
     w: typeof window === 'undefined' ? 1200 : window.innerWidth,
@@ -404,6 +406,26 @@ export const HomeScreen: React.FC<Props> = ({
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => setShowShareModal(true)}
+              style={{
+                marginLeft: 'auto',
+                padding: '4px 14px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 700,
+                background: 'rgba(234,179,8,0.12)',
+                color: '#fbbf24',
+                border: '1px solid rgba(234,179,8,0.25)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                transition: 'all 0.15s',
+              }}
+            >
+              <span>🔗</span> 分享
+            </button>
           </div>
 
           <div
@@ -489,6 +511,60 @@ export const HomeScreen: React.FC<Props> = ({
                 setShowOnlinePanel(false);
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div
+          className="absolute inset-0 z-[60] flex items-center justify-center p-6"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(16px)' }}
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden"
+            style={{
+              background: '#1c1a18',
+              borderRadius: 24,
+              border: '1px solid rgba(255,255,255,0.08)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-8 flex flex-col items-center text-center">
+              <div className="mb-6 p-4 bg-white rounded-2xl shadow-xl">
+                <QRCodeCanvas 
+                  value={window.location.origin + window.location.pathname} 
+                  size={180}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+              <h3 className="text-xl font-black text-white mb-2">掃描玩遊戲</h3>
+              <p className="text-neutral-500 text-sm mb-6 leading-relaxed">
+                邀請朋友一起加入這場<br />末日生存之戰！
+              </p>
+              
+              <div className="w-full flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin + window.location.pathname);
+                    showToast('連結已複製到剪貼簿');
+                    setShowShareModal(false);
+                  }}
+                  className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 text-white font-bold rounded-xl transition-colors border border-white/5"
+                >
+                  複製連結
+                </button>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="w-full py-3 text-neutral-500 font-bold hover:text-white transition-colors"
+                >
+                  關閉
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

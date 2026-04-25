@@ -1,6 +1,7 @@
 import { Game } from '../Game';
 import { Zombie } from '../Zombie';
 import { ArcProjectile } from '../entities/ArcProjectile';
+import { applyGunKnockback } from '../systems/GunKnockback';
 
 export class ArcSystem {
   static triggerArc(
@@ -36,6 +37,8 @@ export class ArcSystem {
     nearest.paralysisTimer = Math.max(nearest.paralysisTimer, paralyzeDuration);
     nearest.hp -= damage;
     nearest.lastDamageTime.set(ownerId, Date.now());
+    const ownerKnockback = game.players.find(p => p.id === ownerId)?.knockback ?? 0;
+    applyGunKnockback(nearest, startX, startY, 1, ownerKnockback);
     ignoreZombieIds.add(nearest.id);
 
     game.hitEffects.push({

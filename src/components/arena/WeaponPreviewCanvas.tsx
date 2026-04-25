@@ -87,7 +87,7 @@ export const WeaponPreviewCanvas: React.FC<Props> = ({
       ref={canvasRef}
       width={bufW}
       height={bufH}
-      style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
+      style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
     />
   );
 };

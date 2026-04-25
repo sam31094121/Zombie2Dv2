@@ -675,15 +675,13 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           overflow-y: auto;
           overflow-x: hidden;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior-y: contain;
-          touch-action: pan-y;
+          touch-action: manipulation;
         }
         .px-scroll-x {
           overflow-x: auto;
           overflow-y: hidden;
           -webkit-overflow-scrolling: touch;
-          overscroll-behavior-x: contain;
-          touch-action: pan-x;
+          touch-action: manipulation;
         }
         @keyframes px-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
         .px-blink { animation: px-blink 1.2s step-start infinite; }
@@ -781,7 +779,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
             flexDirection: 'column',
             flex: isDesktop ? '0 0 30%' : '1 1 100%',
             maxWidth: isDesktop ? '320px' : '100%',
-            minWidth: 0, overflow: 'hidden',
+            minWidth: 0, minHeight: 0, overflow: 'hidden',
             boxShadow: isDesktop ? `2px 0 0 ${C.b1}, 4px 0 16px rgba(0,0,0,0.4)` : 'none',
           }}>
             {statsPanel}
@@ -791,7 +789,7 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
           <div style={{
             display: isDesktop || mobileTab === 2 ? 'flex' : 'none',
             flexDirection: 'column',
-            flex: 1, minWidth: 0, overflow: 'hidden',
+            flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden',
           }}>
             {shopPanel}
           </div>

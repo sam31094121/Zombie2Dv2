@@ -57,6 +57,7 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       ml: p.maxLifetime,
       en: p.isEnemy,
       r:  p.radius,
+      kb: p.knockback,
       oi: p.ownerId,
     })),
     it: game.items.map(i => ({
@@ -316,7 +317,7 @@ export function applyNetworkState(game: Game, state: any): void {
     const isLocalOwned = ps.oi === game.networkPlayerId && !ps.en;
     const px = ps.x + (isLocalOwned ? projOffX : 0);
     const py = ps.y + (isLocalOwned ? projOffY : 0);
-    const p = new Projectile(ps.oi, px, py, ps.vx, ps.vy, 0, 1, ps.lt, ps.tp, ps.r, false, ps.lv, ps.en);
+    const p = new Projectile(ps.oi, px, py, ps.vx, ps.vy, 0, 1, ps.lt, ps.tp, ps.r, ps.kb ?? 0, ps.lv, ps.en);
     p.maxLifetime = ps.ml;
     return p;
   });

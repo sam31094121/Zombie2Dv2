@@ -17,6 +17,8 @@ import { drawMuzzleFlash } from '../../renderers/EffectRenderer';
 import { MissileProjectile } from '../MissileProjectile';
 import { ArcProjectile } from '../ArcProjectile';
 
+const BASE_GUN_KNOCKBACK = 1;
+
 // ?? 甇血蝑?摰儔隞 ?????????????????????????????????????????????????????????
 export interface IWeaponLevelDef {
   readonly attackInterval: number;   // ms ?餅???
@@ -49,7 +51,7 @@ function makeSwordSpec(player: Player, dmgMult: number, radius: number, damage: 
     vx: dir.x, vy: dir.y,
     damage: damage * dmgMult,
     pierce: Infinity, lifetime: 250,
-    type: 'slash', radius, knockback: true, level: player.level,
+    type: 'slash', radius, knockback: 1, level: player.level,
   };
 }
 
@@ -82,7 +84,7 @@ function makeBullet(
     vx: vx * speed, vy: vy * speed,
     damage: damage * dmgMult,
     pierce, lifetime,
-    type: 'bullet', radius, knockback: false, level: player.level,
+    type: 'bullet', radius, knockback: BASE_GUN_KNOCKBACK, level: player.level,
     bulletType,
   };
 }

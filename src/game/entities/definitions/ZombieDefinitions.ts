@@ -198,7 +198,7 @@ function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
     projectiles.push(new Projectile(
       -1, self.x, self.y,
       Math.cos(angle) * 5, Math.sin(angle) * 5,
-      10, 1, 3000, 'zombie_spit', 12, true, 1, true,
+      10, 1, 3000, 'zombie_spit', 12, 0, 1, true,
     ));
   } else {
     self.extraState.delete('spitterAimUntil');
@@ -236,7 +236,7 @@ function spitterBehavior(self: Zombie, ctx: ZombieBehaviorCtx): void {
     projectiles.push(new Projectile(
       -1, self.x, self.y,
       Math.cos(angle) * 5, Math.sin(angle) * 5,
-      10, 1, 3000, 'zombie_spit', 12, true, 1, true,
+      10, 1, 3000, 'zombie_spit', 12, 0, 1, true,
     ));
   }
 
