@@ -7,8 +7,12 @@ import { ZombieType }  from '../../game/types';
 import { ItemType }    from '../../game/Item';
 import { ObstacleType } from '../../game/types';
 import { drawZombie }  from '../../game/renderers/ZombieRenderer';
+import type { DebugCmd } from '../../game/systems/DebugCommandBus';
 
-interface Props { gameRef: React.RefObject<Game | null>; }
+interface Props {
+  gameRef: React.RefObject<Game | null>;
+  onCmd:   (cmd: DebugCmd) => void;
+}
 
 // ── 每種殭屍的 radius（對應 ZombieDefinitions）───────────────────────────────
 const ZOMBIE_RADIUS: Record<ZombieType, number> = {
@@ -417,7 +421,7 @@ function LevelCtrl({ label, emoji, level, onWeapon, onLevel }: {
 }
 
 // ── 主面板 ────────────────────────────────────────────────────────────────────
-export function TestModePanel({ gameRef }: Props) {
+export function TestModePanel({ gameRef, onCmd }: Props) {
   const [open, setOpen]     = useState(false);
   const [targetPid, setTargetPid] = useState(1);
   const [spawnCount, setSpawnCount] = useState<1|5|10>(1);
@@ -450,7 +454,7 @@ export function TestModePanel({ gameRef }: Props) {
   const changePlayerLevel = (d: number) => {
     const next = Math.max(1, Math.min(8, getPlayerLevel() + d));
     setPlayerLevelState(targetPid, next);
-    g()?.debugSetPlayerLevel(targetPid, next);
+    onCmd({ tp: 'pl', pid: targetPid, lv: next });
   };
 
   const statusActive = (key: 'shield'|'speedBoost'|'slowDebuff'|'glow') => {
@@ -521,18 +525,18 @@ export function TestModePanel({ gameRef }: Props) {
 
       {/* ── 玩家 ── */}
       <Section title="👤 玩家">
-        <Btn onClick={() => g()?.debugHealAll()} color="green" className="w-full">💉 滿血（所有玩家）</Btn>
+        <Btn onClick={() => onCmd({ tp: 'ha' })} color="green" className="w-full">💉 滿血（所有玩家）</Btn>
         <LevelCtrl label="LV" emoji="🧬" level={getPlayerLevel()}
-          onWeapon={() => g()?.debugSetPlayerLevel(targetPid, getPlayerLevel())}
+          onWeapon={() => onCmd({ tp: 'pl', pid: targetPid, lv: getPlayerLevel() })}
           onLevel={changePlayerLevel} />
         <div className="grid grid-cols-2 gap-1">
-          <Btn onClick={() => g()?.debugSetWeapon(targetPid, 'sword', getPlayerLevel())} color="blue">⚔ 刀</Btn>
-          <Btn onClick={() => g()?.debugSetWeapon(targetPid, 'gun', getPlayerLevel())} color="yellow">🔫 槍</Btn>
+          <Btn onClick={() => onCmd({ tp: 'pw', pid: targetPid, wp: 'sword', lv: getPlayerLevel() })} color="blue">⚔ 刀</Btn>
+          <Btn onClick={() => onCmd({ tp: 'pw', pid: targetPid, wp: 'gun',   lv: getPlayerLevel() })} color="yellow">🔫 槍</Btn>
         </div>
         {getPlayerLevel() >= 5 && (
           <div className="flex gap-1 pl-6">
             {(['A','B'] as const).map(b => (
-              <Btn key={b} onClick={() => g()?.debugSetWeaponBranch(targetPid, 'sword', getBranch('sword') === b ? null : b)}
+              <Btn key={b} onClick={() => onCmd({ tp: 'pb', pid: targetPid, wp: 'sword', br: getBranch('sword') === b ? null : b })}
                    color={b === 'A' ? 'blue' : 'red'} active={getBranch('sword') === b}>
                 {b === 'A' ? '🌪️' : '⚡'} {b}
               </Btn>
@@ -542,7 +546,7 @@ export function TestModePanel({ gameRef }: Props) {
         {getPlayerLevel() >= 5 && (
           <div className="flex gap-1 pl-6">
             {(['A','B'] as const).map(b => (
-              <Btn key={b} onClick={() => g()?.debugSetWeaponBranch(targetPid, 'gun', getBranch('gun') === b ? null : b)}
+              <Btn key={b} onClick={() => onCmd({ tp: 'pb', pid: targetPid, wp: 'gun', br: getBranch('gun') === b ? null : b })}
                    color={b === 'A' ? 'red' : 'yellow'} active={getBranch('gun') === b}>
                 {b === 'A' ? '🔥' : '🎯'} {b}
               </Btn>
@@ -561,7 +565,7 @@ export function TestModePanel({ gameRef }: Props) {
             { key: 'glow',       emoji: '🌟', label: '無限光芒' },
           ] as const).map(({ key, emoji, label }) => (
             <Btn key={key}
-                 onClick={() => g()?.debugToggleStatus(targetPid, key)}
+                 onClick={() => onCmd({ tp: 'ts', pid: targetPid, k: key })}
                  color={key === 'slowDebuff' ? 'yellow' : 'blue'}
                  active={statusActive(key)}>
               {emoji} {label}
@@ -584,11 +588,11 @@ export function TestModePanel({ gameRef }: Props) {
               active={selZombie === type} spawnCount={spawnCount}
               onClick={() => {
                 setSelZombie(type);
-                g()?.debugSpawnZombie(type, spawnCount);
+                onCmd({ tp: 'sz', zt: type, c: spawnCount });
               }} />
           ))}
         </div>
-        <Btn onClick={() => { if (g()) g()!.zombies = []; }} color="red" className="w-full mt-1">
+        <Btn onClick={() => onCmd({ tp: 'cz' })} color="red" className="w-full mt-1">
           🧹 清除全部殭屍
         </Btn>
       </Section>
@@ -598,10 +602,10 @@ export function TestModePanel({ gameRef }: Props) {
         <div className="grid grid-cols-2 gap-2">
           {ITEMS.map(({ type, label }) => (
             <ItemCard key={type} type={type} label={label} active={false}
-              onClick={() => g()?.debugSpawnItem(type)} />
+              onClick={() => onCmd({ tp: 'si', it: type })} />
           ))}
         </div>
-        <Btn onClick={() => { if (g()) g()!.items = []; }} color="red" className="w-full mt-1">
+        <Btn onClick={() => onCmd({ tp: 'ci' })} color="red" className="w-full mt-1">
           🧹 清除物品
         </Btn>
       </Section>
@@ -611,7 +615,7 @@ export function TestModePanel({ gameRef }: Props) {
         <div className="grid grid-cols-2 gap-2">
           {OBSTACLES.map(({ type, label }) => (
             <ObstacleCard key={type} type={type} label={label} active={false}
-              onClick={() => g()?.debugSpawnObstacle(type)} />
+              onClick={() => onCmd({ tp: 'so', ot: type })} />
           ))}
         </div>
       </Section>
@@ -620,32 +624,32 @@ export function TestModePanel({ gameRef }: Props) {
       <Section title="🎮 遊戲控制">
         <div className="flex items-center gap-1">
           <span className="text-xs text-gray-500">波次:</span>
-          <button onClick={() => g()?.debugSetWave((g()?.waveManager.currentWave ?? 1) - 1)}
+          <button onClick={() => onCmd({ tp: 'sw', w: (g()?.waveManager.currentWave ?? 1) - 1 })}
                   className="w-5 h-5 bg-gray-700 rounded text-xs text-white hover:bg-gray-600 flex items-center justify-center cursor-pointer">−</button>
           <span className="w-8 text-center text-xs text-yellow-300 font-bold">{g()?.waveManager.currentWave ?? 1}</span>
-          <button onClick={() => g()?.debugSetWave((g()?.waveManager.currentWave ?? 1) + 1)}
+          <button onClick={() => onCmd({ tp: 'sw', w: (g()?.waveManager.currentWave ?? 1) + 1 })}
                   className="w-5 h-5 bg-gray-700 rounded text-xs text-white hover:bg-gray-600 flex items-center justify-center cursor-pointer">＋</button>
         </div>
-        <Btn onClick={() => g()?.debugTogglePause()}
+        <Btn onClick={() => onCmd({ tp: 'tp' })}
              color={g()?.debugPaused ? 'yellow' : 'gray'}
              active={g()?.debugPaused ?? false} className="w-full">
           {g()?.debugPaused ? '▶ 繼續波次' : '⏸ 波次暫停'}
         </Btn>
-        <Btn onClick={() => g()?.debugToggleHpLock()}
+        <Btn onClick={() => onCmd({ tp: 'hl' })}
              color={g()?.debugHpLocked ? 'red' : 'gray'}
              active={g()?.debugHpLocked ?? false} className="w-full">
           {g()?.debugHpLocked ? '🔓 鎖血：開' : '🔒 鎖血：關'}
         </Btn>
-        <Btn onClick={() => g()?.debugToggleInfiniteCoins()}
+        <Btn onClick={() => onCmd({ tp: 'ic' })}
              color={g()?.debugInfiniteCoins ? 'yellow' : 'gray'}
              active={g()?.debugInfiniteCoins ?? false} className="w-full">
           {g()?.debugInfiniteCoins ? '∞ 無限金幣：開' : '💰 無限金幣：關'}
         </Btn>
         <div className="grid grid-cols-2 gap-1 mt-1">
-          <Btn onClick={() => g()?.debugClearSlime()} color="gray">🧹 黏液</Btn>
-          <Btn onClick={() => { if (g()) g()!.hitEffects = []; }} color="gray">🧹 特效</Btn>
-          <Btn onClick={() => g()?.debugHealAll()} color="green">💉 全員回血</Btn>
-          <Btn onClick={() => { if (g()) g()!.zombies = []; }} color="red">🗑️ 清殭屍</Btn>
+          <Btn onClick={() => onCmd({ tp: 'cs' })} color="gray">🧹 黏液</Btn>
+          <Btn onClick={() => onCmd({ tp: 'ce' })} color="gray">🧹 特效</Btn>
+          <Btn onClick={() => onCmd({ tp: 'ha' })} color="green">💉 全員回血</Btn>
+          <Btn onClick={() => onCmd({ tp: 'cz' })} color="red">🗑️ 清殭屍</Btn>
         </div>
       </Section>
 

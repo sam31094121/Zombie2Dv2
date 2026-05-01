@@ -6,6 +6,8 @@ import { Player } from '../game/Player';
 import { audioManager } from '../game/AudioManager';
 import { MobileControls } from './MobileControls';
 import { NetworkManager } from '../game/NetworkManager';
+import { executeDebugCmd } from '../game/systems/DebugCommandBus';
+import type { DebugCmd } from '../game/systems/DebugCommandBus';
 import { useGameLoop } from '../hooks/useGameLoop';
 import { HomeScreen } from './screens/HomeScreen';
 import { GameOverScreen } from './screens/GameOverScreen';
@@ -508,6 +510,10 @@ export const GameUI: React.FC = () => {
       if (urgeTimeoutRef.current) clearTimeout(urgeTimeoutRef.current);
       setUrgeFlash(true);
       urgeTimeoutRef.current = setTimeout(() => setUrgeFlash(false), 2500);
+    };
+    // 偵錯指令同步：對端執行 TestModePanel 動作時，本地也執行相同指令
+    nm.onDebugCmd = (cmd: DebugCmd) => {
+      if (gameRef.current) executeDebugCmd(gameRef.current, cmd);
     };
 
     gameRef.current      = game;
@@ -1050,7 +1056,15 @@ export const GameUI: React.FC = () => {
         })()}
 
         {/* ── 測試面板 (預設隱藏，須由暫停選單開啟) ────────────────── */}
-        {gameState === 'playing' && isTestModeEnabled && <TestModePanel gameRef={gameRef} />}
+        {gameState === 'playing' && isTestModeEnabled && (
+          <TestModePanel
+            gameRef={gameRef}
+            onCmd={(cmd: DebugCmd) => {
+              if (gameRef.current) executeDebugCmd(gameRef.current, cmd);
+              networkRef.current?.sendDebugCmd(cmd);
+            }}
+          />
+        )}
 
         {/* ── 暫停選單：我按了暫停（單機 or 線上我是暫停者）────── */}
         {isPausedUI && gameState === 'playing' && (

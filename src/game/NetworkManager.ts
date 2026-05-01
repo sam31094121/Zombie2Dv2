@@ -64,6 +64,7 @@ export class NetworkManager {
   onRemoteResume:  (() => void) | null = null;
   onUrge:          (() => void) | null = null;
   onGoblinSpawned: (() => void) | null = null;
+  onDebugCmd:      ((cmd: any) => void) | null = null;
   // Host ?交 P2 ?宏?撓?伐???inputTick 靘?Reconciliation嚗?
   onRemoteInput:   ((dx: number, dy: number, tick: number) => void) | null = null;
 
@@ -305,6 +306,9 @@ export class NetworkManager {
       case 'GOBLIN_SPAWNED':
         this.onGoblinSpawned?.();
         break;
+      case 'DEBUG_CMD':
+        this.onDebugCmd?.(msg.cmd);
+        break;
     }
   }
 
@@ -344,6 +348,8 @@ export class NetworkManager {
   }
 
   // ?? 撠?隞嚗?鞈賣???????????????????????????????????????
+  sendDebugCmd(cmd: object) { this.sendControl({ t: 'DEBUG_CMD', cmd }); }
+
   sendReady() {
     this.sendControl({ t: 'PLAYER_READY', pid: this._isHost ? 1 : 2 });
   }

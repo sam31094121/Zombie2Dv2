@@ -38,6 +38,7 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       st: Math.round(p.shieldTimer),
       sl: Math.round(p.slowDebuffTimer),
       mt: Math.round(p.materials),
+      ia: p.isAtAltar ? 1 : undefined,
     })),
     zs: game.zombies.map(z => ({
       id: z.id,
@@ -146,6 +147,25 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       tid: e.targetZombieId,
       er: e.explodeRadius, ed: e.explodeDamage,
     })),
+    tc: (function serializeTurrets() {
+      const out: any[] = [];
+      for (const list of game.mapManager.obstacles.values()) {
+        for (const obs of list) {
+          if (obs.type === 'monolith') {
+            out.push({
+              x:  Math.round(obs.x),  y: Math.round(obs.y),
+              fa: obs.monolithFacingAngle,
+              ot: Math.round(obs.monolithOverheatTimer),
+              ch: obs.monolithCharge,
+              lp: Math.round(obs.monolithLaunchPulse),
+              vs: obs.monolithVolleyShotsRemaining,
+              hp: Math.round(obs.hp),
+            });
+          }
+        }
+      }
+      return out;
+    })(),
     str: game.slimeTrails.map(t => ({
       x: Math.round(t.x), y: Math.round(t.y), r: t.radius,
       lt: Math.round(t.lifetime), ml: t.maxLifetime,
@@ -277,6 +297,7 @@ export function applyNetworkState(game: Game, state: any): void {
     if (!game.waveManager.isResting && ps.mt !== undefined) {
       player.materials = ps.mt;
     }
+    player.isAtAltar = !!ps.ia;
   }
 
   // ID-based zombie matching
@@ -484,6 +505,24 @@ export function applyNetworkState(game: Game, state: any): void {
       explodeRadius: ae.er,
       explodeDamage: ae.ed,
     }));
+  }
+
+  // 砲塔動態狀態同步（旋轉角、過熱、充能、發射脈衝）
+  if (Array.isArray(state.tc)) {
+    for (const tc of state.tc as any[]) {
+      for (const list of game.mapManager.obstacles.values()) {
+        for (const obs of list) {
+          if (obs.type === 'monolith' && Math.abs(obs.x - tc.x) < 4 && Math.abs(obs.y - tc.y) < 4) {
+            obs.monolithFacingAngle          = tc.fa;
+            obs.monolithOverheatTimer        = tc.ot;
+            obs.monolithCharge               = tc.ch;
+            obs.monolithLaunchPulse          = tc.lp;
+            obs.monolithVolleyShotsRemaining = tc.vs;
+            obs.hp                           = tc.hp;
+          }
+        }
+      }
+    }
   }
 
   // slimeTrails 反序列化（P2 純視覺：地板黏液）

@@ -1393,10 +1393,19 @@ export class Game {
         return vfx.alpha > 0;
       });
       for (let i = this.hitEffects.length - 1; i >= 0; i--) {
-        this.hitEffects[i].lifetime -= dt;
-        if (this.hitEffects[i].lifetime <= 0) this.hitEffects.splice(i, 1);
+        const eff = this.hitEffects[i];
+        eff.lifetime -= dt;
+        if (eff.vx !== undefined && eff.vy !== undefined) {
+          eff.x += eff.vx * (dt / 16);
+          eff.y += eff.vy * (dt / 16);
+          const drag = Math.pow(0.88, dt / 16);
+          eff.vx *= drag;
+          eff.vy *= drag;
+          eff.vy += 0.15 * (dt / 16);
+        }
+        if (eff.lifetime <= 0) this.hitEffects.splice(i, 1);
       }
-      // Fix 4 ??Defensive slimeTrails lifetime cleanup in network mode.
+      // slimeTrails lifetime cleanup in network mode.
       // Prevents unbounded growth if any code path adds trails on the client side.
       for (let i = this.slimeTrails.length - 1; i >= 0; i--) {
         this.slimeTrails[i].lifetime -= dt;
