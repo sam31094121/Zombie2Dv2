@@ -41,6 +41,7 @@ type KillZombieOptions = {
   suppressOrbDrops?: boolean;
   suppressItemDrop?: boolean;
   suppressBagReward?: boolean;
+  suppressSplit?: boolean;
 };
 
 type ArenaLootBagState = {
@@ -1447,6 +1448,10 @@ export class Game {
     // Smooth Transition Logic
     if (this.mode === 'arena' && this.waveManager.isTransitioning) {
       dt *= 0.3; // Slow motion
+      
+      // 清除敵方子彈 (Spitter 的噴吐物)
+      this.projectiles = this.projectiles.filter(p => !p.isEnemy);
+      
       if (!(this.waveManager as any)._transitionKilled) {
         for (const z of [...this.zombies]) {
           if (z.hp > 0) {
@@ -1455,6 +1460,7 @@ export class Game {
               suppressOrbDrops: true,
               suppressItemDrop: true,
               suppressBagReward: true,
+              suppressSplit: true,
             });
           }
         }
@@ -2260,9 +2266,9 @@ export class Game {
       this.hitEffects.push({ x: zombie.x, y: zombie.y, type: 'dismember', lifetime: 500, maxLifetime: 500 });
     }
 
-    // slime ??
+    // slime 分裂
     const children: Zombie[] = [];
-    if (zombieDef.splitOnDeath) {
+    if (zombieDef.splitOnDeath && !options.suppressSplit) {
       const specs = zombieDef.splitOnDeath(zombie.x, zombie.y);
       for (const spec of specs) {
         const child = new Zombie(spec.x, spec.y, spec.type);

@@ -92,28 +92,45 @@ function drawSpeedBoostAura(ctx: CanvasRenderingContext2D, player: Player, now: 
   ctx.arc(dirX * 5, dirY * 5 - 2, player.radius * (1.02 + pulse * 0.08), 0, TAU);
   ctx.fill();
 
-  ctx.lineCap = 'round';
   ctx.shadowColor = '#a5f3fc';
-  ctx.shadowBlur = 14;
-  for (let i = 0; i < 5; i++) {
-    const lane = i - 2;
-    const lateral = lane * 6.5;
-    const wobble = Math.sin(now / 135 + i * 1.1) * (2 + Math.abs(lane) * 0.8);
-    const startX = dirX * (player.radius * 0.12) + perpX * lateral;
-    const startY = dirY * (player.radius * 0.12) + perpY * lateral - 1;
-    const midX = perpX * (lateral + wobble * 0.7) - dirX * (player.radius + 10 + i * 4);
-    const midY = perpY * (lateral + wobble * 0.45) - dirY * (player.radius + 10 + i * 4);
-    const endX = perpX * (lateral + wobble) - dirX * (wakeLength + i * 3);
-    const endY = perpY * (lateral + wobble * 0.8) - dirY * (wakeLength + i * 3);
-
-    ctx.strokeStyle = i === 2
-      ? 'rgba(255,255,255,0.52)'
-      : `rgba(110,231,255,${0.34 - Math.abs(lane) * 0.04})`;
-    ctx.lineWidth = i === 2 ? 3.5 : 2.4 - Math.abs(lane) * 0.22;
+  ctx.shadowBlur = 12;
+  
+  // 緞帶狀殘影 (Ribbon effect)
+  for (let i = 0; i < 2; i++) {
+    const lateral = (i === 0 ? 1 : -1) * 7.5;
+    const wobble1 = Math.sin(now / 150 + i * Math.PI) * 11;
+    const wobble2 = Math.cos(now / 130 + i * Math.PI) * 14;
+    
+    // 緞帶起點 (角色身邊)
+    const startX1 = dirX * (player.radius * 0.1) + perpX * (lateral + 3.5);
+    const startY1 = dirY * (player.radius * 0.1) + perpY * (lateral + 3.5) - 1;
+    const startX2 = dirX * (player.radius * 0.1) + perpX * (lateral - 3.5);
+    const startY2 = dirY * (player.radius * 0.1) + perpY * (lateral - 3.5) - 1;
+    
+    // 緞帶中段控制點
+    const midX1 = perpX * (lateral + wobble1 + 3.5) - dirX * (wakeLength * 0.4);
+    const midY1 = perpY * (lateral + wobble1 + 3.5) - dirY * (wakeLength * 0.4);
+    const midX2 = perpX * (lateral + wobble1 - 3.5) - dirX * (wakeLength * 0.4);
+    const midY2 = perpY * (lateral + wobble1 - 3.5) - dirY * (wakeLength * 0.4);
+    
+    // 緞帶尾端收束點
+    const endX = perpX * (lateral + wobble2) - dirX * wakeLength;
+    const endY = perpY * (lateral + wobble2) - dirY * wakeLength;
+    
+    const gradient = ctx.createLinearGradient(
+      (startX1 + startX2) / 2, (startY1 + startY2) / 2, 
+      endX, endY
+    );
+    gradient.addColorStop(0, `rgba(186,245,255,${0.6 * fade})`);
+    gradient.addColorStop(0.5, `rgba(56,189,248,${0.35 * fade})`);
+    gradient.addColorStop(1, 'rgba(14,116,144,0)');
+    
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.quadraticCurveTo(midX, midY, endX, endY);
-    ctx.stroke();
+    ctx.moveTo(startX1, startY1);
+    ctx.quadraticCurveTo(midX1, midY1, endX, endY);
+    ctx.quadraticCurveTo(midX2, midY2, startX2, startY2);
+    ctx.fill();
   }
 
   ctx.shadowBlur = 10;
@@ -380,19 +397,7 @@ function drawAltarFrontAura(ctx: CanvasRenderingContext2D, player: Player, now: 
     ctx.quadraticCurveTo(flameX, flameY - flameH * 0.16, flameX - flameW * 0.45, flameY + 1);
     ctx.fill();
   }
-
-  for (let i = 0; i < 6; i++) {
-    const drift = (i / 5) * 18;
-    const spread = (i - 2.5) * 3.8;
-    const sparkLen = 6 + (i % 3) * 2;
-    ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,226,142,0.72)' : 'rgba(255,120,32,0.62)';
-    ctx.lineWidth = i % 2 === 0 ? 1.8 : 1.3;
-    ctx.beginPath();
-    ctx.moveTo(player.radius + 10 + drift, spread);
-    ctx.lineTo(player.radius + 10 + drift + sparkLen, spread * 0.6);
-    ctx.stroke();
-  }
-  ctx.restore();
+  // 移除了角色面相方向的線條 (directional sparks)，保留周圍的火焰特效
 }
 
 function drawShieldAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
