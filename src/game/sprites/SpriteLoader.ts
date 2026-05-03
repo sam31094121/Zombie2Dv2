@@ -1,32 +1,55 @@
 /// <reference types="vite/client" />
-// ── SpriteLoader.ts ───────────────────────────────────────────────────────────
-// 自動去黑背景 + 快取精靈圖
-// ─────────────────────────────────────────────────────────────────────────────
 
-const _cache  = new Map<string, HTMLCanvasElement>();
+const _cache = new Map<string, HTMLCanvasElement>();
 const _loading = new Set<string>();
+const _chromaCache = new Map<string, HTMLCanvasElement>();
+const _chromaLoading = new Set<string>();
 
-/** 把純黑像素變透明（一次性，載入後快取） */
 function removeBlackBg(img: HTMLImageElement): HTMLCanvasElement {
-  const c   = document.createElement('canvas');
-  c.width   = img.naturalWidth;
-  c.height  = img.naturalHeight;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
   const ctx = c.getContext('2d')!;
   ctx.drawImage(img, 0, 0);
-  const id  = ctx.getImageData(0, 0, c.width, c.height);
-  const d   = id.data;
+
+  const id = ctx.getImageData(0, 0, c.width, c.height);
+  const d = id.data;
   for (let i = 0; i < d.length; i += 4) {
-    // 純黑 / 近黑 → 透明
     if (d[i] < 25 && d[i + 1] < 25 && d[i + 2] < 25) d[i + 3] = 0;
   }
+
   ctx.putImageData(id, 0, 0);
   return c;
 }
 
-/** 取得已快取的 canvas；若尚未載入則觸發載入並回傳 null */
+function removeMagentaBg(img: HTMLImageElement): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(img, 0, 0);
+
+  const id = ctx.getImageData(0, 0, c.width, c.height);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+
+    // Covers #FF00FF plus soft anti-aliased magenta pixels around the sprite.
+    const hotMagenta = r > 150 && b > 150 && g < 150;
+    const edgeMagenta = r > 90 && b > 90 && g < 150 && (r + b) > g * 2.7 && Math.abs(r - b) < 130;
+    if (hotMagenta || edgeMagenta) d[i + 3] = 0;
+  }
+
+  ctx.putImageData(id, 0, 0);
+  return c;
+}
+
 export function getSprite(url: string): HTMLCanvasElement | null {
-  if (_cache.has(url))   return _cache.get(url)!;
+  if (_cache.has(url)) return _cache.get(url)!;
   if (_loading.has(url)) return null;
+
   _loading.add(url);
   const img = new Image();
   img.onload = () => {
@@ -38,13 +61,31 @@ export function getSprite(url: string): HTMLCanvasElement | null {
   return null;
 }
 
-// ── 屠夫幀列表（依檔名 1~5 排序）────────────────────────────────────────────
-// import.meta.env.BASE_URL 自動跟隨 vite.config.ts 的 base 設定（如 /Zombie2Dv2/）
+export function getChromaSprite(url: string): HTMLCanvasElement | null {
+  if (_chromaCache.has(url)) return _chromaCache.get(url)!;
+  if (_chromaLoading.has(url)) return null;
+
+  _chromaLoading.add(url);
+  const img = new Image();
+  img.onload = () => {
+    _chromaCache.set(url, removeMagentaBg(img));
+    _chromaLoading.delete(url);
+  };
+  img.onerror = () => _chromaLoading.delete(url);
+  img.src = url;
+  return null;
+}
+
 export const BUTCHER_FRAME_URLS: string[] = [1, 2, 3, 4, 5].map(
   i => `${import.meta.env.BASE_URL}sprites/butcher_${i}.png`
 );
 
-// 預載入
+export const PLAYER_WALK_SHEET_URLS: Record<number, string> = {
+  1: `${import.meta.env.BASE_URL}sprites/players/player1_walk_centered_8x3.png`,
+  2: `${import.meta.env.BASE_URL}sprites/players/player2_walk_8x3.png`,
+};
+
 if (typeof window !== 'undefined') {
   BUTCHER_FRAME_URLS.forEach(url => getSprite(url));
+  Object.values(PLAYER_WALK_SHEET_URLS).forEach(url => getChromaSprite(url));
 }

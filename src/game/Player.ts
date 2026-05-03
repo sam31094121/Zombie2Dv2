@@ -62,6 +62,7 @@ export class Player {
 
   kills: number = 0;
   lastMoveDir: { x: number, y: number } = { x: 1, y: 0 };
+  isMoving: boolean = false;
   lastDamageTime: number = 0;
   lastAttackTime: number = 0;
   aimAngle: number = 0;
@@ -205,7 +206,9 @@ export class Player {
       if (keys['ArrowRight']) dx += 1;
     }
 
-    if (dx !== 0 || dy !== 0) {
+    this.isMoving = dx !== 0 || dy !== 0;
+
+    if (this.isMoving) {
       const len = Math.sqrt(dx * dx + dy * dy);
       dx /= len;
       dy /= len;

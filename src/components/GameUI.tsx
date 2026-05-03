@@ -328,6 +328,13 @@ export const GameUI: React.FC = () => {
       mode,
     );
 
+    game.onVictory = (time, kills) => {
+      setGameStats({ time, kills });
+      setGameState('victory');
+      audioManager.stopBGM();
+      if (pid === 1) nm.sendControl({ t: 'VICTORY', time, kills });
+    };
+
     hasShownGoblinHintRef.current = false;
     game.onGoblinSpawned = (carrier) => {
       if (hasShownGoblinHintRef.current) return;
@@ -358,6 +365,11 @@ export const GameUI: React.FC = () => {
         gameStateRef.current = 'shopping';
         setGameState('shopping');
         resetPlayerInputState();
+      };
+      nm.onVictory = (time, kills) => {
+        setGameStats({ time, kills });
+        setGameState('victory');
+        audioManager.stopBGM();
       };
       nm.onGoblinSpawned = () => {
         if (hasShownGoblinHintRef.current) return;

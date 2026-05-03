@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { Player } from '../Player';
 import { WEAPON_REGISTRY, getWeaponKey } from '../entities/definitions/WeaponDefinitions';
+import { getChromaSprite, PLAYER_WALK_SHEET_URLS } from '../sprites/SpriteLoader';
 
 const TAU = Math.PI * 2;
 const HEAL_REGEN_AURA_COLORS = {
@@ -398,6 +399,7 @@ function drawAltarFrontAura(ctx: CanvasRenderingContext2D, player: Player, now: 
     ctx.fill();
   }
   // 移除了角色面相方向的線條 (directional sparks)，保留周圍的火焰特效
+  ctx.restore();
 }
 
 function drawShieldAura(ctx: CanvasRenderingContext2D, player: Player, now: number): void {
@@ -609,6 +611,92 @@ export function drawWeaponWithPremiumStyle(
   ctx.restore();
 }
 
+const PLAYER_WALK_ROWS = 8;
+const PLAYER_WALK_COLS = 3;
+const PLAYER_WALK_FRAME_MS = 145;
+const PLAYER_DRAW_HEIGHT_MULT = 5.0;
+const PLAYER_CENTERED_DRAW_HEIGHT_MULT = 4.4;
+
+const PLAYER_DIRECTION_VECTORS = [
+  { x: 0, y: 1 },   // down
+  { x: -1, y: 1 },  // down-left
+  { x: -1, y: 0 },  // left
+  { x: -1, y: -1 }, // up-left
+  { x: 0, y: -1 },  // up
+  { x: 1, y: -1 },  // up-right
+  { x: 1, y: 0 },   // right
+  { x: 1, y: 1 },   // down-right
+].map((dir) => {
+  const len = Math.hypot(dir.x, dir.y) || 1;
+  return { x: dir.x / len, y: dir.y / len };
+});
+
+function getPlayerDirectionRow(player: Player): number {
+  const facing = getFacingVector(player);
+  let bestRow = 0;
+  let bestDot = -Infinity;
+
+  PLAYER_DIRECTION_VECTORS.forEach((dir, row) => {
+    const dot = facing.x * dir.x + facing.y * dir.y;
+    if (dot > bestDot) {
+      bestDot = dot;
+      bestRow = row;
+    }
+  });
+
+  return bestRow;
+}
+
+function drawFallbackPlayerBody(player: Player, ctx: CanvasRenderingContext2D, angle: number): void {
+  ctx.save();
+  ctx.rotate(angle);
+  ctx.fillStyle = '#ffccaa';
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(10, -10, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(15, 10, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+  ctx.fillStyle = player.color;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#222';
+  ctx.stroke();
+  ctx.closePath();
+}
+
+function drawPlayerSpriteBody(player: Player, ctx: CanvasRenderingContext2D, now: number): boolean {
+  const sheetUrl = PLAYER_WALK_SHEET_URLS[player.id] ?? PLAYER_WALK_SHEET_URLS[1];
+  const sheet = getChromaSprite(sheetUrl);
+  if (!sheet) return false;
+
+  const row = getPlayerDirectionRow(player);
+  const frame = player.isMoving ? Math.floor(now / PLAYER_WALK_FRAME_MS) % PLAYER_WALK_COLS : 1;
+  const cellW = sheet.width / PLAYER_WALK_COLS;
+  const cellH = sheet.height / PLAYER_WALK_ROWS;
+  const sx = Math.round(frame * cellW);
+  const sy = Math.round(row * cellH);
+  const sw = Math.round((frame + 1) * cellW) - sx;
+  const sh = Math.round((row + 1) * cellH) - sy;
+  const heightMult = player.id === 1 ? PLAYER_CENTERED_DRAW_HEIGHT_MULT : PLAYER_DRAW_HEIGHT_MULT;
+  const drawH = player.radius * heightMult;
+  const drawW = drawH * (sw / sh);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(sheet, sx, sy, sw, sh, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.restore();
+  return true;
+}
+
 export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, options?: {
   hideUI?: boolean;
   selectedSlotIdx?: number | null;
@@ -727,17 +815,9 @@ export function drawPlayer(player: Player, ctx: CanvasRenderingContext2D, option
     ctx.restore();
   }
 
-  // Hands
-  ctx.save();
-  ctx.rotate(angle);
-  ctx.fillStyle = '#ffccaa'; ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(10, -10, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(15, 10, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.restore();
-
-  // Body
-  ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
-  ctx.fillStyle = player.color; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#222'; ctx.stroke(); ctx.closePath();
+  if (!drawPlayerSpriteBody(player, ctx, now)) {
+    drawFallbackPlayerBody(player, ctx, angle);
+  }
 
   drawRegenAura(ctx, player, now);
   drawAltarFrontAura(ctx, player, now);

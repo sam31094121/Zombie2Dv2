@@ -1487,7 +1487,7 @@ export class Game {
         this.pendingSwordKills.clear();
         
         if (this.waveManager.currentWave >= 10) {
-          // 徹底勝利
+          this._shopCleared = true; // 防止後續幀重複觸發
           const time = Date.now() - this.startTime;
           this.onVictory?.(time, this.score);
           return;

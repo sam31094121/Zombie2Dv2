@@ -925,73 +925,148 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               </div>
             </div>
 
-            {/* Footer buttons - RESTORED ORIGINAL SIZE AND STYLE */}
+            {/* Footer buttons */}
             <footer style={{
-              flexShrink: 0, display: 'flex', gap: 12,
+              flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 0,
               background: `linear-gradient(180deg, #13172c 0%, #060710 100%)`,
               boxShadow: `0 -6px 30px rgba(0,0,0,0.8), inset 0 2px 0 rgba(255,255,255,0.05)`,
               position: 'relative', zIndex: 10,
-              padding: isDesktop ? '18px 24px' : '12px 16px',
             }}>
               <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent 0%, ${C.gold} 50%, transparent 100%)`, opacity: 0.9, boxShadow: `0 0 15px ${C.gold}` }} />
-              
-              <button
-                onClick={!canReroll ? undefined : handleReroll}
-                disabled={!canReroll}
-                style={{
-                  flex: 1, position: 'relative', border: 'none',
-                  background: !canReroll ? C.disabled : `linear-gradient(180deg, ${hasGuestPass ? C.green : C.blue}30 0%, ${C.bg} 100%)`,
-                  boxShadow: !canReroll ? 'none' : `inset 0 0 0 2px ${hasGuestPass ? C.green : C.blue}80, 0 6px 20px rgba(0,0,0,0.5)`,
-                  borderRadius: 6, cursor: !canReroll ? 'not-allowed' : 'pointer',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  padding: isDesktop ? '18px 0' : '14px 0',
-                  transition: 'all 0.15s',
-                  opacity: !canReroll ? 0.7 : 1,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: isDesktop ? 22 : 18 }}>🎲</span>
-                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: !canReroll ? C.disabledT : (hasGuestPass ? C.green : C.blue), textShadow: !canReroll ? 'none' : `0 0 12px ${hasGuestPass ? C.green : C.blue}60` }}>
-                    重擲
-                  </span>
-                </div>
-                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: !canReroll ? C.disabledT : C.text, marginTop: 2 }}>
-                  {hasGuestPass ? '🎫 FREE' : `💰${rerollCost}`}
-                </span>
-              </button>
 
-              <button
-                onClick={isReadyMode && isReady ? undefined : onNextWave}
-                disabled={isReadyMode && isReady}
-                style={{
-                  flex: 1.2, position: 'relative', border: 'none',
-                  background: (isReadyMode && isReady) ? C.disabled : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
-                  boxShadow: (isReadyMode && isReady) ? 'none' : `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212, 128, 12, 0.6)`,
-                  borderRadius: 6, cursor: (isReadyMode && isReady) ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                  padding: isDesktop ? '20px 0' : '16px 0',
-                  transform: (isReadyMode && isReady) ? 'none' : 'translateY(-2px)',
-                  transition: 'all 0.1s',
-                }}
-              >
-                {isReadyMode ? (
-                  isReady ? (
-                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: C.textDim }}>⏳ 等待隊友</span>
+              {/* ── 線上燈號列（只在 isOnline 時顯示）─────────────── */}
+              {isOnline && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: isDesktop ? 20 : 14,
+                  padding: isDesktop ? '10px 24px 6px' : '8px 16px 4px',
+                }}>
+                  {/* 我的燈 */}
+                  {([
+                    { label: '我', ready: myReady },
+                    { label: '隊友', ready: otherReady },
+                  ] as const).map(({ label, ready }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{
+                        width: isDesktop ? 11 : 9,
+                        height: isDesktop ? 11 : 9,
+                        borderRadius: '50%',
+                        background: ready ? '#30e860' : '#3a3a4a',
+                        boxShadow: ready ? '0 0 8px #30e86090, 0 0 3px #30e860' : 'none',
+                        transition: 'background 0.25s, box-shadow 0.25s',
+                        flexShrink: 0,
+                      }} />
+                      <span style={{
+                        fontFamily: "'Press Start 2P', monospace",
+                        fontSize: isDesktop ? 9 : 8,
+                        color: ready ? '#a3f0b0' : '#555566',
+                        transition: 'color 0.25s',
+                      }}>{label}</span>
+                    </div>
+                  ))}
+
+                  {/* 倒數數字 */}
+                  {countdown != null && (
+                    <div style={{
+                      fontFamily: "'Press Start 2P', monospace",
+                      fontSize: isDesktop ? 16 : 13,
+                      color: '#f5b936',
+                      textShadow: '0 0 12px #f5b93690',
+                      minWidth: 18,
+                      textAlign: 'center',
+                      animation: 'pulse 0.8s ease-in-out infinite',
+                    }}>
+                      {countdown}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── 按鈕列 ──────────────────────────────────────── */}
+              <div style={{
+                display: 'flex', gap: 12,
+                padding: isDesktop ? '10px 24px 18px' : '8px 16px 12px',
+              }}>
+                <button
+                  onClick={!canReroll ? undefined : handleReroll}
+                  disabled={!canReroll}
+                  style={{
+                    flex: 1, position: 'relative', border: 'none',
+                    background: !canReroll ? C.disabled : `linear-gradient(180deg, ${hasGuestPass ? C.green : C.blue}30 0%, ${C.bg} 100%)`,
+                    boxShadow: !canReroll ? 'none' : `inset 0 0 0 2px ${hasGuestPass ? C.green : C.blue}80, 0 6px 20px rgba(0,0,0,0.5)`,
+                    borderRadius: 6, cursor: !canReroll ? 'not-allowed' : 'pointer',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+                    padding: isDesktop ? '18px 0' : '14px 0',
+                    transition: 'all 0.15s',
+                    opacity: !canReroll ? 0.7 : 1,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: isDesktop ? 22 : 18 }}>🎲</span>
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: !canReroll ? C.disabledT : (hasGuestPass ? C.green : C.blue), textShadow: !canReroll ? 'none' : `0 0 12px ${hasGuestPass ? C.green : C.blue}60` }}>
+                      重擲
+                    </span>
+                  </div>
+                  <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: !canReroll ? C.disabledT : C.text, marginTop: 2 }}>
+                    {hasGuestPass ? '🎫 FREE' : `💰${rerollCost}`}
+                  </span>
+                </button>
+
+                <button
+                  onClick={isOnline ? onToggleReady : (isReadyMode && isReady ? undefined : onNextWave)}
+                  disabled={!isOnline && isReadyMode && isReady}
+                  style={{
+                    flex: 1.2, position: 'relative', border: 'none',
+                    background: (!isOnline && isReadyMode && isReady)
+                      ? C.disabled
+                      : (isOnline && myReady)
+                        ? `linear-gradient(180deg, #1e7a38 0%, #144f26 100%)`
+                        : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
+                    boxShadow: (!isOnline && isReadyMode && isReady)
+                      ? 'none'
+                      : (isOnline && myReady)
+                        ? `inset 0 2px 0 rgba(255,255,255,0.25), 0 6px 0 #0d3319, 0 10px 25px rgba(30,122,56,0.5)`
+                        : `inset 0 2px 0 rgba(255,255,255,0.4), 0 6px 0 #8c5204, 0 10px 25px rgba(212,128,12,0.6)`,
+                    borderRadius: 6,
+                    cursor: (!isOnline && isReadyMode && isReady) ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                    padding: isDesktop ? '20px 0' : '16px 0',
+                    transform: (!isOnline && isReadyMode && isReady) ? 'none' : 'translateY(-2px)',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {isOnline ? (
+                    countdown != null ? (
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 18 : 15, color: '#fff' }}>
+                        {countdown}
+                      </span>
+                    ) : myReady ? (
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 11 : 10, color: '#a3f0b0' }}>✓ 取消準備</span>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: isDesktop ? 22 : 18 }}>⚔</span>
+                        <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 14 : 12, color: '#fff', textShadow: '0 2px 6px rgba(0,0,0,0.6)' }}>準備完成</span>
+                      </>
+                    )
+                  ) : isReadyMode ? (
+                    isReady ? (
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 12 : 10, color: C.textDim }}>⏳ 等待隊友</span>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: isDesktop ? 22 : 18 }}>✓</span>
+                        <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 14 : 12, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備好了</span>
+                      </>
+                    )
                   ) : (
                     <>
-                      <span style={{ fontSize: isDesktop ? 22 : 18 }}>✓</span>
-                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 14 : 12, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備好了</span>
+                      <span style={{ fontSize: isDesktop ? 24 : 20, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>⚔</span>
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 15 : 13, color: '#fff', textShadow: '0 2px 6px rgba(0,0,0,0.6)', letterSpacing: '0.05em' }}>
+                        下一波
+                      </span>
                     </>
-                  )
-                ) : (
-                  <>
-                    <span style={{ fontSize: isDesktop ? 24 : 20, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>⚔</span>
-                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: isDesktop ? 15 : 13, color: '#fff', textShadow: '0 2px 6px rgba(0,0,0,0.6)', letterSpacing: '0.05em' }}>
-                      {isOnline ? (myReady ? '取消準備' : '準備完成') : '下一波'}
-                    </span>
-                  </>
-                )}
-              </button>
+                  )}
+                </button>
+              </div>
             </footer>
           </>
         )}
