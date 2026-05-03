@@ -207,6 +207,12 @@ export const GameUI: React.FC = () => {
             // 競技場第 10 波通關 → 勝利畫面
             gameStateRef.current = 'victory';
             setGameState('victory');
+            audioManager.stopBGM();
+            if (networkRef.current?.isHost) {
+              const time = Math.floor(gameRef.current.gameTime);
+              const kills = gameRef.current.players.reduce((acc, p) => acc + p.kills, 0);
+              networkRef.current.sendControl({ t: 'VICTORY', time, kills });
+            }
           } else {
             gameStateRef.current = 'shopping';
             setGameState('shopping');
@@ -610,7 +616,7 @@ export const GameUI: React.FC = () => {
   };
 
   // ── 按鈕 handlers ─────────────────────────────────────────
-  const handleCancelWait = () => { networkRef.current?.disconnect(); setOnlineStep('menu'); setRoomCode(''); };
+  const handleCancelWait = () => { networkRef.current?.disconnect(); networkRef.current = null; setOnlineStep('menu'); setRoomCode(''); };
 
   // 共用：恢復遊戲（線上模式同時通知對方）
   const _doUnpause = () => {
@@ -642,6 +648,7 @@ export const GameUI: React.FC = () => {
     setShopCountdown(null);
     _clearPauseState();
     networkRef.current?.disconnect();
+    networkRef.current = null;
   };
 
   const handleReadyRematch = () => {
@@ -658,8 +665,9 @@ export const GameUI: React.FC = () => {
 
   const handleToggleReady = () => {
     if (!gameRef.current) return;
+    const isOnline = gameRef.current.networkMode || gameRef.current.isHostMode;
     const nm = networkRef.current;
-    if (nm) {
+    if (nm && isOnline) {
       const newReady = !onlineShopReadyRef.current.myReady;
       onlineShopReadyRef.current.myReady = newReady;
 
@@ -735,7 +743,8 @@ export const GameUI: React.FC = () => {
 
   // 本地雙人模式：兩人都準備好才開始下一波（線上模式由 WAVE_START 訊息協調，不走這裡）
   useEffect(() => {
-    const isLocalDuoShop = playerCount === 2 && !networkRef.current && p1ShopReady && p2ShopReady;
+    const isOnline = (gameRef.current?.networkMode || gameRef.current?.isHostMode) ?? false;
+    const isLocalDuoShop = playerCount === 2 && !isOnline && p1ShopReady && p2ShopReady;
     if (isLocalDuoShop) {
       _doNextArenaWave();
     }
@@ -1038,10 +1047,7 @@ export const GameUI: React.FC = () => {
                 <ManagementView
                   game={g}
                   wave={waveState?.wave || 1}
-                  p1Ready={p1ShopReady}
-                  p2Ready={p2ShopReady}
-                  onP1Ready={() => setP1ShopReady(true)}
-                  onP2Ready={() => setP2ShopReady(true)}
+                  onNextWave={handleNextArenaWave}
                 />
               </div>
             );

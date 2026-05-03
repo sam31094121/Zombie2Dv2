@@ -835,18 +835,86 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
               background: C.panel, borderLeft: `2px solid ${C.b1}`,
               display: 'flex', flexDirection: 'column', padding: '10px', gap: 10
             }}>
+              {isOnline && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', paddingBottom: 4, borderBottom: `1px solid ${C.b1}` }}>
+                  {([
+                    { label: '我', ready: myReady },
+                    { label: '隊友', ready: otherReady },
+                  ] as const).map(({ label, ready }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: ready ? '#30e860' : '#3a3a4a',
+                        boxShadow: ready ? '0 0 8px #30e86090, 0 0 3px #30e860' : 'none',
+                        transition: 'background 0.25s, box-shadow 0.25s',
+                        flexShrink: 0,
+                      }} />
+                      <span style={{
+                        fontFamily: "'Press Start 2P', monospace",
+                        fontSize: 7, color: ready ? '#a3f0b0' : '#555566',
+                        transition: 'color 0.25s',
+                      }}>{label}</span>
+                    </div>
+                  ))}
+                  {countdown != null && (
+                    <div style={{
+                      fontFamily: "'Press Start 2P', monospace", fontSize: 13,
+                      color: '#f5b936', textShadow: '0 0 12px #f5b93690',
+                      animation: 'pulse 0.8s ease-in-out infinite',
+                    }}>{countdown}</div>
+                  )}
+                </div>
+              )}
+              {customFooter && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                  {customFooter}
+                </div>
+              )}
               <button
-                onClick={onNextWave}
+                onClick={isOnline ? onToggleReady : (isReadyMode && isReady ? undefined : onNextWave)}
+                disabled={!isOnline && isReadyMode && isReady}
                 style={{
-                  flex: 2, border: 'none', borderRadius: 6, cursor: 'pointer',
-                  background: `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
-                  boxShadow: `inset 0 2px 0 rgba(255,255,255,0.4), 0 4px 0 #8c5204, 0 8px 16px rgba(212, 128, 12, 0.4)`,
+                  flex: 2, border: 'none', borderRadius: 6, cursor: (!isOnline && isReadyMode && isReady) ? 'not-allowed' : 'pointer',
+                  background: (!isOnline && isReadyMode && isReady)
+                    ? C.disabled
+                    : (isOnline && myReady)
+                      ? `linear-gradient(180deg, #1e7a38 0%, #144f26 100%)`
+                      : `linear-gradient(180deg, #f5b936 0%, #d4800c 100%)`,
+                  boxShadow: (!isOnline && isReadyMode && isReady)
+                    ? 'none'
+                    : (isOnline && myReady)
+                      ? `inset 0 2px 0 rgba(255,255,255,0.25), 0 4px 0 #0d3319, 0 8px 16px rgba(30,122,56,0.5)`
+                      : `inset 0 2px 0 rgba(255,255,255,0.4), 0 4px 0 #8c5204, 0 8px 16px rgba(212, 128, 12, 0.4)`,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  transition: 'all 0.1s', transform: 'translateY(-2px)',
+                  transition: 'all 0.1s', transform: (!isOnline && isReadyMode && isReady) ? 'none' : 'translateY(-2px)',
                 }}
               >
-                <span style={{ fontSize: 18 }}>⚔</span>
-                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>下一波</span>
+                {isOnline ? (
+                  countdown != null ? (
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 16, color: '#fff' }}>{countdown}</span>
+                  ) : myReady ? (
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#a3f0b0' }}>✓ 取消</span>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 16 }}>⚔</span>
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>準備</span>
+                    </>
+                  )
+                ) : isReadyMode ? (
+                  isReady ? (
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: C.textDim }}>⏳ 隊友</span>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 16 }}>✓</span>
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>好了</span>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <span style={{ fontSize: 18 }}>⚔</span>
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 9, color: '#fff', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>下一波</span>
+                  </>
+                )}
               </button>
               
               <button
@@ -924,6 +992,12 @@ export const ShopPanel: React.FC<ShopPanelProps> = ({
                 {shopPanel}
               </div>
             </div>
+
+            {customFooter && (
+              <div style={{ flexShrink: 0, zIndex: 10 }}>
+                {customFooter}
+              </div>
+            )}
 
             {/* Footer buttons */}
             <footer style={{

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { Game } from '../../game/Game';
 import { audioManager } from '../../game/AudioManager';
 import { STAT_REGISTRY } from '../../game/items/StatDefinitions';
@@ -16,13 +16,10 @@ import {
 interface Props {
   game: Game;
   wave: number;
-  p1Ready: boolean;
-  p2Ready: boolean;
-  onP1Ready: () => void;
-  onP2Ready: () => void;
+  onNextWave: () => void;
 }
 
-export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, onP1Ready, onP2Ready }) => {
+export const ManagementView: React.FC<Props> = ({ game, wave, onNextWave }) => {
   const p1 = game.players[0];
   const p2 = game.players[1];
 
@@ -32,6 +29,18 @@ export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, 
   const [branchTarget, setBranchTarget] = useState<{ pi: 0 | 1; weaponId: string } | null>(null);
   const [, setRenderTick] = useState(0);
   const rerender = () => setRenderTick(n => n + 1);
+
+  const [isLandscape, setIsLandscape] = useState(() => 
+    typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerHeight < 600
+  );
+
+  useLayoutEffect(() => {
+    const h = () => {
+      setIsLandscape(window.innerWidth > window.innerHeight && window.innerHeight < 600);
+    };
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
 
   const handleStatUpgradeOverride = (id: string) => {
     if (game.sharedStatPoints <= 0) return;
@@ -180,7 +189,7 @@ export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, 
         );
       })()}
 
-      <div className="grid grid-cols-2 gap-1.5 p-1.5 pb-1">
+      <div className={`grid ${isLandscape ? 'grid-cols-1' : 'grid-cols-2'} gap-1.5 p-1.5 pb-1`}>
         <PlayerPreviewCanvas
           player={p1}
           playerLabel="P1"
@@ -204,33 +213,6 @@ export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, 
           }}
         />
       </div>
-
-      <div className="grid grid-cols-2 gap-1.5 px-1.5 pb-2">
-        <button
-          onClick={onP1Ready}
-          disabled={p1Ready}
-          className="py-4 sm:py-5 rounded-2xl text-base sm:text-lg font-black tracking-widest transition-all active:scale-95 shadow-lg"
-          style={{
-            background: p1Ready ? '#14532d' : `${p1.color}22`,
-            color: p1Ready ? '#86efac' : p1.color,
-            border: `2px solid ${p1Ready ? '#166534' : p1.color + '44'}`,
-          }}
-        >
-          {p1Ready ? 'P1 READY' : 'P1 準備好了'}
-        </button>
-        <button
-          onClick={onP2Ready}
-          disabled={p2Ready}
-          className="py-4 sm:py-5 rounded-2xl text-base sm:text-lg font-black tracking-widest transition-all active:scale-95 shadow-lg"
-          style={{
-            background: p2Ready ? '#14532d' : `${p2.color}22`,
-            color: p2Ready ? '#86efac' : p2.color,
-            border: `2px solid ${p2Ready ? '#166534' : p2.color + '44'}`,
-          }}
-        >
-          {p2Ready ? 'P2 READY' : 'P2 準備好了'}
-        </button>
-      </div>
     </>
   );
 
@@ -240,7 +222,7 @@ export const ManagementView: React.FC<Props> = ({ game, wave, p1Ready, p2Ready, 
         key={`mgmt-p${selectedPlayer}`}
         player={activePlayer}
         wave={wave}
-        onNextWave={() => {}}
+        onNextWave={onNextWave}
         statPointsOverride={game.sharedStatPoints}
         onStatUpgradeOverride={handleStatUpgradeOverride}
         hideInventory={true}

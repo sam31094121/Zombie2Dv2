@@ -611,32 +611,57 @@ export function drawWeaponWithPremiumStyle(
   ctx.restore();
 }
 
-const PLAYER_WALK_ROWS = 8;
-const PLAYER_WALK_COLS = 3;
 const PLAYER_WALK_FRAME_MS = 145;
-const PLAYER_DRAW_HEIGHT_MULT = 5.0;
-const PLAYER_CENTERED_DRAW_HEIGHT_MULT = 4.4;
 
-const PLAYER_DIRECTION_VECTORS = [
-  { x: 0, y: 1 },   // down
-  { x: -1, y: 1 },  // down-left
-  { x: -1, y: 0 },  // left
-  { x: -1, y: -1 }, // up-left
-  { x: 0, y: -1 },  // up
-  { x: 1, y: -1 },  // up-right
-  { x: 1, y: 0 },   // right
-  { x: 1, y: 1 },   // down-right
-].map((dir) => {
-  const len = Math.hypot(dir.x, dir.y) || 1;
-  return { x: dir.x / len, y: dir.y / len };
-});
+type PlayerWalkSheetSpec = {
+  rows: number;
+  cols: number;
+  drawHeightMult: number;
+  directions: { x: number; y: number }[];
+};
 
-function getPlayerDirectionRow(player: Player): number {
+function normalizeDirections(directions: { x: number; y: number }[]): { x: number; y: number }[] {
+  return directions.map((dir) => {
+    const len = Math.hypot(dir.x, dir.y) || 1;
+    return { x: dir.x / len, y: dir.y / len };
+  });
+}
+
+const PLAYER_WALK_SHEET_SPECS: Record<number, PlayerWalkSheetSpec> = {
+  1: {
+    rows: 8,
+    cols: 3,
+    drawHeightMult: 4.4,
+    directions: normalizeDirections([
+      { x: 0, y: 1 },   // down
+      { x: -1, y: 1 },  // down-left
+      { x: -1, y: 0 },  // left
+      { x: -1, y: -1 }, // up-left
+      { x: 0, y: -1 },  // up
+      { x: 1, y: -1 },  // up-right
+      { x: 1, y: 0 },   // right
+      { x: 1, y: 1 },   // down-right
+    ]),
+  },
+  2: {
+    rows: 4,
+    cols: 3,
+    drawHeightMult: 4.5,
+    directions: normalizeDirections([
+      { x: 0, y: 1 },  // down
+      { x: -1, y: 0 }, // left
+      { x: 0, y: -1 }, // up
+      { x: 1, y: 0 },  // right
+    ]),
+  },
+};
+
+function getPlayerDirectionRow(player: Player, spec: PlayerWalkSheetSpec): number {
   const facing = getFacingVector(player);
   let bestRow = 0;
   let bestDot = -Infinity;
 
-  PLAYER_DIRECTION_VECTORS.forEach((dir, row) => {
+  spec.directions.forEach((dir, row) => {
     const dot = facing.x * dir.x + facing.y * dir.y;
     if (dot > bestDot) {
       bestDot = dot;
@@ -675,19 +700,19 @@ function drawFallbackPlayerBody(player: Player, ctx: CanvasRenderingContext2D, a
 
 function drawPlayerSpriteBody(player: Player, ctx: CanvasRenderingContext2D, now: number): boolean {
   const sheetUrl = PLAYER_WALK_SHEET_URLS[player.id] ?? PLAYER_WALK_SHEET_URLS[1];
+  const spec = PLAYER_WALK_SHEET_SPECS[player.id] ?? PLAYER_WALK_SHEET_SPECS[1];
   const sheet = getChromaSprite(sheetUrl);
   if (!sheet) return false;
 
-  const row = getPlayerDirectionRow(player);
-  const frame = player.isMoving ? Math.floor(now / PLAYER_WALK_FRAME_MS) % PLAYER_WALK_COLS : 1;
-  const cellW = sheet.width / PLAYER_WALK_COLS;
-  const cellH = sheet.height / PLAYER_WALK_ROWS;
+  const row = getPlayerDirectionRow(player, spec);
+  const frame = player.isMoving ? Math.floor(now / PLAYER_WALK_FRAME_MS) % spec.cols : 1;
+  const cellW = sheet.width / spec.cols;
+  const cellH = sheet.height / spec.rows;
   const sx = Math.round(frame * cellW);
   const sy = Math.round(row * cellH);
   const sw = Math.round((frame + 1) * cellW) - sx;
   const sh = Math.round((row + 1) * cellH) - sy;
-  const heightMult = player.id === 1 ? PLAYER_CENTERED_DRAW_HEIGHT_MULT : PLAYER_DRAW_HEIGHT_MULT;
-  const drawH = player.radius * heightMult;
+  const drawH = player.radius * spec.drawHeightMult;
   const drawW = drawH * (sw / sh);
 
   ctx.save();

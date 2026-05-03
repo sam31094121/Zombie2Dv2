@@ -82,7 +82,7 @@ export const BUTCHER_FRAME_URLS: string[] = [1, 2, 3, 4, 5].map(
 
 export const PLAYER_WALK_SHEET_URLS: Record<number, string> = {
   1: `${import.meta.env.BASE_URL}sprites/players/player1_walk_centered_8x3.png`,
-  2: `${import.meta.env.BASE_URL}sprites/players/player2_walk_8x3.png`,
+  2: `${import.meta.env.BASE_URL}sprites/players/player2_walk_red_girl_4x3.png`,
 };
 
 if (typeof window !== 'undefined') {
