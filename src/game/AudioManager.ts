@@ -1,3 +1,5 @@
+const BATTLE_BGM_URL = `${import.meta.env.BASE_URL}audio/music/gei-xiao-wu.wav`;
+
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private isInitialized = false;
@@ -13,6 +15,8 @@ export class AudioManager {
   // BGM state
   private bgmOscillators: OscillatorNode[] = [];
   private bgmInterval: number | null = null;
+  private bgmElement: HTMLAudioElement | null = null;
+  private bgmElementSource: MediaElementAudioSourceNode | null = null;
   private step = 0;
 
   constructor() {}
@@ -226,6 +230,44 @@ export class AudioManager {
   public startBGM() {
     if (!this.ctx || !this.bgmGain) return;
     this.stopBGM();
+
+    if (this.startBattleBGMFile()) return;
+    this.startSynthBGM();
+  }
+
+  private startBattleBGMFile(): boolean {
+    if (!this.ctx || !this.bgmGain) return false;
+
+    if (!this.bgmElement) {
+      this.bgmElement = document.createElement('audio');
+      this.bgmElement.crossOrigin = 'anonymous';
+      this.bgmElement.src = BATTLE_BGM_URL;
+      this.bgmElement.loop = true;
+      this.bgmElement.preload = 'auto';
+    }
+
+    if (!this.bgmElementSource) {
+      this.bgmElementSource = this.ctx.createMediaElementSource(this.bgmElement);
+      this.bgmElementSource.connect(this.bgmGain);
+    }
+
+    this.bgmElement.currentTime = 0;
+    this.bgmElement.volume = 1;
+
+    const playPromise = this.bgmElement.play();
+    if (playPromise) {
+      playPromise.catch((error) => {
+        console.warn('Failed to play battle BGM file; falling back to synth BGM', error);
+        this.startSynthBGM();
+      });
+    }
+
+    return true;
+  }
+
+  private startSynthBGM() {
+    if (!this.ctx || !this.bgmGain) return;
+    this.stopSynthBGM();
     
     // A simple driving 16-step bassline sequencer
     const bassNotes = [65.41, 65.41, 77.78, 65.41, 65.41, 65.41, 98.00, 77.78]; // C2, Eb2, G2
@@ -282,10 +324,18 @@ export class AudioManager {
     }, stepTime * 1000);
   }
 
-  public stopBGM() {
+  private stopSynthBGM() {
     if (this.bgmInterval !== null) {
       clearInterval(this.bgmInterval);
       this.bgmInterval = null;
+    }
+  }
+
+  public stopBGM() {
+    this.stopSynthBGM();
+    if (this.bgmElement) {
+      this.bgmElement.pause();
+      this.bgmElement.currentTime = 0;
     }
   }
 }

@@ -629,18 +629,14 @@ function normalizeDirections(directions: { x: number; y: number }[]): { x: numbe
 
 const PLAYER_WALK_SHEET_SPECS: Record<number, PlayerWalkSheetSpec> = {
   1: {
-    rows: 8,
+    rows: 4,
     cols: 3,
     drawHeightMult: 4.4,
     directions: normalizeDirections([
-      { x: 0, y: 1 },   // down
-      { x: -1, y: 1 },  // down-left
-      { x: -1, y: 0 },  // left
-      { x: -1, y: -1 }, // up-left
-      { x: 0, y: -1 },  // up
-      { x: 1, y: -1 },  // up-right
-      { x: 1, y: 0 },   // right
-      { x: 1, y: 1 },   // down-right
+      { x: 0, y: 1 },  // down
+      { x: -1, y: 0 }, // left
+      { x: 0, y: -1 }, // up
+      { x: 1, y: 0 },  // right
     ]),
   },
   2: {
