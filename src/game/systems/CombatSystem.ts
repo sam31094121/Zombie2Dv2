@@ -397,6 +397,7 @@ function _updateMonolithTurret(game: Game, obs: Obstacle): void {
     homingDelayMs: 170,
     obstacleGraceMs: 160,
     splashRadius: 86,
+    ignoresObstacles: true,
   }));
 
   obs.monolithVolleyShotsRemaining -= 1;

@@ -26,6 +26,8 @@ export interface MissileConfig {
   homingDelayMs?: number;
   obstacleGraceMs?: number;
   splashRadius?: number;
+  /** Turret energy missiles pass through map obstacles. */
+  ignoresObstacles?: boolean;
 }
 
 export class MissileProjectile {
@@ -54,6 +56,7 @@ export class MissileProjectile {
   homingDelayTimer: number = 0;
   obstacleGraceTimer: number = 0;
   splashRadius: number = 0;
+  ignoresObstacles: boolean = false;
 
   constructor(cfg: MissileConfig) {
     this.id         = ++MissileProjectile._nextId;
@@ -76,5 +79,6 @@ export class MissileProjectile {
     this.homingDelayTimer   = cfg.homingDelayMs ?? 0;
     this.obstacleGraceTimer = cfg.obstacleGraceMs ?? 0;
     this.splashRadius       = cfg.splashRadius ?? 0;
+    this.ignoresObstacles   = cfg.ignoresObstacles ?? false;
   }
 }

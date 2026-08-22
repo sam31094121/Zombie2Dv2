@@ -11,6 +11,7 @@ import { BlacksmithPanel } from './panels/BlacksmithPanel';
 import { MerchantPanel }   from './panels/MerchantPanel';
 import { GachaPanel }      from './panels/GachaPanel';
 import { QuestPanel }      from './panels/QuestPanel';
+import { hasVisitedArena } from '../../game/progression';
 
 interface Props {
   playerColor?: string;
@@ -33,6 +34,11 @@ export function LobbyCanvas({
   const lastRef   = useRef<number>(0);
 
   const [openPanel, setOpenPanel] = useState<NPCType | null>(null);
+  const [isInfiniteUnlocked, setIsInfiniteUnlocked] = useState(hasVisitedArena);
+
+  const startArenaGame = (difficulty: 'normal' | 'hard' | 'infinite') => {
+    onStartGame(difficulty, 'arena');
+  };
 
   // ── 初始化大廳 ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -117,8 +123,8 @@ export function LobbyCanvas({
       )}
 
       {/* NPC 面板 */}
-      {openPanel === 'portal'       && <PortalPanel     onStart={(diff) => onStartGame(diff, 'endless')} onClose={() => closePanel('portal')}     />}
-      {openPanel === 'arena_portal' && <PortalPanel     onStart={(diff) => onStartGame(diff, 'arena')}   onClose={() => closePanel('arena_portal')} />}
+      {openPanel === 'portal'       && <PortalPanel     onStart={(diff) => onStartGame(diff, 'endless')} onClose={() => closePanel('portal')} isInfiniteUnlocked={isInfiniteUnlocked} />}
+      {openPanel === 'arena_portal' && <PortalPanel     onStart={startArenaGame} onClose={() => closePanel('arena_portal')} isInfiniteUnlocked={isInfiniteUnlocked} />}
       {openPanel === 'blacksmith'   && <BlacksmithPanel                                                  onClose={() => closePanel('blacksmith')} />}
       {openPanel === 'merchant'   && <MerchantPanel                               onClose={() => closePanel('merchant')}   />}
       {openPanel === 'gacha'      && <GachaPanel                                  onClose={() => closePanel('gacha')}      />}

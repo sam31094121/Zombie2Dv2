@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CharacterShowcase } from './CharacterShowcase';
 import { OnlineMenuScreen } from './OnlineMenuScreen';
 import { QRCodeCanvas } from 'qrcode.react';
+import { hasVisitedArena } from '../../game/progression';
 
 interface Props {
   platform: 'pc' | 'mobile';
@@ -31,6 +32,7 @@ export const HomeScreen: React.FC<Props> = ({
   onCancelWait,
 }) => {
   const [selectedMode, setSelectedMode] = useState<'arena' | 'endless'>('arena');
+  const [isInfiniteUnlocked, setIsInfiniteUnlocked] = useState(hasVisitedArena);
   const [selectedCount, setSelectedCount] = useState<1 | 2 | 'online'>(1);
   const [showOnlinePanel, setShowOnlinePanel] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -71,6 +73,7 @@ export const HomeScreen: React.FC<Props> = ({
   };
 
   const handleStart = () => {
+    if (selectedCount === 1 && selectedMode === 'endless' && !isInfiniteUnlocked) return;
     if (selectedCount === 'online') {
       setShowOnlinePanel(true);
       return;
@@ -79,6 +82,8 @@ export const HomeScreen: React.FC<Props> = ({
   };
 
   const isArena = selectedMode === 'arena';
+  // 競技場通關限制只適用於單人；雙人本機與線上可直接進入無限模式。
+  const isInfiniteLocked = selectedCount === 1 && !isInfiniteUnlocked;
   const isPhonePortrait = vp.w <= 768 && vp.h > vp.w;
   const isNarrow = vp.w <= 1024;
 
@@ -304,10 +309,11 @@ export const HomeScreen: React.FC<Props> = ({
               leftBar={!isArena ? '#2b6cb0' : 'transparent'}
               glow={!isArena ? '0 0 20px rgba(43,108,176,0.22)' : 'none'}
               iconBg={!isArena ? accent.iconBg : 'rgba(43,108,176,0.18)'}
-              icon="🔁"
+              icon={isInfiniteLocked ? '🔒' : '🔁'}
               title="無限"
-              sub="Endless Challenge"
+              sub={isInfiniteLocked ? '通關競技場才可以解鎖' : 'Endless Challenge'}
               compact={isPhonePortrait}
+              disabled={isInfiniteLocked}
             />
           </div>
 
@@ -503,7 +509,9 @@ export const HomeScreen: React.FC<Props> = ({
               joinInput={joinInput}
               setJoinInput={setJoinInput}
               onlineError={onlineError}
-              onCreateRoom={() => onCreateRoom(selectedMode)}
+              onCreateRoom={() => {
+                onCreateRoom(selectedMode);
+              }}
               onJoinRoom={onJoinRoom}
               onBack={() => setShowOnlinePanel(false)}
               onCancelWait={() => {
@@ -582,12 +590,14 @@ interface ModeCardProps {
   title: string;
   sub: string;
   compact?: boolean;
+  disabled?: boolean;
 }
 
-function ModeCard({ onClick, bg, leftBar, glow, iconBg, icon, title, sub, compact = false }: ModeCardProps) {
+function ModeCard({ onClick, bg, leftBar, glow, iconBg, icon, title, sub, compact = false, disabled = false }: ModeCardProps) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -596,7 +606,8 @@ function ModeCard({ onClick, bg, leftBar, glow, iconBg, icon, title, sub, compac
         borderRadius: 12,
         textAlign: 'left',
         width: '100%',
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
         transition: 'all 0.18s',
         background: bg,
         border: 'none',

@@ -19,6 +19,7 @@ import { UpgradePanel, UpgradeCard } from './UpgradePanel';
 import { ShopPanel } from './arena/ShopPanel';
 import { ManagementView } from './arena/ManagementView';
 import { VictoryScreen } from './screens/VictoryScreen';
+import { markArenaVisited } from '../game/progression';
 
 const WS_URL = (import.meta as any).env?.VITE_WS_URL ?? 'ws://localhost:3001';
 
@@ -270,7 +271,9 @@ export const GameUI: React.FC = () => {
       makeOnUpdate(),
       mode
     );
+    gameRef.current.waveManager.isInfinite = _difficulty === 'infinite';
     gameRef.current.onVictory = (time, kills) => {
+      if (gameRef.current?.mode === 'arena') markArenaVisited();
       setGameStats({ time, kills });
       setGameState('victory');
       audioManager.stopBGM();
@@ -335,6 +338,7 @@ export const GameUI: React.FC = () => {
     );
 
     game.onVictory = (time, kills) => {
+      if (game.mode === 'arena') markArenaVisited();
       setGameStats({ time, kills });
       setGameState('victory');
       audioManager.stopBGM();
@@ -373,6 +377,7 @@ export const GameUI: React.FC = () => {
         resetPlayerInputState();
       };
       nm.onVictory = (time, kills) => {
+        if (gameRef.current?.mode === 'arena') markArenaVisited();
         setGameStats({ time, kills });
         setGameState('victory');
         audioManager.stopBGM();
@@ -771,6 +776,7 @@ export const GameUI: React.FC = () => {
 
   useEffect(() => {
     return () => {
+      audioManager.stopBGM();
       if (gameRef.current) gameRef.current.destroy();
       networkRef.current?.disconnect();
       if (clientRespawnInterval.current) clearInterval(clientRespawnInterval.current);
@@ -1124,6 +1130,7 @@ export const GameUI: React.FC = () => {
               <button
                 onClick={() => {
                   _doUnpause();
+                  audioManager.stopBGM();
                   if (gameRef.current) { gameRef.current.destroy(); }
                   gameStateRef.current = 'start';
                   setGameState('start');

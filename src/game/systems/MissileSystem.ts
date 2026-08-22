@@ -48,7 +48,7 @@ export function updateMissiles(missiles: MissileProjectile[], game: Game, dt: nu
     m.y += m.vy * (dt / 16);
 
     let hitWall = false;
-    if (m.obstacleGraceTimer <= 0) {
+    if (!m.ignoresObstacles && m.obstacleGraceTimer <= 0) {
       const obs = game.mapManager.getNearbyObstacles(m.x, m.y);
       for (const o of obs) {
         if (!o.isDestroyed && o.collidesWithCircle(m.x, m.y, m.radius)) {
@@ -151,6 +151,7 @@ function _spawnSplitMissiles(
       homingDelayMs: parent.homingDelayTimer,
       obstacleGraceMs: parent.obstacleGraceTimer,
       splashRadius: parent.splashRadius * 0.75,
+      ignoresObstacles: parent.ignoresObstacles,
     });
 
     const childLifetime = (SPLIT_MAX_RANGE / child.speed) * (1000 / 60);

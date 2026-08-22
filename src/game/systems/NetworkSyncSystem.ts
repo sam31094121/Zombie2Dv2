@@ -119,7 +119,7 @@ export function serializeState(game: Game, tick: number, hardSync: boolean): obj
       sp: m.speed, ts: m.turnSpeed,
       lt: m.lifetime, ml: m.maxLifetime,
       hd: Math.round(m.homingDelayTimer), og: Math.round(m.obstacleGraceTimer),
-      pr: m.pierceRemaining, sr: m.splashRadius,
+      pr: m.pierceRemaining, sr: m.splashRadius, io: m.ignoresObstacles,
     })),
     ac: game.arcProjectiles
       .filter(a => a.lifetime > 0 && !a.isEmbedded)
@@ -474,6 +474,7 @@ export function applyNetworkState(game: Game, state: any): void {
         groundFireRadius: 0, groundFireDuration: 0,
         pierceRemaining: ms.pr, variant: ms.va,
         homingDelayMs: ms.hd, obstacleGraceMs: ms.og, splashRadius: ms.sr,
+        ignoresObstacles: ms.io,
       });
       m.vx = ms.vx; m.vy = ms.vy;
       m.lifetime = ms.lt; m.maxLifetime = ms.ml;
